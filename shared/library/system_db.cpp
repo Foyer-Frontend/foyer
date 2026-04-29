@@ -11,7 +11,10 @@ namespace {
 // Keep these arrays in sync with the cores/<name>.cmake recipes and with
 // the README's "Supported systems / cores" table.
 
-constexpr CoreDef kCoresFceumm[]      = { { "fceumm",        "FCEUmm"        } };
+constexpr CoreDef kCoresNes[]         = {
+    { "fceumm",   "FCEUmm"   },
+    { "nestopia", "Nestopia UE" },
+};
 constexpr CoreDef kCoresSnes9x[]      = { { "snes9x",        "Snes9x"        } };
 constexpr CoreDef kCoresGambatte[]    = { { "gambatte",      "Gambatte"      } };
 constexpr CoreDef kCoresMgba[]        = { { "mgba",          "mGBA"          } };
@@ -28,7 +31,7 @@ constexpr CoreDef kCoresRace[]        = { { "race",          "RACE"          } }
 constexpr SystemDef kSystems[] = {
     { "nes",          "Nintendo Entertainment System", "NES",
       "Nintendo - Nintendo Entertainment System",
-      "nes|fds|unif|unf",  kCoresFceumm },
+      "nes|fds|unif|unf",  kCoresNes },
 
     { "snes",         "Super Nintendo",               "SNES",
       "Nintendo - Super Nintendo Entertainment System",

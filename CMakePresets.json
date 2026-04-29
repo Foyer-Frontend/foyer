@@ -51,7 +51,7 @@
                 "CMAKE_BUILD_TYPE": "MinSizeRel",
                 "BUILD_BROWSER": "OFF",
                 "BUILD_PLAYER":  "ON",
-                "FOYER_CORES":   "fceumm;gambatte;genesisplusgx;snes9x"
+                "FOYER_CORES":   "fceumm;nestopia;gambatte;genesisplusgx;snes9x"
             }
         },
         {
@@ -74,6 +74,17 @@
                 "BUILD_BROWSER": "OFF",
                 "BUILD_PLAYER":  "ON",
                 "FOYER_CORE":    "genesisplusgx"
+            }
+        },
+        {
+            "name": "Player-nestopia",
+            "displayName": "Player (nestopia/NES)",
+            "inherits": ["core"],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "MinSizeRel",
+                "BUILD_BROWSER": "OFF",
+                "BUILD_PLAYER":  "ON",
+                "FOYER_CORE":    "nestopia"
             }
         },
         {
@@ -112,6 +123,10 @@
         {
             "name": "Player-genesisplusgx",
             "configurePreset": "Player-genesisplusgx"
+        },
+        {
+            "name": "Player-nestopia",
+            "configurePreset": "Player-nestopia"
         },
         {
             "name": "Player-snes9x",
