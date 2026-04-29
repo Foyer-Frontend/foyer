@@ -56,6 +56,7 @@ private:
         SaveSlots,
         LoadSlots,
         Settings,
+        CoreOptions,
     };
 
     void refresh_slots();
@@ -65,6 +66,8 @@ private:
     int          m_main_index     = 0;
     int          m_settings_index = 0;
     int          m_slot_index     = 0;
+    int          m_core_opt_index = 0;
+    int          m_core_opt_scroll = 0;
 
     int          m_result_slot    = 0;
 

@@ -36,6 +36,7 @@ add_library(${_frontend} STATIC
     ${CMAKE_SOURCE_DIR}/shared/libretro/savestate.cpp
     ${CMAKE_SOURCE_DIR}/shared/libretro/overlay.cpp
     ${CMAKE_SOURCE_DIR}/shared/libretro/cheevos.cpp
+    ${CMAKE_SOURCE_DIR}/shared/libretro/core_options.cpp
 )
 target_include_directories(${_frontend} PUBLIC
     ${CMAKE_SOURCE_DIR}/shared/libretro

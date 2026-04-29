@@ -1,4 +1,5 @@
 #include "frontend.hpp"
+#include "core_options.hpp"
 #include "platform/log.hpp"
 
 #include <cstdarg>
@@ -69,23 +70,42 @@ bool env_cb(unsigned cmd, void* data) {
             return true;
         }
         case RETRO_ENVIRONMENT_GET_VARIABLE: {
-            // Phase 4 will read these from /config/foyer/cores/<core>.jsonc.
-            // For now: report no override → cores fall back to defaults.
             auto* var = static_cast<retro_variable*>(data);
-            var->value = nullptr;
-            return false;
+            var->value = CoreOptions::instance().get(var->key);
+            return var->value != nullptr;
         }
         case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE: {
-            *static_cast<bool*>(data) = false;
+            *static_cast<bool*>(data) = CoreOptions::instance().consume_dirty();
             return true;
         }
-        case RETRO_ENVIRONMENT_SET_VARIABLES:
-        case RETRO_ENVIRONMENT_SET_CORE_OPTIONS:
-        case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_INTL:
-        case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2:
-        case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL:
+        case RETRO_ENVIRONMENT_SET_VARIABLES: {
+            CoreOptions::instance().ingest_legacy(
+                static_cast<const retro_variable*>(data));
+            return true;
+        }
+        case RETRO_ENVIRONMENT_SET_CORE_OPTIONS: {
+            CoreOptions::instance().ingest_v1(
+                static_cast<const retro_core_option_definition*>(data));
+            return true;
+        }
+        case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_INTL: {
+            // Use the english (default) definitions; ignore the intl table.
+            auto* intl = static_cast<const retro_core_options_intl*>(data);
+            if (intl) CoreOptions::instance().ingest_v1(intl->us);
+            return true;
+        }
+        case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2: {
+            CoreOptions::instance().ingest_v2(
+                static_cast<const retro_core_options_v2*>(data));
+            return true;
+        }
+        case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL: {
+            auto* intl = static_cast<const retro_core_options_v2_intl*>(data);
+            if (intl) CoreOptions::instance().ingest_v2(intl->us);
+            return true;
+        }
         case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY:
-            // Acknowledge — Phase 4 will plumb the full options model.
+            // We don't honour visibility hints yet — show every option.
             return true;
         case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS:
             return true;
@@ -176,6 +196,16 @@ Frontend& Frontend::instance() {
 
 bool Frontend::init() {
     if (m_initialised) return true;
+
+    // CoreOptions needs the core name before SET_VARIABLES fires so the
+    // overrides JSONC at /foyer/config/cores/<name>.jsonc resolves.
+#if defined(FOYER_CORE_NAME)
+#  define FOYER_STR2(x) #x
+#  define FOYER_STR(x)  FOYER_STR2(x)
+    CoreOptions::instance().set_core_name(FOYER_STR(FOYER_CORE_NAME));
+#  undef FOYER_STR
+#  undef FOYER_STR2
+#endif
 
     // Wire callbacks before retro_init so the core sees them during its own
     // init sequence (some cores call env from inside retro_init).

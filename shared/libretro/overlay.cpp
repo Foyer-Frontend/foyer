@@ -1,4 +1,5 @@
 #include "overlay.hpp"
+#include "core_options.hpp"
 #include "ui/icons.hpp"
 
 #include <algorithm>
@@ -14,9 +15,18 @@ constexpr const char* kMainItems[] = {
     "Save State",
     "Load State",
     "Settings",
+    "Core Options",
     "Quit Game",
 };
 constexpr int kMainCount = (int)(sizeof(kMainItems) / sizeof(kMainItems[0]));
+
+enum : int {
+    MainSave    = 0,
+    MainLoad    = 1,
+    MainSettings = 2,
+    MainCoreOpts = 3,
+    MainQuit     = 4,
+};
 
 constexpr const char* kAspectLabels[] = {
     "Display 4:3",
@@ -114,21 +124,26 @@ Overlay::Action Overlay::update(std::uint64_t held, std::uint64_t down) {
         }
         if (pressed(HidNpadButton_A)) {
             switch (m_main_index) {
-                case 0:
+                case MainSave:
                     m_state = State::SaveSlots;
                     m_slot_index = 0;
                     refresh_slots();
                     break;
-                case 1:
+                case MainLoad:
                     m_state = State::LoadSlots;
                     m_slot_index = 0;
                     refresh_slots();
                     break;
-                case 2:
+                case MainSettings:
                     m_state = State::Settings;
                     m_settings_index = 0;
                     break;
-                case 3:
+                case MainCoreOpts:
+                    m_state = State::CoreOptions;
+                    m_core_opt_index  = 0;
+                    m_core_opt_scroll = 0;
+                    break;
+                case MainQuit:
                     m_state = State::Hidden;
                     return Action::Quit;
             }
@@ -139,6 +154,29 @@ Overlay::Action Overlay::update(std::uint64_t held, std::uint64_t down) {
         if (pressed(HidNpadButton_B)) m_state = State::Main;
         else if (pressed(HidNpadButton_A) && m_hooks.set_aspect) {
             m_hooks.set_aspect(kAspectValues[m_settings_index]);
+        }
+    } else if (m_state == State::CoreOptions) {
+        const auto& opts = CoreOptions::instance().options();
+        const int n = (int)opts.size();
+        if (n == 0) {
+            if (pressed(HidNpadButton_B)) m_state = State::Main;
+        } else {
+            if (nav_up)   m_core_opt_index = (m_core_opt_index - 1 + n) % n;
+            if (nav_down) m_core_opt_index = (m_core_opt_index + 1) % n;
+            if (pressed(HidNpadButton_B)) m_state = State::Main;
+            else {
+                const auto& cur = opts[m_core_opt_index];
+                const int cn = (int)cur.choices.size();
+                const bool right = pressed(HidNpadButton_Right);
+                const bool left  = pressed(HidNpadButton_Left);
+                if (cn > 1 && (right || left)) {
+                    int ci = 0;
+                    for (int i = 0; i < cn; i++)
+                        if (cur.choices[i] == cur.value) { ci = i; break; }
+                    ci = right ? (ci + 1) % cn : (ci - 1 + cn) % cn;
+                    CoreOptions::instance().set(cur.key, cur.choices[ci]);
+                }
+            }
         }
     } else if (m_state == State::SaveSlots || m_state == State::LoadSlots) {
         if (nav_up)   m_slot_index = (m_slot_index - 1 + kStateSlotCount) % kStateSlotCount;
@@ -201,6 +239,9 @@ void Overlay::draw_panel(NVGcontext* vg, float w, float h, const char* title) {
         case State::Settings:
             hint = std::string{A} + " apply   " + B + " back";
             break;
+        case State::CoreOptions:
+            hint = std::string{Left} + Right + " change   " + B + " back";
+            break;
         default: break;
     }
     if (!hint.empty()) nvgText(vg, w * 0.5f, py + ph - 16, hint.c_str(), nullptr);
@@ -233,10 +274,11 @@ void Overlay::draw(NVGcontext* vg, float w, float h) {
 
     const char* title = nullptr;
     switch (m_state) {
-        case State::Main:       title = "Pause"; break;
-        case State::SaveSlots:  title = "Save State"; break;
-        case State::LoadSlots:  title = "Load State"; break;
-        case State::Settings:   title = "Settings"; break;
+        case State::Main:        title = "Pause"; break;
+        case State::SaveSlots:   title = "Save State"; break;
+        case State::LoadSlots:   title = "Load State"; break;
+        case State::Settings:    title = "Settings"; break;
+        case State::CoreOptions: title = "Core Options"; break;
         default: title = "";
     }
     draw_panel(vg, w, h, title);
@@ -277,6 +319,32 @@ void Overlay::draw(NVGcontext* vg, float w, float h) {
         for (int i = 0; i < kAspectCount; i++) {
             const bool active = (kAspectValues[i] == current);
             row(i, i == m_settings_index, kAspectLabels[i], active ? "active" : "", false);
+        }
+    } else if (m_state == State::CoreOptions) {
+        const auto& opts = CoreOptions::instance().options();
+        if (opts.empty()) {
+            nvgFontSize(vg, 18.0f);
+            nvgFillColor(vg, kTextDim);
+            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+            nvgText(vg, list_x + list_w * 0.5f, list_y + 64,
+                    "this core has no exposed options", nullptr);
+        } else {
+            const int visible = (int)((ph - 84 - 28) / row_h);
+            int first = m_core_opt_scroll;
+            if (m_core_opt_index < first)                 first = m_core_opt_index;
+            if (m_core_opt_index >= first + visible)      first = m_core_opt_index - visible + 1;
+            if (first < 0)                                first = 0;
+            m_core_opt_scroll = first;
+
+            for (int i = 0; i < visible && first + i < (int)opts.size(); i++) {
+                const auto& o = opts[first + i];
+                const bool sel = (first + i == m_core_opt_index);
+                std::string rhs = "< " + o.value + " >";
+                row(i, sel,
+                    o.desc.empty() ? o.key.c_str() : o.desc.c_str(),
+                    rhs.c_str(),
+                    false);
+            }
         }
     } else if (m_state == State::SaveSlots || m_state == State::LoadSlots) {
         for (int i = 0; i < kStateSlotCount; i++) {
