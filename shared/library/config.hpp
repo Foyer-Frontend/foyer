@@ -13,6 +13,7 @@ struct Config {
 
     Scraper      preferred_scraper = Scraper::Libretro;
     std::string  rom_root          = "/foyer/roms";
+    std::string  theme_name        = "default";
 
     // Per-system core override. Stored flat to keep the header light; the
     // list is short (≤20 systems) so linear lookup is fine.
@@ -31,5 +32,6 @@ void          save_config();
 void          set_preferred_scraper(Config::Scraper s);
 void          set_default_core_for(std::string_view folder,
                                    std::string_view core_name);
+void          set_theme_name(std::string_view name);
 
 } // namespace foyer::library

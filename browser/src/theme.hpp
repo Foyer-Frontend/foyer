@@ -1,11 +1,16 @@
 #pragma once
 
+#include <string>
+#include <string_view>
+#include <vector>
+
 #include <nanovg.h>
 
 namespace foyer::browser {
 
-// Hardcoded ES-DE-inspired palette + metrics. Phase 8 will move this into a
-// pluggable theme file under /foyer/config/.
+// Active palette + metrics used by every browser view. Defaults match the
+// ES-DE-inspired look we shipped before themes existed; load_theme() can
+// overwrite any subset from /foyer/config/themes/<name>.jsonc.
 struct Theme {
     NVGcolor bg          = nvgRGBA(0x10, 0x12, 0x16, 0xFF);
     NVGcolor bg_panel    = nvgRGBA(0x18, 0x1B, 0x21, 0xFF);
@@ -29,5 +34,14 @@ struct Theme {
 };
 
 const Theme& theme();
+
+// Replace the active theme by reading /foyer/config/themes/<name>.jsonc.
+// Unknown / missing names fall back to the built-in "default" palette so the
+// browser always renders.
+void load_theme(std::string_view name);
+
+// List names of theme files found in /foyer/config/themes/. Always contains
+// "default" as the first entry (synthetic; no file required).
+std::vector<std::string> list_themes();
 
 } // namespace foyer::browser

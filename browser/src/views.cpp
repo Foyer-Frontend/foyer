@@ -327,6 +327,7 @@ void draw_system(NVGcontext* vg, float w, float h, const State& s, const Library
 namespace settings_items {
     enum : std::size_t {
         PreferredScraper = 0,
+        Theme,
         RomRoot,
         Rescan,
         InvalidateCovers,
@@ -377,6 +378,8 @@ void draw_settings(NVGcontext* vg, float w, float h, const State& s, const Libra
     const auto& cfg = library::config();
     draw_row(settings_items::PreferredScraper, "Preferred scraper",
              scraper_label(cfg.preferred_scraper), true);
+    draw_row(settings_items::Theme, "Theme",
+             cfg.theme_name.c_str(), true);
     draw_row(settings_items::RomRoot, "Rom root",
              cfg.rom_root.c_str(), false);
     draw_row(settings_items::Rescan, "Rescan library", "A: run", true);
@@ -665,6 +668,27 @@ void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down
             } else if (down & HidNpadButton_Left) {
                 library::set_preferred_scraper(
                     cycle_scraper(library::config().preferred_scraper, -1));
+            }
+        }
+
+        if (s.settings_index == settings_items::Theme &&
+            (down & (HidNpadButton_Left | HidNpadButton_Right))) {
+            const auto themes = list_themes();
+            if (!themes.empty()) {
+                std::size_t cur = 0;
+                const auto& current = library::config().theme_name;
+                for (std::size_t i = 0; i < themes.size(); i++) {
+                    if (themes[i] == current) { cur = i; break; }
+                }
+                if (down & HidNpadButton_Right) {
+                    cur = (cur + 1) % themes.size();
+                } else {
+                    cur = (cur == 0) ? themes.size() - 1 : cur - 1;
+                }
+                library::set_theme_name(themes[cur]);
+                load_theme(themes[cur]);
+                s.banner_text = std::string{"Theme: "} + themes[cur];
+                s.banner_ttl  = 120;
             }
         }
         if (down & HidNpadButton_A) {

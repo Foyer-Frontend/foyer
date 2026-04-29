@@ -26,8 +26,10 @@ Features delivered so far:
 ├── cores/
 │   └── foyer-<core>.nro             # downloaded via Settings → Install Cores
 ├── config/
-│   ├── general.jsonc                # rom_root, preferred_scraper, …
+│   ├── general.jsonc                # rom_root, preferred_scraper, theme, …
 │   ├── accounts.jsonc               # ScreenScraper / SteamGridDB / RA creds
+│   ├── per_game.jsonc               # per-rom core overrides
+│   ├── themes/<name>.jsonc          # palette + metric overrides (Settings → Theme)
 │   └── cores/<core>.jsonc           # per-core libretro variables (Phase 8)
 ├── data/
 │   └── log.txt

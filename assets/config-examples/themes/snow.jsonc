@@ -1,0 +1,22 @@
+// Light/snow palette. Drop into /foyer/config/themes/snow.jsonc on the SD.
+{
+    "bg":          "#F4F6FA",
+    "bg_panel":    "#FFFFFF",
+    "bg_panel_hi": "#E5EAF2",
+
+    "accent":      "#D7332F",
+    "accent_dim":  "#A82724",
+
+    "text_strong": "#161A22",
+    "text":        "#2E3340",
+    "text_dim":    "#6A7180",
+
+    "border":      "#C7CEDA",
+
+    "pad":         24,
+    "radius":      10,
+    "title_size":  38,
+    "head_size":   26,
+    "body_size":   20,
+    "label_size":  16
+}

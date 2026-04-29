@@ -17,6 +17,7 @@
 #include "scrapers/screenscraper.hpp"
 #include "scrapers/steamgriddb.hpp"
 #include "scrapers/accounts.hpp"
+#include "theme.hpp"
 #include "views.hpp"
 #include "launch.hpp"
 
@@ -25,6 +26,8 @@
 
 int main(int /*argc*/, char** /*argv*/) {
     foyer::platform::App app;
+
+    foyer::browser::load_theme(foyer::library::config().theme_name);
 
     foyer::library::ScanOptions opts;
     opts.rom_root = foyer::library::config().rom_root;

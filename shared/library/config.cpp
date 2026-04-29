@@ -72,6 +72,7 @@ void write_locked() {
     out << "    \"preferred_scraper\": \""
         << scraper_to_str(g_config.preferred_scraper) << "\",\n";
     out << "    \"rom_root\":          \"" << g_config.rom_root << "\",\n";
+    out << "    \"theme\":             \"" << g_config.theme_name << "\",\n";
     out << "    \"default_core_per_system\": {";
     bool first = true;
     for (const auto& [folder, core] : g_config.default_core_per_system) {
@@ -109,6 +110,10 @@ void load_locked() {
     if (auto* v = yyjson_obj_get(root, "rom_root");
         v && yyjson_is_str(v)) {
         g_config.rom_root = yyjson_get_str(v);
+    }
+    if (auto* v = yyjson_obj_get(root, "theme");
+        v && yyjson_is_str(v)) {
+        g_config.theme_name = yyjson_get_str(v);
     }
     if (auto* obj = yyjson_obj_get(root, "default_core_per_system");
         obj && yyjson_is_obj(obj)) {
@@ -155,6 +160,12 @@ void save_config() {
 void set_preferred_scraper(Config::Scraper s) {
     std::scoped_lock lk{g_mutex};
     g_config.preferred_scraper = s;
+    write_locked();
+}
+
+void set_theme_name(std::string_view name) {
+    std::scoped_lock lk{g_mutex};
+    g_config.theme_name = std::string{name};
     write_locked();
 }
 
