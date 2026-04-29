@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <ctime>
 #include <sys/stat.h>
 #include <unordered_map>
 
@@ -46,6 +47,81 @@ CoverCache& cover_cache() {
     return c;
 }
 
+// Per-system logo + per-game backdrop caches share the same shape — separate
+// instances let us invalidate them independently.
+CoverCache& system_logo_cache() {
+    static CoverCache c;
+    return c;
+}
+CoverCache& backdrop_cache() {
+    static CoverCache c;
+    return c;
+}
+
+std::string system_logo_path(std::string_view folder) {
+    char buf[256];
+    std::snprintf(buf, sizeof(buf), "/foyer/assets/systems/%.*s.png",
+        (int)folder.size(), folder.data());
+    return buf;
+}
+std::string backdrop_path(std::string_view folder, std::string_view stem) {
+    char buf[256];
+    std::snprintf(buf, sizeof(buf), "/foyer/assets/backgrounds/%.*s/%.*s.jpg",
+        (int)folder.size(), folder.data(),
+        (int)stem.size(), stem.data());
+    return buf;
+}
+
+// Aspect-fit blit a cached nanovg image into the given rect with rounded
+// corners. No-op if the handle wasn't found on disk.
+void blit_aspect_fit(NVGcontext* vg, int handle,
+                     float x, float y, float w, float h, float radius,
+                     float alpha = 1.0f) {
+    if (handle <= 0) return;
+    int iw = 0, ih = 0;
+    nvgImageSize(vg, handle, &iw, &ih);
+    if (iw <= 0 || ih <= 0) return;
+    const float ar_img = (float)iw / (float)ih;
+    const float ar_box = w / h;
+    float dw = w, dh = h;
+    if (ar_img > ar_box) dh = w / ar_img;
+    else                 dw = h * ar_img;
+    const float dx = x + (w - dw) * 0.5f;
+    const float dy = y + (h - dh) * 0.5f;
+    auto pat = nvgImagePattern(vg, dx, dy, dw, dh, 0.f, handle, alpha);
+    nvgBeginPath(vg);
+    nvgRoundedRect(vg, dx, dy, dw, dh, radius);
+    nvgFillPaint(vg, pat);
+    nvgFill(vg);
+}
+
+// Aspect-fill (cover) a cached image across the full rect — used for the
+// blurred-out backdrop behind the system + detail panels.
+void blit_cover(NVGcontext* vg, int handle, float x, float y, float w, float h,
+                float alpha) {
+    if (handle <= 0) return;
+    int iw = 0, ih = 0;
+    nvgImageSize(vg, handle, &iw, &ih);
+    if (iw <= 0 || ih <= 0) return;
+    const float ar_img = (float)iw / (float)ih;
+    const float ar_box = w / h;
+    float dw, dh;
+    if (ar_img > ar_box) {
+        dh = h;
+        dw = h * ar_img;
+    } else {
+        dw = w;
+        dh = w / ar_img;
+    }
+    const float dx = x + (w - dw) * 0.5f;
+    const float dy = y + (h - dh) * 0.5f;
+    auto pat = nvgImagePattern(vg, dx, dy, dw, dh, 0.f, handle, alpha);
+    nvgBeginPath(vg);
+    nvgRect(vg, x, y, w, h);
+    nvgFillPaint(vg, pat);
+    nvgFill(vg);
+}
+
 // Empty-state helper used when the library has no systems / no games.
 void draw_empty(NVGcontext* vg, float w, float h, const char* title, const char* hint) {
     const auto& th = theme();
@@ -59,25 +135,73 @@ void draw_empty(NVGcontext* vg, float w, float h, const char* title, const char*
     nvgText(vg, w * 0.5f, h * 0.5f + 16, hint, nullptr);
 }
 
+// Sphaira-style persistent top bar. Drawn once per frame from draw() — view
+// painters set their own title through this helper but no longer manage the
+// bar background or underline themselves.
 void draw_topbar(NVGcontext* vg, float w, const char* left, const char* right) {
     const auto& th = theme();
-    nvgFontSize(vg, th.head_size);
 
+    // Bar background + accent underline.
+    nvgBeginPath(vg);
+    nvgRect(vg, 0, 0, w, kTopBarH);
+    nvgFillColor(vg, th.bg_panel);
+    nvgFill(vg);
+
+    nvgBeginPath(vg);
+    nvgRect(vg, 0, kTopBarH - 2.0f, w, 2.0f);
+    nvgFillColor(vg, th.accent);
+    nvgFill(vg);
+
+    nvgFontSize(vg, th.head_size);
     nvgFillColor(vg, th.text_strong);
     nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
-    nvgText(vg, th.pad, 36, left, nullptr);
+    nvgText(vg, th.pad, kTopBarH * 0.5f, left, nullptr);
 
     if (right && right[0]) {
+        nvgFontSize(vg, th.label_size);
         nvgFillColor(vg, th.text_dim);
         nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
-        nvgText(vg, w - th.pad, 36, right, nullptr);
+        nvgText(vg, w - th.pad, kTopBarH * 0.5f, right, nullptr);
     }
+}
 
-    // Underline.
+// Sphaira-style persistent bottom bar with the context-aware button hints.
+void draw_bottombar(NVGcontext* vg, float w, float h, const char* hint) {
+    const auto& th = theme();
+
+    const float by = h - kBottomBarH;
     nvgBeginPath(vg);
-    nvgRect(vg, th.pad, 64, w - th.pad * 2.0f, 2.0f);
+    nvgRect(vg, 0, by, w, kBottomBarH);
+    nvgFillColor(vg, th.bg_panel);
+    nvgFill(vg);
+
+    nvgBeginPath(vg);
+    nvgRect(vg, 0, by, w, 1.0f);
     nvgFillColor(vg, th.border);
     nvgFill(vg);
+
+    if (hint && hint[0]) {
+        nvgFontSize(vg, th.body_size);
+        nvgFillColor(vg, th.text);
+        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+        nvgText(vg, th.pad, by + kBottomBarH * 0.5f, hint, nullptr);
+    }
+
+    // Right-aligned version stamp keeps parity with sphaira's "build x.y" hint.
+    nvgFontSize(vg, th.label_size);
+    nvgFillColor(vg, th.text_dim);
+    nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+    nvgText(vg, w - th.pad, by + kBottomBarH * 0.5f,
+            FOYER_DISPLAY_VERSION, nullptr);
+}
+
+std::string clock_label() {
+    std::time_t now = std::time(nullptr);
+    struct tm tm;
+    localtime_r(&now, &tm);
+    char buf[16];
+    std::snprintf(buf, sizeof(buf), "%02d:%02d", tm.tm_hour, tm.tm_min);
+    return buf;
 }
 
 // Round-rect helper.
@@ -100,8 +224,6 @@ void rrect_outline(NVGcontext* vg, float x, float y, float ww, float hh, float r
 
 void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& lib) {
     const auto& th = theme();
-
-    draw_topbar(vg, w, "foyer", "");
 
     if (lib.systems.empty()) {
         draw_empty(vg, w, h,
@@ -142,18 +264,35 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
         nvgSave(vg);
         nvgIntersectScissor(vg, x, y, tw, thh);
 
-        // Short-name big.
-        nvgFontSize(vg, th.title_size * scale);
-        nvgFillColor(vg, centre ? th.text_strong : th.text);
-        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-        nvgText(vg, x + tw * 0.5f, y + thh * 0.5f - 18 * scale,
-            std::string{sys.def->short_name}.c_str(), nullptr);
+        // Console logo (PNG at /foyer/assets/systems/<folder>.png) takes the
+        // top half of the tile; the system's display name sits below. Tiles
+        // without a logo fall back to a big short-name treatment so the
+        // carousel keeps its silhouette.
+        const auto logo_path = system_logo_path(sys.def->folder_name);
+        const int  logo_h    = system_logo_cache().get_or_load(vg, logo_path);
+        if (logo_h > 0) {
+            const float logo_box = thh * 0.62f;
+            blit_aspect_fit(vg, logo_h,
+                x + tw * 0.10f, y + thh * 0.08f,
+                tw * 0.80f, logo_box, 4.0f, centre ? 1.0f : 0.85f);
 
-        // Long name below.
-        nvgFontSize(vg, th.body_size * scale);
-        nvgFillColor(vg, th.text_dim);
-        nvgText(vg, x + tw * 0.5f, y + thh * 0.5f + 22 * scale,
-            std::string{sys.def->display_name}.c_str(), nullptr);
+            nvgFontSize(vg, th.body_size * scale);
+            nvgFillColor(vg, centre ? th.text_strong : th.text_dim);
+            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+            nvgText(vg, x + tw * 0.5f, y + thh - 26 * scale,
+                std::string{sys.def->display_name}.c_str(), nullptr);
+        } else {
+            nvgFontSize(vg, th.title_size * scale);
+            nvgFillColor(vg, centre ? th.text_strong : th.text);
+            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+            nvgText(vg, x + tw * 0.5f, y + thh * 0.5f - 18 * scale,
+                std::string{sys.def->short_name}.c_str(), nullptr);
+
+            nvgFontSize(vg, th.body_size * scale);
+            nvgFillColor(vg, th.text_dim);
+            nvgText(vg, x + tw * 0.5f, y + thh * 0.5f + 22 * scale,
+                std::string{sys.def->display_name}.c_str(), nullptr);
+        }
 
         // Game count badge bottom-right.
         if (centre) {
@@ -167,17 +306,6 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
         nvgRestore(vg);
     }
 
-    // Bottom hint bar.
-    nvgFontSize(vg, th.label_size);
-    nvgFillColor(vg, th.text_dim);
-    nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM);
-    using namespace foyer::ui::icons;
-    const auto hint_home =
-        std::string{DPad}  + " pick system   "
-                + A         + " enter   "
-                + Minus     + " settings   "
-                + Plus      + " exit";
-    nvgText(vg, w * 0.5f, h - 12, hint_home.c_str(), nullptr);
 }
 
 // ---- SYSTEM VIEW (game list + sidebar) ------------------------------------
@@ -190,18 +318,23 @@ void draw_system(NVGcontext* vg, float w, float h, const State& s, const Library
     }
     const auto& sys = lib.systems[s.system_index];
 
-    char header[160];
-    std::snprintf(header, sizeof(header), "%.*s",
-        (int)sys.def->display_name.size(), sys.def->display_name.data());
-    char rhs[64];
-    std::snprintf(rhs, sizeof(rhs), "%zu / %zu",
-        (sys.games.empty() ? 0 : (s.game_index + 1)),
-        sys.games.size());
-    draw_topbar(vg, w, header, rhs);
+    // Faded full-screen backdrop pulled from the focused game's art.
+    if (!sys.games.empty()) {
+        const auto& gsel = sys.games[s.game_index];
+        const int handle = backdrop_cache().get_or_load(vg,
+            backdrop_path(sys.def->folder_name, gsel.stem));
+        if (handle > 0) {
+            blit_cover(vg, handle, 0, 0, w, h, 0.30f);
+            nvgBeginPath(vg);
+            nvgRect(vg, 0, 0, w, h);
+            nvgFillColor(vg, nvgRGBAf(th.bg.r, th.bg.g, th.bg.b, 0.55f));
+            nvgFill(vg);
+        }
+    }
 
     // Layout: left list 60%, right sidebar 40%.
-    const float content_y  = 80;
-    const float content_h  = h - content_y - 48;
+    const float content_y  = kTopBarH + 16.0f;
+    const float content_h  = h - content_y - kBottomBarH - 16.0f;
     const float list_w     = (w - th.pad * 3.0f) * 0.60f;
     const float side_x     = th.pad + list_w + th.pad;
     const float side_w     = w - side_x - th.pad;
@@ -309,19 +442,6 @@ void draw_system(NVGcontext* vg, float w, float h, const State& s, const Library
     nvgText(vg, side_x + th.pad, cover_y + cover_h + 50, meta, nullptr);
 
     nvgRestore(vg);
-
-    // Bottom hint.
-    nvgFontSize(vg, th.label_size);
-    nvgFillColor(vg, th.text_dim);
-    nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM);
-    using namespace foyer::ui::icons;
-    const auto hint_sys =
-        std::string{DPad}  + " pick   "
-                + A         + " launch   "
-                + X         + " details   "
-                + Y         + " scrape   "
-                + B         + " back";
-    nvgText(vg, w * 0.5f, h - 12, hint_sys.c_str(), nullptr);
 }
 
 // ---- SETTINGS VIEW --------------------------------------------------------
@@ -349,10 +469,9 @@ const char* scraper_label(library::Config::Scraper s) {
 
 void draw_settings(NVGcontext* vg, float w, float h, const State& s, const Library&) {
     const auto& th = theme();
-    draw_topbar(vg, w, "Settings", FOYER_DISPLAY_VERSION);
 
-    const float content_y = 80;
-    const float content_h = h - content_y - 48;
+    const float content_y = kTopBarH + 16.0f;
+    const float content_h = h - content_y - kBottomBarH - 16.0f;
     rrect(vg, th.pad, content_y, w - th.pad * 2.0f, content_h, th.radius, th.bg_panel);
 
     constexpr float kRow = 64.0f;
@@ -391,25 +510,13 @@ void draw_settings(NVGcontext* vg, float w, float h, const State& s, const Libra
     draw_row(settings_items::InvalidateCovers, "Invalidate cover cache",
              "A: refresh", true);
 
-    // Footer hint.
+    // Footer hint inside the panel — explains where account creds still live.
     nvgFontSize(vg, th.label_size);
     nvgFillColor(vg, th.text_dim);
     nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_BOTTOM);
     nvgText(vg, th.pad + th.pad, content_y + content_h - th.pad,
             "Edit /foyer/config/accounts.jsonc + general.jsonc for credentials and rom_root.",
             nullptr);
-
-    // Bottom hint bar.
-    nvgFontSize(vg, th.label_size);
-    nvgFillColor(vg, th.text_dim);
-    nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM);
-    using namespace foyer::ui::icons;
-    const auto hint =
-        std::string{DPad}  + " pick   "
-                + Left + Right + " adjust   "
-                + A         + " run   "
-                + B         + " back";
-    nvgText(vg, w * 0.5f, h - 12, hint.c_str(), nullptr);
 }
 
 // ---- GAME DETAIL VIEW -----------------------------------------------------
@@ -421,15 +528,21 @@ void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Li
     if (sys.games.empty())  { draw_empty(vg, w, h, "No games", "");   return; }
     const auto& g = sys.games[s.game_index];
 
-    char header[160];
-    std::snprintf(header, sizeof(header), "%s", g.display.c_str());
-    char rhs[64];
-    std::snprintf(rhs, sizeof(rhs), "%.*s",
-        (int)sys.def->display_name.size(), sys.def->display_name.data());
-    draw_topbar(vg, w, header, rhs);
+    // Backdrop behind the detail panels for visual context.
+    {
+        const int handle = backdrop_cache().get_or_load(vg,
+            backdrop_path(sys.def->folder_name, g.stem));
+        if (handle > 0) {
+            blit_cover(vg, handle, 0, 0, w, h, 0.35f);
+            nvgBeginPath(vg);
+            nvgRect(vg, 0, 0, w, h);
+            nvgFillColor(vg, nvgRGBAf(th.bg.r, th.bg.g, th.bg.b, 0.55f));
+            nvgFill(vg);
+        }
+    }
 
-    const float content_y = 80;
-    const float content_h = h - content_y - 48;
+    const float content_y = kTopBarH + 16.0f;
+    const float content_h = h - content_y - kBottomBarH - 16.0f;
 
     // Left: cover. Right: core picker.
     const float left_w  = (w - th.pad * 3.0f) * 0.45f;
@@ -564,18 +677,6 @@ void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Li
         row++;
     }
 
-    // Bottom hint.
-    nvgFontSize(vg, th.label_size);
-    nvgFillColor(vg, th.text_dim);
-    nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM);
-    using namespace foyer::ui::icons;
-    const auto hint =
-        std::string{DPad}  + " pick   "
-                + A         + " set per-game   "
-                + Y         + " set system default   "
-                + X         + " clear override   "
-                + B         + " back";
-    nvgText(vg, w * 0.5f, h - 12, hint.c_str(), nullptr);
 }
 
 } // namespace
@@ -782,6 +883,8 @@ void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down
 
 void invalidate_cover_cache(NVGcontext* vg) {
     cover_cache().clear(vg);
+    system_logo_cache().clear(vg);
+    backdrop_cache().clear(vg);
 }
 
 void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) {
@@ -797,6 +900,66 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
         case View::GameDetail: draw_game_detail(vg, w, h, s, lib); break;
         case View::Settings:   draw_settings   (vg, w, h, s, lib); break;
     }
+
+    // Sphaira-style persistent top + bottom bars, drawn after the view so
+    // their accent stays on top of any panel that bumped against the edge.
+    using namespace foyer::ui::icons;
+
+    std::string title = "foyer";
+    std::string clock = clock_label();
+    std::string hint;
+    switch (s.view) {
+        case View::Home:
+            hint = std::string{DPad} + " pick   "
+                 + A + " enter   " + Minus + " settings   " + Plus + " exit";
+            break;
+        case View::System: {
+            if (!lib.systems.empty()) {
+                const auto& sys = lib.systems[s.system_index];
+                char buf[160];
+                std::snprintf(buf, sizeof(buf), "foyer  >  %.*s",
+                    (int)sys.def->display_name.size(),
+                    sys.def->display_name.data());
+                title = buf;
+                if (!sys.games.empty()) {
+                    char rhs[64];
+                    std::snprintf(rhs, sizeof(rhs), "%zu / %zu  ·  %s",
+                        s.game_index + 1, sys.games.size(), clock.c_str());
+                    clock = rhs;
+                }
+            }
+            hint = std::string{DPad} + " pick   "
+                 + A + " launch   " + X + " details   "
+                 + Y + " scrape   " + B + " back";
+            break;
+        }
+        case View::GameDetail: {
+            if (!lib.systems.empty()) {
+                const auto& sys = lib.systems[s.system_index];
+                if (!sys.games.empty()) {
+                    char buf[200];
+                    std::snprintf(buf, sizeof(buf), "foyer  >  %.*s  >  %s",
+                        (int)sys.def->short_name.size(),
+                        sys.def->short_name.data(),
+                        sys.games[s.game_index].display.c_str());
+                    title = buf;
+                }
+            }
+            hint = std::string{DPad} + " pick   "
+                 + A + " set per-game   " + Y + " set sys default   "
+                 + X + " clear override   " + B + " back";
+            break;
+        }
+        case View::Settings:
+            title = "foyer  >  Settings";
+            hint  = std::string{DPad} + " pick   "
+                  + Left + Right + " adjust   "
+                  + A + " run   " + B + " back";
+            break;
+    }
+
+    draw_topbar   (vg, w,    title.c_str(), clock.c_str());
+    draw_bottombar(vg, w, h, hint.c_str());
 
     // Banner (e.g., "Scraping NES…  3 / 24"). Drawn last so nothing covers it.
     if (s.banner_ttl > 0 && !s.banner_text.empty()) {

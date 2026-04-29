@@ -34,9 +34,9 @@ Features delivered so far:
 ├── data/
 │   └── log.txt
 ├── assets/
-│   ├── covers/<system>/<stem>.png
-│   ├── backgrounds/<system>/<stem>.jpg
-│   └── systems/<system>.png
+│   ├── covers/<system>/<stem>.png      # box art shown in System view sidebar / Game Detail
+│   ├── backgrounds/<system>/<stem>.jpg # full-screen backdrop behind System + Game Detail
+│   └── systems/<system>.png            # console logo on the Home carousel tiles
 ├── roms/<system>/<file.ext>         # rom root (configurable)
 ├── saves/<system>/                  # libretro SRAM
 ├── states/<system>/<stem>.<slot>.state

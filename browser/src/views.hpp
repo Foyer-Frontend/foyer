@@ -67,6 +67,10 @@ struct Library {
 void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down);
 void draw  (NVGcontext* vg, float w, float h, const State& s, const Library& lib);
 
+// Vertical metrics for the persistent sphaira-style top + bottom bars.
+constexpr float kTopBarH    = 64.0f;
+constexpr float kBottomBarH = 56.0f;
+
 // Drop the cached nanovg handles for box art so the next draw re-reads the
 // files from disk. Call this after a scrape completes so newly-downloaded
 // covers show without restarting the browser.
