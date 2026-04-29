@@ -14,6 +14,7 @@ enum class View {
     Home,        // horizontal system carousel
     System,      // game list for the focused system
     GameDetail,  // per-rom screen — cover, metadata, core picker
+    Settings,    // browser-wide preferences
 };
 
 // Browser navigation state. Owned by main.cpp.
@@ -30,8 +31,15 @@ struct State {
     // Cursor on the GameDetail core picker.
     std::size_t detail_core_index = 0;
 
+    // Cursor on the Settings list.
+    std::size_t settings_index = 0;
+
     // Set by Update; read by the main loop to drive launches.
     bool        request_launch = false;
+
+    // Settings actions handed off to main.cpp.
+    bool        request_rescan           = false;
+    bool        request_invalidate_covers = false;
 
     // Set by Update; read by the main loop to trigger a one-shot scrape of
     // every rom in the focused system. The "kind" picks which scraper to use.

@@ -173,6 +173,7 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
     const auto hint_home =
         std::string{DPad}  + " pick system   "
                 + A         + " enter   "
+                + Minus     + " settings   "
                 + Plus      + " exit";
     nvgText(vg, w * 0.5f, h - 12, hint_home.c_str(), nullptr);
 }
@@ -319,6 +320,88 @@ void draw_system(NVGcontext* vg, float w, float h, const State& s, const Library
                 + Y         + " scrape   "
                 + B         + " back";
     nvgText(vg, w * 0.5f, h - 12, hint_sys.c_str(), nullptr);
+}
+
+// ---- SETTINGS VIEW --------------------------------------------------------
+
+namespace settings_items {
+    enum : std::size_t {
+        PreferredScraper = 0,
+        RomRoot,
+        Rescan,
+        InvalidateCovers,
+        Count,
+    };
+}
+
+const char* scraper_label(library::Config::Scraper s) {
+    switch (s) {
+        case library::Config::Scraper::ScreenScraper: return "ScreenScraper";
+        case library::Config::Scraper::SteamGridDB:   return "SteamGridDB";
+        case library::Config::Scraper::Libretro:
+        default:                                       return "libretro-thumbnails";
+    }
+}
+
+void draw_settings(NVGcontext* vg, float w, float h, const State& s, const Library&) {
+    const auto& th = theme();
+    draw_topbar(vg, w, "Settings", FOYER_DISPLAY_VERSION);
+
+    const float content_y = 80;
+    const float content_h = h - content_y - 48;
+    rrect(vg, th.pad, content_y, w - th.pad * 2.0f, content_h, th.radius, th.bg_panel);
+
+    constexpr float kRow = 64.0f;
+    float ry = content_y + th.pad;
+
+    auto draw_row = [&](std::size_t idx, const char* label, const char* value, bool actionable) {
+        const bool sel = (idx == s.settings_index);
+        if (sel) {
+            rrect(vg, th.pad + th.pad * 0.5f, ry, w - th.pad * 3.0f,
+                  kRow - 8, 8.0f, th.bg_panel_hi);
+        }
+        nvgFontSize(vg, th.body_size);
+        nvgFillColor(vg, sel ? th.text_strong : th.text);
+        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+        nvgText(vg, th.pad + th.pad, ry + (kRow - 8) * 0.5f, label, nullptr);
+
+        if (value && value[0]) {
+            nvgFontSize(vg, th.body_size);
+            nvgFillColor(vg, actionable ? th.accent : th.text_dim);
+            nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+            nvgText(vg, w - th.pad * 2.0f, ry + (kRow - 8) * 0.5f, value, nullptr);
+        }
+        ry += kRow;
+    };
+
+    const auto& cfg = library::config();
+    draw_row(settings_items::PreferredScraper, "Preferred scraper",
+             scraper_label(cfg.preferred_scraper), true);
+    draw_row(settings_items::RomRoot, "Rom root",
+             cfg.rom_root.c_str(), false);
+    draw_row(settings_items::Rescan, "Rescan library", "A: run", true);
+    draw_row(settings_items::InvalidateCovers, "Invalidate cover cache",
+             "A: refresh", true);
+
+    // Footer hint.
+    nvgFontSize(vg, th.label_size);
+    nvgFillColor(vg, th.text_dim);
+    nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_BOTTOM);
+    nvgText(vg, th.pad + th.pad, content_y + content_h - th.pad,
+            "Edit /foyer/config/accounts.jsonc + general.jsonc for credentials and rom_root.",
+            nullptr);
+
+    // Bottom hint bar.
+    nvgFontSize(vg, th.label_size);
+    nvgFillColor(vg, th.text_dim);
+    nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM);
+    using namespace foyer::ui::icons;
+    const auto hint =
+        std::string{DPad}  + " pick   "
+                + Left + Right + " adjust   "
+                + A         + " run   "
+                + B         + " back";
+    nvgText(vg, w * 0.5f, h - 12, hint.c_str(), nullptr);
 }
 
 // ---- GAME DETAIL VIEW -----------------------------------------------------
@@ -470,6 +553,10 @@ void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down
             s.view = View::System;
             s.game_index = 0;
         }
+        if (down & HidNpadButton_Minus) {
+            s.view = View::Settings;
+            s.settings_index = 0;
+        }
     } else if (s.view == View::System) {
         const auto& sys = lib.systems[s.system_index];
         if (!sys.games.empty()) {
@@ -553,6 +640,48 @@ void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down
             s.banner_text = "Per-game override cleared";
             s.banner_ttl  = 180;
         }
+    } else if (s.view == View::Settings) {
+        if (down & HidNpadButton_B) {
+            s.view = View::Home;
+        }
+
+        if (down & HidNpadButton_Down) {
+            if (s.settings_index + 1 < settings_items::Count) s.settings_index++;
+        } else if (down & HidNpadButton_Up) {
+            if (s.settings_index > 0) s.settings_index--;
+        }
+
+        const auto cycle_scraper = [](library::Config::Scraper c, int delta) {
+            int n = (int)c + delta;
+            if (n < 0) n = 2;
+            if (n > 2) n = 0;
+            return (library::Config::Scraper)n;
+        };
+
+        if (s.settings_index == settings_items::PreferredScraper) {
+            if (down & HidNpadButton_Right) {
+                library::set_preferred_scraper(
+                    cycle_scraper(library::config().preferred_scraper, +1));
+            } else if (down & HidNpadButton_Left) {
+                library::set_preferred_scraper(
+                    cycle_scraper(library::config().preferred_scraper, -1));
+            }
+        }
+        if (down & HidNpadButton_A) {
+            switch (s.settings_index) {
+                case settings_items::Rescan:
+                    s.request_rescan = true;
+                    s.banner_text = "Rescanning library...";
+                    s.banner_ttl  = 180;
+                    break;
+                case settings_items::InvalidateCovers:
+                    s.request_invalidate_covers = true;
+                    s.banner_text = "Cover cache cleared";
+                    s.banner_ttl  = 120;
+                    break;
+                default: break;
+            }
+        }
     }
 
     (void)held;
@@ -573,6 +702,7 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
         case View::Home:       draw_home       (vg, w, h, s, lib); break;
         case View::System:     draw_system     (vg, w, h, s, lib); break;
         case View::GameDetail: draw_game_detail(vg, w, h, s, lib); break;
+        case View::Settings:   draw_settings   (vg, w, h, s, lib); break;
     }
 
     // Banner (e.g., "Scraping NES…  3 / 24"). Drawn last so nothing covers it.

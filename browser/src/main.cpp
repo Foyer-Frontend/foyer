@@ -51,6 +51,23 @@ int main(int /*argc*/, char** /*argv*/) {
 
         foyer::browser::update(state, lib, held, down);
 
+        if (state.request_rescan) {
+            state.request_rescan = false;
+            foyer::library::reload_config();
+            opts.rom_root = foyer::library::config().rom_root;
+            lib.systems = foyer::library::scan_library(opts);
+            // Cursors might point past the end of the rescanned library.
+            if (state.system_index >= lib.systems.size()) state.system_index = 0;
+            state.game_index = 0;
+            foyer::browser::invalidate_cover_cache(app.vg());
+            state.banner_text = "Library rescanned";
+            state.banner_ttl  = 120;
+        }
+        if (state.request_invalidate_covers) {
+            state.request_invalidate_covers = false;
+            foyer::browser::invalidate_cover_cache(app.vg());
+        }
+
         if (state.request_launch) {
             state.request_launch = false;
             const auto& sys  = lib.systems[state.system_index];
