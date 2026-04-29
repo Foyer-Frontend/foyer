@@ -75,7 +75,9 @@ int main(int /*argc*/, char** /*argv*/) {
             state.request_launch = false;
             const auto& sys  = lib.systems[state.system_index];
             const auto& game = sys.games[state.game_index];
-            if (foyer::browser::launch_game(sys, game)) {
+            const int   resume = state.request_resume_slot;
+            state.request_resume_slot = -1;
+            if (foyer::browser::launch_game(sys, game, resume)) {
                 app.quit();
             } else {
                 const auto* core = foyer::library::resolve_core(*sys.def, game.path);

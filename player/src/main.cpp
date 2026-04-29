@@ -9,6 +9,7 @@
 //   argv[1]  = rom path on sd ("sdmc:/roms/nes/Some Game.nes")
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <dirent.h>
 #include <string>
@@ -160,6 +161,26 @@ int main(int argc, char** argv) {
         while (app.tick()) {}
         fe.shutdown();
         return 1;
+    }
+
+    // Optional argv[3] = "resume=<slot>" — load the save state once the rom
+    // has booted so the user picks up where they left off.
+    int resume_slot = -1;
+    for (int i = 2; i < argc; i++) {
+        if (!argv[i]) continue;
+        const auto raw = normalise_argv_path(argv[i]);
+        if (raw.rfind("resume=", 0) == 0) {
+            const auto n = std::atoi(raw.c_str() + 7);
+            if (n >= 0 && n < foyer::libretro::kStateSlotCount) resume_slot = n;
+        }
+    }
+    if (resume_slot >= 0) {
+        const auto path = foyer::libretro::state_path_for(rom_path, {}, resume_slot);
+        if (foyer::libretro::load_state(path)) {
+            foyer::log::write("[player] auto-resumed slot %d\n", resume_slot);
+        } else {
+            foyer::log::write("[player] auto-resume slot %d failed\n", resume_slot);
+        }
     }
 
     // Hook audio at the core's reported sample rate. Voice format = stereo S16.

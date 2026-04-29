@@ -1,5 +1,6 @@
 #include "views.hpp"
 #include "theme.hpp"
+#include "launch.hpp"
 #include "library/system_db.hpp"
 #include "library/config.hpp"
 #include "library/per_game.hpp"
@@ -477,15 +478,49 @@ void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Li
     const auto* resolved   = library::resolve_core(*sys.def, g.path);
     const auto  per_game   = library::per_game_core_for(g.path);
     const char* per_sys    = library::config().default_core_for(sys.def->folder_name);
+    const int   resume_slot = latest_state_slot(sys, g);
+    const bool  has_resume  = (resume_slot >= 0);
 
     nvgFontSize(vg, th.head_size);
     nvgFillColor(vg, th.text_strong);
     nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_TOP);
-    nvgText(vg, right_x + th.pad, content_y + th.pad, "Core", nullptr);
+    nvgText(vg, right_x + th.pad, content_y + th.pad,
+            has_resume ? "Continue / Core" : "Core", nullptr);
 
     constexpr float kRow = 56.0f;
     float ry = content_y + th.pad + 40.0f;
     int row = 0;
+
+    if (has_resume) {
+        const bool sel = (row == (int)s.detail_core_index);
+        if (sel) {
+            rrect(vg, right_x + th.pad * 0.5f, ry, right_w - th.pad,
+                  kRow - 6, 8.0f, th.bg_panel_hi);
+        }
+        nvgFontSize(vg, th.body_size);
+        nvgFillColor(vg, sel ? th.text_strong : th.text);
+        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+        nvgText(vg, right_x + th.pad + 8, ry + (kRow - 6) * 0.5f - 8,
+                "Continue", nullptr);
+
+        char hint[48];
+        if (resume_slot == 0) std::snprintf(hint, sizeof(hint), "quick slot");
+        else                  std::snprintf(hint, sizeof(hint), "slot %d", resume_slot);
+        nvgFontSize(vg, th.label_size);
+        nvgFillColor(vg, th.text_dim);
+        nvgText(vg, right_x + th.pad + 8, ry + (kRow - 6) * 0.5f + 12,
+                hint, nullptr);
+
+        nvgFontSize(vg, th.label_size);
+        nvgFillColor(vg, th.accent);
+        nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+        nvgText(vg, right_x + right_w - th.pad,
+                ry + (kRow - 6) * 0.5f, "resume", nullptr);
+
+        ry += kRow;
+        row++;
+    }
+
     for (const auto& c : sys.def->cores) {
         const bool sel = (row == (int)s.detail_core_index);
         if (sel) {
@@ -582,15 +617,21 @@ void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down
         }
         if ((down & HidNpadButton_X) && !sys.games.empty()) {
             s.view = View::GameDetail;
-            // Seed cursor on the currently resolved core.
+            // Seed cursor: prefer Continue when a save state exists, else
+            // land on the currently resolved core.
             const auto& g = sys.games[s.game_index];
-            const auto* resolved = library::resolve_core(*sys.def, g.path);
-            s.detail_core_index = 0;
-            if (resolved) {
-                std::size_t i = 0;
-                for (const auto& c : sys.def->cores) {
-                    if (c.name == resolved->name) { s.detail_core_index = i; break; }
-                    i++;
+            const bool has_resume = (latest_state_slot(sys, g) >= 0);
+            if (has_resume) {
+                s.detail_core_index = 0;
+            } else {
+                const auto* resolved = library::resolve_core(*sys.def, g.path);
+                s.detail_core_index = 0;
+                if (resolved) {
+                    std::size_t i = 0;
+                    for (const auto& c : sys.def->cores) {
+                        if (c.name == resolved->name) { s.detail_core_index = i; break; }
+                        i++;
+                    }
                 }
             }
         }
@@ -615,10 +656,18 @@ void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down
             return;
         }
         const auto& g = sys.games[s.game_index];
-        const auto core_count = sys.def->cores.size();
+        const int  resume_slot = latest_state_slot(sys, g);
+        const bool has_resume  = (resume_slot >= 0);
+        const auto core_count  = sys.def->cores.size();
+        const auto row_count   = core_count + (has_resume ? 1 : 0);
+        const bool on_resume   = has_resume && s.detail_core_index == 0;
+        const auto core_idx    = has_resume
+                                   ? (s.detail_core_index == 0 ? 0
+                                                                : s.detail_core_index - 1)
+                                   : s.detail_core_index;
 
         if (down & HidNpadButton_Down) {
-            if (s.detail_core_index + 1 < core_count) s.detail_core_index++;
+            if (s.detail_core_index + 1 < row_count) s.detail_core_index++;
         } else if (down & HidNpadButton_Up) {
             if (s.detail_core_index > 0) s.detail_core_index--;
         }
@@ -627,18 +676,23 @@ void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down
             s.view = View::System;
         }
         if (down & HidNpadButton_A) {
-            const auto& chosen = sys.def->cores[s.detail_core_index];
-            library::set_per_game_core(g.path, chosen.name);
-            s.banner_text = std::string{"Per-game core set: "} + std::string{chosen.name};
-            s.banner_ttl  = 180;
+            if (on_resume) {
+                s.request_resume_slot = resume_slot;
+                s.request_launch      = true;
+            } else {
+                const auto& chosen = sys.def->cores[core_idx];
+                library::set_per_game_core(g.path, chosen.name);
+                s.banner_text = std::string{"Per-game core set: "} + std::string{chosen.name};
+                s.banner_ttl  = 180;
+            }
         }
-        if (down & HidNpadButton_Y) {
-            const auto& chosen = sys.def->cores[s.detail_core_index];
+        if (!on_resume && (down & HidNpadButton_Y)) {
+            const auto& chosen = sys.def->cores[core_idx];
             library::set_default_core_for(sys.def->folder_name, chosen.name);
             s.banner_text = std::string{"System default core set: "} + std::string{chosen.name};
             s.banner_ttl  = 180;
         }
-        if (down & HidNpadButton_X) {
+        if (!on_resume && (down & HidNpadButton_X)) {
             library::set_per_game_core(g.path, "");
             s.banner_text = "Per-game override cleared";
             s.banner_ttl  = 180;

@@ -37,6 +37,10 @@ struct State {
     // Set by Update; read by the main loop to drive launches.
     bool        request_launch = false;
 
+    // Save-state slot the player should auto-load right after the rom boots.
+    // -1 means "fresh start" — set by the GameDetail Continue row.
+    int         request_resume_slot = -1;
+
     // Settings actions handed off to main.cpp.
     bool        request_rescan           = false;
     bool        request_invalidate_covers = false;

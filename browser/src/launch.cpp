@@ -6,6 +6,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <ctime>
 #include <string>
 #include <sys/stat.h>
 
@@ -45,7 +46,8 @@ std::string browser_self_path() {
 
 } // namespace
 
-bool launch_game(const library::System& sys, const library::Game& game) {
+bool launch_game(const library::System& sys, const library::Game& game,
+                 int resume_slot) {
     if (!sys.def) return false;
 
     const auto* core = library::resolve_core(*sys.def, game.path);
@@ -71,18 +73,48 @@ bool launch_game(const library::System& sys, const library::Game& game) {
     std::string sd_rom = std::string{"sdmc:"} + game.path;
 
     // argv[0] = nro path, argv[1] = rom path, argv[2] = our own path so the
-    // player can chain back to us cleanly without hardcoding.
+    // player can chain back to us cleanly without hardcoding. argv[3] is an
+    // optional "resume=<slot>" hint.
     char argv[1024];
-    std::snprintf(argv, sizeof(argv), "\"%s\" \"%s\" \"%s\"",
-        sd_nro.c_str(), sd_rom.c_str(), browser_self_path().c_str());
+    if (resume_slot >= 0) {
+        std::snprintf(argv, sizeof(argv),
+            "\"%s\" \"%s\" \"%s\" \"resume=%d\"",
+            sd_nro.c_str(), sd_rom.c_str(),
+            browser_self_path().c_str(), resume_slot);
+    } else {
+        std::snprintf(argv, sizeof(argv), "\"%s\" \"%s\" \"%s\"",
+            sd_nro.c_str(), sd_rom.c_str(), browser_self_path().c_str());
+    }
 
     if (R_FAILED(envSetNextLoad(sd_nro.c_str(), argv))) {
         foyer::log::write("[launch] envSetNextLoad failed\n");
         return false;
     }
-    foyer::log::write("[launch] queued %s rom=%s back=%s\n",
-        sd_nro.c_str(), sd_rom.c_str(), browser_self_path().c_str());
+    foyer::log::write("[launch] queued %s rom=%s back=%s resume=%d\n",
+        sd_nro.c_str(), sd_rom.c_str(),
+        browser_self_path().c_str(), resume_slot);
     return true;
+}
+
+int latest_state_slot(const library::System& sys, const library::Game& game) {
+    if (!sys.def) return -1;
+
+    int best_slot = -1;
+    std::time_t best_mtime = 0;
+    for (int slot = 0; slot < 10; slot++) {
+        char path[256];
+        std::snprintf(path, sizeof(path),
+            "/foyer/states/%.*s/%s.%d.state",
+            (int)sys.def->folder_name.size(), sys.def->folder_name.data(),
+            game.stem.c_str(), slot);
+        struct stat st{};
+        if (::stat(path, &st) != 0) continue;
+        if (st.st_mtime > best_mtime) {
+            best_mtime = st.st_mtime;
+            best_slot  = slot;
+        }
+    }
+    return best_slot;
 }
 
 } // namespace foyer::browser
