@@ -4,14 +4,25 @@
 # screen so we can prove the build chain end-to-end. The browser UI grows in
 # subsequent phases.
 
+# libhaze gives us a tiny MTP server for the rom drop-off feature. It only
+# the browser needs it, so the FetchContent stays scoped here.
+include(FetchContent)
+FetchContent_Declare(libhaze
+    GIT_REPOSITORY https://github.com/ITotalJustice/libhaze.git
+    GIT_TAG        master
+    GIT_SHALLOW    TRUE)
+set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(libhaze)
+
 add_executable(foyer
     src/main.cpp
     src/views.cpp
     src/theme.cpp
     src/launch.cpp
+    src/mtp.cpp
 )
 
-target_link_libraries(foyer PRIVATE foyer_shared)
+target_link_libraries(foyer PRIVATE foyer_shared libhaze)
 target_compile_definitions(foyer PRIVATE FOYER_BROWSER=1)
 
 set_target_properties(foyer PROPERTIES

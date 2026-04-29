@@ -1,6 +1,7 @@
 #include "views.hpp"
 #include "theme.hpp"
 #include "launch.hpp"
+#include "mtp.hpp"
 #include "library/system_db.hpp"
 #include "library/config.hpp"
 #include "library/per_game.hpp"
@@ -330,6 +331,7 @@ namespace settings_items {
         PreferredScraper = 0,
         Theme,
         RomRoot,
+        Mtp,
         Rescan,
         InvalidateCovers,
         Count,
@@ -383,6 +385,8 @@ void draw_settings(NVGcontext* vg, float w, float h, const State& s, const Libra
              cfg.theme_name.c_str(), true);
     draw_row(settings_items::RomRoot, "Rom root",
              cfg.rom_root.c_str(), false);
+    draw_row(settings_items::Mtp, "Roms over USB",
+             mtp_running() ? "ON  (A toggle)" : "off (A toggle)", true);
     draw_row(settings_items::Rescan, "Rescan library", "A: run", true);
     draw_row(settings_items::InvalidateCovers, "Invalidate cover cache",
              "A: refresh", true);
@@ -756,6 +760,17 @@ void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down
                     s.request_invalidate_covers = true;
                     s.banner_text = "Cover cache cleared";
                     s.banner_ttl  = 120;
+                    break;
+                case settings_items::Mtp:
+                    if (mtp_running()) {
+                        mtp_stop();
+                        s.banner_text = "Roms-over-USB: off";
+                    } else if (mtp_start()) {
+                        s.banner_text = "Roms-over-USB: connect cable";
+                    } else {
+                        s.banner_text = "MTP failed to start";
+                    }
+                    s.banner_ttl = 180;
                     break;
                 default: break;
             }

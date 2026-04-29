@@ -20,6 +20,7 @@
 #include "theme.hpp"
 #include "views.hpp"
 #include "launch.hpp"
+#include "mtp.hpp"
 
 #include <cstdio>
 #include <sys/stat.h>
@@ -78,6 +79,7 @@ int main(int /*argc*/, char** /*argv*/) {
             const int   resume = state.request_resume_slot;
             state.request_resume_slot = -1;
             if (foyer::browser::launch_game(sys, game, resume)) {
+                foyer::browser::mtp_stop();
                 app.quit();
             } else {
                 const auto* core = foyer::library::resolve_core(*sys.def, game.path);
@@ -142,5 +144,6 @@ int main(int /*argc*/, char** /*argv*/) {
             state.banner_ttl  = 240;
         }
     }
+    foyer::browser::mtp_stop();
     return 0;
 }
