@@ -1,0 +1,289 @@
+// foyer player entry — Phase 2.
+//
+// Boots a rom, runs retro_run() each frame, draws the core's video output
+// aspect-fit on screen, and forwards Switch pad to libretro input.
+// Audio + pause overlay land in the next phase.
+//
+// argv layout (set by the browser via envSetNextLoad):
+//   argv[0]  = nro path on sd ("sdmc:/switch/foyer/cores/foyer-fceumm.nro")
+//   argv[1]  = rom path on sd ("sdmc:/roms/nes/Some Game.nes")
+
+#include <cstdio>
+#include <cstring>
+#include <dirent.h>
+#include <string>
+#include <string_view>
+#include <sys/stat.h>
+
+#include "platform/app.hpp"
+#include "platform/log.hpp"
+#include "libretro/frontend.hpp"
+#include "libretro/video.hpp"
+#include "libretro/audio.hpp"
+#include "libretro/input.hpp"
+#include "libretro/overlay.hpp"
+#include "libretro/savestate.hpp"
+#include "libretro/cheevos.hpp"
+
+#include <nanovg.h>
+
+namespace {
+
+// Strip the "sdmc:" devoptab prefix that hbloader argv brings along — POSIX
+// stdlib opens want the bare path.
+std::string normalise_argv_path(std::string_view in) {
+    if (in.starts_with("\"") && in.ends_with("\"")) {
+        in = in.substr(1, in.size() - 2);
+    }
+    if (in.starts_with("sdmc:")) {
+        in = in.substr(5);
+    }
+    return std::string{in};
+}
+
+bool ends_with_lower(const char* name, const char* suffix) {
+    const auto nl = std::strlen(name);
+    const auto sl = std::strlen(suffix);
+    if (nl < sl) return false;
+    for (std::size_t i = 0; i < sl; i++) {
+        char a = name[nl - sl + i];
+        if (a >= 'A' && a <= 'Z') a = (char)(a + 32);
+        if (a != suffix[i]) return false;
+    }
+    return true;
+}
+
+// Dev-only fallback: scan /foyer/roms/<system>/ for the first file whose
+// extension the core accepts. Lets the user double-click the player nro
+// from hbmenu and have it auto-pick a rom, no argv plumbing required.
+std::string find_default_rom(const std::string& valid_extensions) {
+    // Map FOYER_CORE → conventional system dir.
+    const char* sys_dir = nullptr;
+#if defined(FOYER_CORE_NAME)
+#  define FOYER_STR2(x) #x
+#  define FOYER_STR(x)  FOYER_STR2(x)
+    const char* core_name = FOYER_STR(FOYER_CORE_NAME);
+#  undef FOYER_STR
+#  undef FOYER_STR2
+#else
+    const char* core_name = "fceumm";
+#endif
+    if (!std::strcmp(core_name, "fceumm"))           sys_dir = "/foyer/roms/nes";
+    else if (!std::strcmp(core_name, "snes9x"))      sys_dir = "/foyer/roms/snes";
+    else if (!std::strcmp(core_name, "gambatte"))    sys_dir = "/foyer/roms/gb";
+    else if (!std::strcmp(core_name, "mgba"))        sys_dir = "/foyer/roms/gba";
+    else if (!std::strcmp(core_name, "genesisplusgx"))   sys_dir = "/foyer/roms/genesis";
+    else if (!std::strcmp(core_name, "mupen64plus")) sys_dir = "/foyer/roms/n64";
+    else if (!std::strcmp(core_name, "swanstation")) sys_dir = "/foyer/roms/psx";
+    else if (!std::strcmp(core_name, "ppsspp"))      sys_dir = "/foyer/roms/psp";
+    else if (!std::strcmp(core_name, "flycast"))     sys_dir = "/foyer/roms/dc";
+    else if (!std::strcmp(core_name, "dolphin"))     sys_dir = "/foyer/roms/gc";
+    else if (!std::strcmp(core_name, "yabasanshiro"))sys_dir = "/foyer/roms/saturn";
+    else                                             sys_dir = "/foyer/roms";
+
+    auto* dir = ::opendir(sys_dir);
+    if (!dir) return {};
+
+    std::string picked;
+    while (auto* e = ::readdir(dir)) {
+        if (!e->d_name[0] || e->d_name[0] == '.') continue;
+        if (e->d_type != DT_REG) continue;
+
+        // Match the file's extension against the core's "|"-separated list.
+        std::string_view exts{valid_extensions};
+        std::size_t cursor = 0;
+        bool ok = false;
+        while (cursor < exts.size()) {
+            auto bar = exts.find('|', cursor);
+            const auto len = (bar == std::string_view::npos) ? exts.size() - cursor : bar - cursor;
+            std::string suffix = ".";
+            suffix.append(exts.data() + cursor, len);
+            if (ends_with_lower(e->d_name, suffix.c_str())) {
+                ok = true;
+                break;
+            }
+            if (bar == std::string_view::npos) break;
+            cursor = bar + 1;
+        }
+        if (!ok) continue;
+
+        picked = std::string{sys_dir} + "/" + e->d_name;
+        break;
+    }
+    ::closedir(dir);
+    return picked;
+}
+
+void draw_idle(NVGcontext* vg, float w, float h, const char* msg) {
+    nvgBeginPath(vg);
+    nvgRect(vg, 0, 0, w, h);
+    nvgFillColor(vg, nvgRGBA(0x05, 0x05, 0x06, 0xFF));
+    nvgFill(vg);
+
+    nvgFontSize(vg, 28.0f);
+    nvgFillColor(vg, nvgRGBA(0xCC, 0xCC, 0xCC, 0xFF));
+    nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+    nvgText(vg, w / 2.0f, h / 2.0f, msg, nullptr);
+}
+
+} // namespace
+
+int main(int argc, char** argv) {
+    foyer::platform::App app;
+    auto& fe = foyer::libretro::Frontend::instance();
+
+    // Hook the platform's draw callback to render core output.
+    foyer::libretro::VideoSinkImpl::instance().init(app.vg());
+
+    if (!fe.init()) {
+        foyer::log::write("[player] frontend init failed\n");
+        return 1;
+    }
+
+    std::string rom_path;
+    if (argc >= 2) {
+        rom_path = normalise_argv_path(argv[1]);
+    } else {
+        rom_path = find_default_rom(fe.system_info().valid_extensions);
+        if (rom_path.empty()) {
+            foyer::log::write("[player] no argv and no rom found in /foyer/roms\n");
+            app.set_draw_fn([](NVGcontext* vg, float w, float h) {
+                draw_idle(vg, w, h,
+                    "drop a rom into /foyer/roms/<system>/ and relaunch");
+            });
+            while (app.tick()) {}
+            fe.shutdown();
+            return 1;
+        }
+        foyer::log::write("[player] auto-picked %s\n", rom_path.c_str());
+    }
+
+    if (!fe.load_game(rom_path)) {
+        foyer::log::write("[player] load_game failed; idling\n");
+        app.set_draw_fn([rom_path](NVGcontext* vg, float w, float h) {
+            draw_idle(vg, w, h, "load failed");
+        });
+        while (app.tick()) {}
+        fe.shutdown();
+        return 1;
+    }
+
+    // Hook audio at the core's reported sample rate. Voice format = stereo S16.
+    foyer::libretro::AudioSink::instance().init((unsigned)fe.sample_rate());
+
+    // Pause overlay (Phase 4 polish: 10 timestamped slots).
+    foyer::libretro::Overlay overlay;
+    const std::string  rom_for_slots = rom_path;
+    overlay.set_hooks({
+        .get_aspect = []() { return foyer::libretro::VideoSinkImpl::instance().aspect(); },
+        .set_aspect = [](foyer::libretro::AspectMode m) {
+            foyer::libretro::VideoSinkImpl::instance().set_aspect(m);
+        },
+        .probe_slots = [&rom_for_slots](foyer::libretro::StateSlot out[foyer::libretro::kStateSlotCount]) {
+            foyer::libretro::inspect_slots(rom_for_slots, {}, out);
+        },
+    });
+
+    // RetroAchievements (no-op if creds aren't filled in accounts.jsonc).
+    auto& cheevos = foyer::libretro::Cheevos::instance();
+    cheevos.init([&overlay](const std::string& title) {
+        overlay.toast(title);
+    });
+    cheevos.identify_game(rom_path);
+
+    // Once a game is loaded, the per-frame draw is the core's framebuffer
+    // composited with the (possibly hidden) pause overlay.
+    app.set_draw_fn([&overlay](NVGcontext* vg, float w, float h) {
+        nvgBeginPath(vg);
+        nvgRect(vg, 0, 0, w, h);
+        nvgFillColor(vg, nvgRGBA(0, 0, 0, 0xFF));
+        nvgFill(vg);
+        foyer::libretro::VideoSinkImpl::instance().draw(vg, w, h);
+        overlay.draw(vg, w, h);
+    });
+
+    while (app.tick()) {
+        const auto held = padGetButtons(&app.pad());
+        const auto down = padGetButtonsDown(&app.pad());
+
+        const auto act = overlay.update(held, down);
+        switch (act) {
+            case foyer::libretro::Overlay::Action::SaveStateSlot: {
+                const auto slot = overlay.last_slot();
+                const auto path = foyer::libretro::state_path_for(rom_for_slots, {}, slot);
+                char msg[64];
+                if (foyer::libretro::save_state(path)) {
+                    std::snprintf(msg, sizeof(msg),
+                        slot == 0 ? "Saved Quick" : "Saved Slot %d", slot);
+                } else {
+                    std::snprintf(msg, sizeof(msg), "Save failed");
+                }
+                overlay.toast(msg);
+            } break;
+            case foyer::libretro::Overlay::Action::LoadStateSlot: {
+                const auto slot = overlay.last_slot();
+                const auto path = foyer::libretro::state_path_for(rom_for_slots, {}, slot);
+                char msg[64];
+                if (foyer::libretro::load_state(path)) {
+                    std::snprintf(msg, sizeof(msg),
+                        slot == 0 ? "Loaded Quick" : "Loaded Slot %d", slot);
+                } else {
+                    std::snprintf(msg, sizeof(msg), "Load failed");
+                }
+                overlay.toast(msg);
+            } break;
+            case foyer::libretro::Overlay::Action::Quit:
+                app.quit();
+                break;
+            default: break;
+        }
+
+        if (overlay.is_open()) {
+            // Don't feed buttons to the core or run a frame; just keep
+            // drawing the last framebuffer + overlay on top.
+            continue;
+        }
+
+        foyer::libretro::poll_input(app.pad());
+        fe.run_frame();
+        foyer::libretro::Cheevos::instance().do_frame();
+        foyer::libretro::AudioSink::instance().pump();
+    }
+
+    foyer::libretro::Cheevos::instance().shutdown();
+    fe.unload_game();
+    fe.shutdown();
+    foyer::libretro::AudioSink::instance().shutdown();
+    foyer::libretro::VideoSinkImpl::instance().shutdown();
+
+    // Chain back to the foyer browser. Resolution order:
+    //   1. argv[2] passed by the browser (correct by construction)
+    //   2. /switch/foyer/foyer.nro (sphaira-style nested layout)
+    //   3. /switch/foyer.nro       (flat layout)
+    auto exists = [](const std::string& sd_path) {
+        struct stat st{};
+        return ::stat(sd_path.c_str(), &st) == 0;
+    };
+
+    std::string back;
+    if (argc >= 3 && argv[2] && argv[2][0]) {
+        const auto p = normalise_argv_path(argv[2]); // drops "sdmc:" + quotes
+        if (exists(p)) back = "sdmc:" + p;
+    }
+    if (back.empty() && exists("/switch/foyer/foyer.nro")) {
+        back = "sdmc:/switch/foyer/foyer.nro";
+    }
+    if (back.empty() && exists("/switch/foyer.nro")) {
+        back = "sdmc:/switch/foyer.nro";
+    }
+
+    if (back.empty()) {
+        foyer::log::write("[player] no foyer.nro found; not chaining back\n");
+    } else {
+        char next_argv[300];
+        std::snprintf(next_argv, sizeof(next_argv), "\"%s\"", back.c_str());
+        Result rc = envSetNextLoad(back.c_str(), next_argv);
+        foyer::log::write("[player] chain-back %s rc=0x%X\n", back.c_str(), rc);
+    }
+    return 0;
+}

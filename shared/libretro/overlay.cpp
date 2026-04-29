@@ -1,0 +1,305 @@
+#include "overlay.hpp"
+#include "ui/icons.hpp"
+
+#include <algorithm>
+#include <cstdio>
+#include <cstring>
+
+namespace foyer::libretro {
+namespace {
+
+constexpr std::uint64_t kCombo = HidNpadButton_Minus | HidNpadButton_Plus;
+
+constexpr const char* kMainItems[] = {
+    "Save State",
+    "Load State",
+    "Settings",
+    "Quit Game",
+};
+constexpr int kMainCount = (int)(sizeof(kMainItems) / sizeof(kMainItems[0]));
+
+constexpr const char* kAspectLabels[] = {
+    "Display 4:3",
+    "Display 16:9",
+    "Display (Core)",
+    "Stretch",
+    "Integer 1x",
+    "Integer 2x",
+    "Integer Auto",
+};
+constexpr AspectMode kAspectValues[] = {
+    AspectMode::Display43,
+    AspectMode::Display169,
+    AspectMode::DisplayCore,
+    AspectMode::Stretch,
+    AspectMode::Integer1x,
+    AspectMode::Integer2x,
+    AspectMode::IntegerAuto,
+};
+constexpr int kAspectCount = (int)(sizeof(kAspectValues) / sizeof(kAspectValues[0]));
+
+constexpr NVGcolor kAccent      = { { { 0xF6/255.f, 0xC1/255.f, 0x42/255.f, 1.0f } } };
+constexpr NVGcolor kPanel       = { { { 0x18/255.f, 0x1B/255.f, 0x21/255.f, 0.96f } } };
+constexpr NVGcolor kRow         = { { { 0x21/255.f, 0x25/255.f, 0x2D/255.f, 1.0f } } };
+constexpr NVGcolor kBg          = { { { 0x10/255.f, 0x12/255.f, 0x16/255.f, 1.0f } } };
+constexpr NVGcolor kTextStrong  = { { { 0xF2/255.f, 0xF2/255.f, 0xF2/255.f, 1.0f } } };
+constexpr NVGcolor kText        = { { { 0xCB/255.f, 0xCD/255.f, 0xD2/255.f, 1.0f } } };
+constexpr NVGcolor kTextDim     = { { { 0x82/255.f, 0x86/255.f, 0x8E/255.f, 1.0f } } };
+constexpr NVGcolor kBorder      = { { { 0x2D/255.f, 0x32/255.f, 0x3A/255.f, 1.0f } } };
+
+void rrect(NVGcontext* vg, float x, float y, float w, float h, float r, NVGcolor c) {
+    nvgBeginPath(vg);
+    nvgRoundedRect(vg, x, y, w, h, r);
+    nvgFillColor(vg, c);
+    nvgFill(vg);
+}
+
+void rrect_outline(NVGcontext* vg, float x, float y, float w, float h, float r, NVGcolor c, float thick) {
+    nvgBeginPath(vg);
+    nvgRoundedRect(vg, x, y, w, h, r);
+    nvgStrokeColor(vg, c);
+    nvgStrokeWidth(vg, thick);
+    nvgStroke(vg);
+}
+
+void format_mtime(std::time_t t, char* out, std::size_t cap) {
+    if (t == 0) {
+        std::snprintf(out, cap, "—");
+        return;
+    }
+    struct tm tm;
+    localtime_r(&t, &tm);
+    std::snprintf(out, cap, "%04d-%02d-%02d %02d:%02d",
+        tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+        tm.tm_hour, tm.tm_min);
+}
+
+} // namespace
+
+void Overlay::refresh_slots() {
+    if (m_hooks.probe_slots) m_hooks.probe_slots(m_slots);
+    m_slots_dirty = false;
+}
+
+Overlay::Action Overlay::update(std::uint64_t held, std::uint64_t down) {
+    if (m_toast_ttl > 0) m_toast_ttl--;
+
+    const bool combo_held = (held & kCombo) == kCombo;
+    const bool combo_press = combo_held && !m_combo_was_held;
+    m_combo_was_held = combo_held;
+
+    if (combo_press) {
+        if (m_state == State::Hidden) {
+            m_state = State::Main;
+            m_main_index = 0;
+        } else {
+            m_state = State::Hidden;
+        }
+        return Action::None;
+    }
+
+    if (m_state == State::Hidden) return Action::None;
+
+    auto pressed = [&](std::uint64_t b) { return (down & b) != 0; };
+
+    auto nav_up   = pressed(HidNpadButton_Up   | HidNpadButton_StickLUp);
+    auto nav_down = pressed(HidNpadButton_Down | HidNpadButton_StickLDown);
+
+    if (m_state == State::Main) {
+        if (nav_up)   m_main_index = (m_main_index - 1 + kMainCount) % kMainCount;
+        if (nav_down) m_main_index = (m_main_index + 1) % kMainCount;
+        if (pressed(HidNpadButton_B)) {
+            m_state = State::Hidden;
+            return Action::None;
+        }
+        if (pressed(HidNpadButton_A)) {
+            switch (m_main_index) {
+                case 0:
+                    m_state = State::SaveSlots;
+                    m_slot_index = 0;
+                    refresh_slots();
+                    break;
+                case 1:
+                    m_state = State::LoadSlots;
+                    m_slot_index = 0;
+                    refresh_slots();
+                    break;
+                case 2:
+                    m_state = State::Settings;
+                    m_settings_index = 0;
+                    break;
+                case 3:
+                    m_state = State::Hidden;
+                    return Action::Quit;
+            }
+        }
+    } else if (m_state == State::Settings) {
+        if (nav_up)   m_settings_index = (m_settings_index - 1 + kAspectCount) % kAspectCount;
+        if (nav_down) m_settings_index = (m_settings_index + 1) % kAspectCount;
+        if (pressed(HidNpadButton_B)) m_state = State::Main;
+        else if (pressed(HidNpadButton_A) && m_hooks.set_aspect) {
+            m_hooks.set_aspect(kAspectValues[m_settings_index]);
+        }
+    } else if (m_state == State::SaveSlots || m_state == State::LoadSlots) {
+        if (nav_up)   m_slot_index = (m_slot_index - 1 + kStateSlotCount) % kStateSlotCount;
+        if (nav_down) m_slot_index = (m_slot_index + 1) % kStateSlotCount;
+        if (pressed(HidNpadButton_B)) m_state = State::Main;
+        else if (pressed(HidNpadButton_A)) {
+            m_result_slot = m_slot_index;
+            const auto saving = (m_state == State::SaveSlots);
+            m_state = State::Hidden;
+            return saving ? Action::SaveStateSlot : Action::LoadStateSlot;
+        }
+    }
+    return Action::None;
+}
+
+void Overlay::draw_panel(NVGcontext* vg, float w, float h, const char* title) {
+    const float pw = 560.0f;
+    const float ph = 460.0f;
+    const float px = (w - pw) * 0.5f;
+    const float py = (h - ph) * 0.5f;
+
+    // Drop shadow behind panel.
+    auto shadow = nvgBoxGradient(vg, px + 4, py + 6, pw, ph, 18.0f, 24.0f,
+        nvgRGBAf(0, 0, 0, 0.55f), nvgRGBAf(0, 0, 0, 0.0f));
+    nvgBeginPath(vg);
+    nvgRect(vg, px - 30, py - 30, pw + 60, ph + 60);
+    nvgRoundedRect(vg, px, py, pw, ph, 18.0f);
+    nvgPathWinding(vg, NVG_HOLE);
+    nvgFillPaint(vg, shadow);
+    nvgFill(vg);
+
+    rrect(vg, px, py, pw, ph, 18.0f, kPanel);
+    rrect_outline(vg, px, py, pw, ph, 18.0f, kBorder, 1.0f);
+
+    nvgFontSize(vg, 30.0f);
+    nvgFillColor(vg, kTextStrong);
+    nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+    nvgText(vg, px + 28, py + 36, title, nullptr);
+
+    // Underline accent.
+    rrect(vg, px + 28, py + 60, 56, 3, 1.5f, kAccent);
+
+    // Footer hint bar.
+    nvgFontSize(vg, 16.0f);
+    nvgFillColor(vg, kTextDim);
+    nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM);
+    using namespace foyer::ui::icons;
+    std::string hint;
+    switch (m_state) {
+        case State::Main:
+            hint = std::string{A} + " select   " + B + " close   "
+                 + Minus + " " + Plus + " hide overlay";
+            break;
+        case State::SaveSlots:
+            hint = std::string{A} + " save to slot   " + B + " back";
+            break;
+        case State::LoadSlots:
+            hint = std::string{A} + " load from slot   " + B + " back";
+            break;
+        case State::Settings:
+            hint = std::string{A} + " apply   " + B + " back";
+            break;
+        default: break;
+    }
+    if (!hint.empty()) nvgText(vg, w * 0.5f, py + ph - 16, hint.c_str(), nullptr);
+}
+
+void Overlay::draw(NVGcontext* vg, float w, float h) {
+    if (m_state == State::Hidden && m_toast_ttl <= 0) return;
+
+    if (m_toast_ttl > 0) {
+        const float tw = 360.0f;
+        const float th = 56.0f;
+        const float tx = (w - tw) * 0.5f;
+        const float ty = h - th - 24.0f;
+        const float a  = std::min(1.0f, (float)m_toast_ttl / 30.0f);
+        rrect(vg, tx, ty, tw, th, 12.0f, nvgRGBAf(0.05f, 0.06f, 0.08f, 0.85f * a));
+        rrect_outline(vg, tx, ty, tw, th, 12.0f, nvgRGBAf(1, 1, 1, 0.10f * a), 1.0f);
+        nvgFontSize(vg, 22.0f);
+        nvgFillColor(vg, nvgRGBAf(1, 1, 1, a));
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+        nvgText(vg, w * 0.5f, ty + th * 0.5f, m_toast.c_str(), nullptr);
+    }
+
+    if (m_state == State::Hidden) return;
+
+    // Dim underlying game.
+    nvgBeginPath(vg);
+    nvgRect(vg, 0, 0, w, h);
+    nvgFillColor(vg, nvgRGBAf(0, 0, 0, 0.55f));
+    nvgFill(vg);
+
+    const char* title = nullptr;
+    switch (m_state) {
+        case State::Main:       title = "Pause"; break;
+        case State::SaveSlots:  title = "Save State"; break;
+        case State::LoadSlots:  title = "Load State"; break;
+        case State::Settings:   title = "Settings"; break;
+        default: title = "";
+    }
+    draw_panel(vg, w, h, title);
+
+    const float pw = 560.0f;
+    const float ph = 460.0f;
+    const float px = (w - pw) * 0.5f;
+    const float py = (h - ph) * 0.5f;
+    const float list_x = px + 24;
+    const float list_y = py + 84;
+    const float list_w = pw - 48;
+    const float row_h  = 38.0f;
+
+    auto row = [&](int i, bool sel, const char* label, const char* rhs, bool dim_row) {
+        const float ry = list_y + i * row_h;
+        rrect(vg, list_x, ry, list_w, row_h - 4, 8.0f,
+              sel ? kAccent : kRow);
+
+        nvgFontSize(vg, 20.0f);
+        nvgFillColor(vg, sel ? kBg : (dim_row ? kTextDim : kText));
+        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+        nvgText(vg, list_x + 16, ry + (row_h - 4) * 0.5f, label, nullptr);
+
+        if (rhs && rhs[0]) {
+            nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+            nvgFillColor(vg, sel ? kBg : kTextDim);
+            nvgText(vg, list_x + list_w - 16, ry + (row_h - 4) * 0.5f, rhs, nullptr);
+        }
+    };
+
+    if (m_state == State::Main) {
+        for (int i = 0; i < kMainCount; i++) {
+            row(i, i == m_main_index, kMainItems[i], "", false);
+        }
+    } else if (m_state == State::Settings) {
+        const auto current = m_hooks.get_aspect ? m_hooks.get_aspect()
+                                                : AspectMode::DisplayCore;
+        for (int i = 0; i < kAspectCount; i++) {
+            const bool active = (kAspectValues[i] == current);
+            row(i, i == m_settings_index, kAspectLabels[i], active ? "active" : "", false);
+        }
+    } else if (m_state == State::SaveSlots || m_state == State::LoadSlots) {
+        for (int i = 0; i < kStateSlotCount; i++) {
+            char label[32];
+            if (i == 0)  std::snprintf(label, sizeof(label), "Quick");
+            else         std::snprintf(label, sizeof(label), "Slot %d", i);
+
+            char ts[64];
+            if (m_slots[i].exists) {
+                format_mtime(m_slots[i].mtime, ts, sizeof(ts));
+            } else {
+                std::snprintf(ts, sizeof(ts), "empty");
+            }
+
+            const bool dim = !m_slots[i].exists && (m_state == State::LoadSlots);
+            row(i, i == m_slot_index, label, ts, dim);
+        }
+    }
+}
+
+void Overlay::toast(std::string msg) {
+    m_toast    = std::move(msg);
+    m_toast_ttl = 90;
+}
+
+} // namespace foyer::libretro

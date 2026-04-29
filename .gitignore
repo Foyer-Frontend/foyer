@@ -1,0 +1,36 @@
+build/
+build-*/
+out/
+*.nro
+*.nacp
+*.elf
+*.dksh
+.cache/
+compile_commands.json
+
+# Local roms drop directory used for on-PC testing — never tracked.
+roms/
+*.nes
+*.snes
+*.smc
+*.sfc
+*.gb
+*.gbc
+*.gba
+*.n64
+*.z64
+*.smd
+*.md
+*.gen
+*.iso
+*.cue
+*.bin
+*.chd
+
+# Editor / OS noise
+.vscode/
+.idea/
+*.swp
+*.bak
+*.tmp
+.DS_Store

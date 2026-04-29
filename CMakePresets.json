@@ -1,0 +1,61 @@
+{
+    "version": 3,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 21,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "core",
+            "hidden": true,
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "toolchainFile": "$env{DEVKITPRO}/cmake/Switch.cmake"
+        },
+        {
+            "name": "Release",
+            "displayName": "Release (browser)",
+            "inherits": ["core"],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "MinSizeRel",
+                "BUILD_BROWSER": "ON",
+                "BUILD_PLAYER":  "OFF"
+            }
+        },
+        {
+            "name": "Debug",
+            "displayName": "Debug (browser)",
+            "inherits": ["core"],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "BUILD_BROWSER": "ON",
+                "BUILD_PLAYER":  "OFF"
+            }
+        },
+        {
+            "name": "Player-fceumm",
+            "displayName": "Player (fceumm/NES)",
+            "inherits": ["core"],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "MinSizeRel",
+                "BUILD_BROWSER": "OFF",
+                "BUILD_PLAYER":  "ON",
+                "FOYER_CORE":    "fceumm"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "Release",
+            "configurePreset": "Release"
+        },
+        {
+            "name": "Debug",
+            "configurePreset": "Debug"
+        },
+        {
+            "name": "Player-fceumm",
+            "configurePreset": "Player-fceumm"
+        }
+    ]
+}

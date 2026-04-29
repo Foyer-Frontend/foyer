@@ -1,0 +1,155 @@
+#include "http.hpp"
+#include "platform/log.hpp"
+
+#include <atomic>
+#include <cstring>
+#include <cstdio>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#include <curl/curl.h>
+
+namespace foyer::net {
+namespace {
+
+std::atomic<bool> g_inited{false};
+
+std::size_t mem_writer(void* ptr, std::size_t sz, std::size_t n, void* userdata) {
+    auto* out = static_cast<std::vector<char>*>(userdata);
+    const auto bytes = sz * n;
+    out->insert(out->end(), (char*)ptr, (char*)ptr + bytes);
+    return bytes;
+}
+
+std::size_t file_writer(void* ptr, std::size_t sz, std::size_t n, void* userdata) {
+    auto* fp = static_cast<std::FILE*>(userdata);
+    return std::fwrite(ptr, sz, n, fp) * sz / sz;
+}
+
+curl_slist* build_headers(const std::vector<std::string>& hdrs) {
+    curl_slist* sl = nullptr;
+    for (const auto& h : hdrs) sl = curl_slist_append(sl, h.c_str());
+    return sl;
+}
+
+void apply_common(CURL* curl, const std::string& url, curl_slist* hdrs) {
+    curl_easy_setopt(curl, CURLOPT_URL,            url.c_str());
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL,       1L);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT,        45L);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT,      "foyer/0.1");
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L); // Switch CA bundle drama
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+    if (hdrs) curl_easy_setopt(curl, CURLOPT_HTTPHEADER, hdrs);
+}
+
+} // namespace
+
+void init() {
+    if (g_inited.exchange(true)) return;
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+}
+
+void exit() {
+    if (!g_inited.exchange(false)) return;
+    curl_global_cleanup();
+}
+
+Response get(const std::string& url, const std::vector<std::string>& headers) {
+    init();
+    Response r;
+    auto* curl = curl_easy_init();
+    if (!curl) return r;
+    auto* hdrs = build_headers(headers);
+    apply_common(curl, url, hdrs);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, mem_writer);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA,     &r.body);
+
+    const auto rc = curl_easy_perform(curl);
+    if (rc != CURLE_OK) {
+        foyer::log::write("[http] GET %s failed: %s\n", url.c_str(), curl_easy_strerror(rc));
+    }
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &r.code);
+    curl_easy_cleanup(curl);
+    if (hdrs) curl_slist_free_all(hdrs);
+    return r;
+}
+
+bool get_to_file(const std::string& url,
+                 const std::string& dest_path,
+                 const std::vector<std::string>& headers) {
+    init();
+    auto* fp = std::fopen(dest_path.c_str(), "wb");
+    if (!fp) {
+        foyer::log::write("[http] open(%s) failed\n", dest_path.c_str());
+        return false;
+    }
+    auto* curl = curl_easy_init();
+    if (!curl) { std::fclose(fp); ::unlink(dest_path.c_str()); return false; }
+    auto* hdrs = build_headers(headers);
+    apply_common(curl, url, hdrs);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, file_writer);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA,     fp);
+
+    const auto rc = curl_easy_perform(curl);
+    long code = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
+
+    std::fclose(fp);
+    if (hdrs) curl_slist_free_all(hdrs);
+    curl_easy_cleanup(curl);
+
+    if (rc != CURLE_OK || code < 200 || code >= 300) {
+        foyer::log::write("[http] GET %s -> %ld (curl rc=%d)\n",
+            url.c_str(), code, (int)rc);
+        ::unlink(dest_path.c_str());
+        return false;
+    }
+    // Reject zero-byte responses (CDN sometimes returns 200 + empty body).
+    struct stat st{};
+    if (::stat(dest_path.c_str(), &st) != 0 || st.st_size == 0) {
+        ::unlink(dest_path.c_str());
+        return false;
+    }
+    return true;
+}
+
+Response post_form(const std::string& url,
+                   const std::string& body,
+                   const std::vector<std::string>& headers) {
+    init();
+    Response r;
+    auto* curl = curl_easy_init();
+    if (!curl) return r;
+    std::vector<std::string> all = headers;
+    all.emplace_back("Content-Type: application/x-www-form-urlencoded");
+    auto* hdrs = build_headers(all);
+    apply_common(curl, url, hdrs);
+    curl_easy_setopt(curl, CURLOPT_POST,         1L);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS,   body.c_str());
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE,(long)body.size());
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, mem_writer);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA,     &r.body);
+    const auto rc = curl_easy_perform(curl);
+    if (rc != CURLE_OK) {
+        foyer::log::write("[http] POST %s failed: %s\n", url.c_str(), curl_easy_strerror(rc));
+    }
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &r.code);
+    curl_easy_cleanup(curl);
+    if (hdrs) curl_slist_free_all(hdrs);
+    return r;
+}
+
+std::string url_encode(const std::string& s) {
+    init();
+    auto* curl = curl_easy_init();
+    if (!curl) return s;
+    auto* enc = curl_easy_escape(curl, s.c_str(), (int)s.size());
+    std::string out = enc ? std::string{enc} : s;
+    if (enc) curl_free(enc);
+    curl_easy_cleanup(curl);
+    return out;
+}
+
+} // namespace foyer::net
