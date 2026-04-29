@@ -51,7 +51,7 @@
                 "CMAKE_BUILD_TYPE": "MinSizeRel",
                 "BUILD_BROWSER": "OFF",
                 "BUILD_PLAYER":  "ON",
-                "FOYER_CORES":   "fceumm;gambatte"
+                "FOYER_CORES":   "fceumm;gambatte;genesisplusgx"
             }
         },
         {
@@ -63,6 +63,17 @@
                 "BUILD_BROWSER": "OFF",
                 "BUILD_PLAYER":  "ON",
                 "FOYER_CORE":    "gambatte"
+            }
+        },
+        {
+            "name": "Player-genesisplusgx",
+            "displayName": "Player (genesisplusgx/MD+SMS+GG)",
+            "inherits": ["core"],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "MinSizeRel",
+                "BUILD_BROWSER": "OFF",
+                "BUILD_PLAYER":  "ON",
+                "FOYER_CORE":    "genesisplusgx"
             }
         }
     ],
@@ -86,6 +97,10 @@
         {
             "name": "Player-gambatte",
             "configurePreset": "Player-gambatte"
+        },
+        {
+            "name": "Player-genesisplusgx",
+            "configurePreset": "Player-genesisplusgx"
         }
     ]
 }
