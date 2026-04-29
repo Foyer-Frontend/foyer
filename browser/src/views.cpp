@@ -2,6 +2,7 @@
 #include "theme.hpp"
 #include "library/system_db.hpp"
 #include "library/config.hpp"
+#include "library/per_game.hpp"
 #include "scrapers/cache.hpp"
 #include "ui/icons.hpp"
 
@@ -314,9 +315,142 @@ void draw_system(NVGcontext* vg, float w, float h, const State& s, const Library
     const auto hint_sys =
         std::string{DPad}  + " pick   "
                 + A         + " launch   "
+                + X         + " details   "
                 + Y         + " scrape   "
                 + B         + " back";
     nvgText(vg, w * 0.5f, h - 12, hint_sys.c_str(), nullptr);
+}
+
+// ---- GAME DETAIL VIEW -----------------------------------------------------
+
+void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Library& lib) {
+    const auto& th = theme();
+    if (lib.systems.empty()) { draw_empty(vg, w, h, "No systems", ""); return; }
+    const auto& sys = lib.systems[s.system_index];
+    if (sys.games.empty())  { draw_empty(vg, w, h, "No games", "");   return; }
+    const auto& g = sys.games[s.game_index];
+
+    char header[160];
+    std::snprintf(header, sizeof(header), "%s", g.display.c_str());
+    char rhs[64];
+    std::snprintf(rhs, sizeof(rhs), "%.*s",
+        (int)sys.def->display_name.size(), sys.def->display_name.data());
+    draw_topbar(vg, w, header, rhs);
+
+    const float content_y = 80;
+    const float content_h = h - content_y - 48;
+
+    // Left: cover. Right: core picker.
+    const float left_w  = (w - th.pad * 3.0f) * 0.45f;
+    const float right_x = th.pad + left_w + th.pad;
+    const float right_w = w - right_x - th.pad;
+
+    rrect(vg, th.pad, content_y, left_w, content_h, th.radius, th.bg_panel);
+    rrect(vg, right_x, content_y, right_w, content_h, th.radius, th.bg_panel);
+
+    // Cover.
+    const std::string cover = scrapers::cover_path(sys.def->folder_name, g.stem);
+    const float cx = th.pad + th.pad;
+    const float cy = content_y + th.pad;
+    const float cw = left_w - th.pad * 2.0f;
+    const float ch = content_h - th.pad * 2.0f - 60.0f;
+    const int handle = cover_cache().get_or_load(vg, cover);
+    if (handle > 0) {
+        int iw = 0, ih = 0;
+        nvgImageSize(vg, handle, &iw, &ih);
+        if (iw > 0 && ih > 0) {
+            const float ar_img = (float)iw / (float)ih;
+            const float ar_box = cw / ch;
+            float dw = cw, dh = ch;
+            if (ar_img > ar_box) dh = cw / ar_img;
+            else                 dw = ch * ar_img;
+            const float dx = cx + (cw - dw) * 0.5f;
+            const float dy = cy + (ch - dh) * 0.5f;
+            auto pat = nvgImagePattern(vg, dx, dy, dw, dh, 0.f, handle, 1.0f);
+            nvgBeginPath(vg);
+            nvgRoundedRect(vg, dx, dy, dw, dh, 8.0f);
+            nvgFillPaint(vg, pat);
+            nvgFill(vg);
+        }
+    } else {
+        nvgFontSize(vg, th.label_size);
+        nvgFillColor(vg, th.text_dim);
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+        nvgText(vg, cx + cw * 0.5f, cy + ch * 0.5f, "no cover", nullptr);
+    }
+
+    // File ext meta below cover.
+    char meta[128];
+    std::snprintf(meta, sizeof(meta), ".%s", g.ext.c_str());
+    nvgFontSize(vg, th.label_size);
+    nvgFillColor(vg, th.text_dim);
+    nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_BOTTOM);
+    nvgText(vg, cx, cy + ch + 36, meta, nullptr);
+
+    // Core picker.
+    const auto* resolved   = library::resolve_core(*sys.def, g.path);
+    const auto  per_game   = library::per_game_core_for(g.path);
+    const char* per_sys    = library::config().default_core_for(sys.def->folder_name);
+
+    nvgFontSize(vg, th.head_size);
+    nvgFillColor(vg, th.text_strong);
+    nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_TOP);
+    nvgText(vg, right_x + th.pad, content_y + th.pad, "Core", nullptr);
+
+    constexpr float kRow = 56.0f;
+    float ry = content_y + th.pad + 40.0f;
+    int row = 0;
+    for (const auto& c : sys.def->cores) {
+        const bool sel = (row == (int)s.detail_core_index);
+        if (sel) {
+            rrect(vg, right_x + th.pad * 0.5f, ry, right_w - th.pad,
+                  kRow - 6, 8.0f, th.bg_panel_hi);
+        }
+
+        nvgFontSize(vg, th.body_size);
+        nvgFillColor(vg, sel ? th.text_strong : th.text);
+        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+        const std::string name{c.name};
+        nvgText(vg, right_x + th.pad + 8, ry + (kRow - 6) * 0.5f - 8,
+                name.c_str(), nullptr);
+
+        nvgFontSize(vg, th.label_size);
+        nvgFillColor(vg, th.text_dim);
+        const std::string disp{c.display_name};
+        nvgText(vg, right_x + th.pad + 8, ry + (kRow - 6) * 0.5f + 12,
+                disp.c_str(), nullptr);
+
+        // Tag column.
+        std::string tag;
+        if (!per_game.empty() && per_game == name)   tag = "per-game";
+        else if (per_sys && per_sys == name)         tag = "system default";
+        else if (resolved && resolved->name == name) tag = "active";
+        else if (row == 0)                            tag = "built-in default";
+
+        if (!tag.empty()) {
+            nvgFontSize(vg, th.label_size);
+            nvgFillColor(vg, th.accent);
+            nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+            nvgText(vg, right_x + right_w - th.pad,
+                    ry + (kRow - 6) * 0.5f, tag.c_str(), nullptr);
+        }
+
+        ry += kRow;
+        row++;
+    }
+
+    // Bottom hint.
+    nvgFontSize(vg, th.label_size);
+    nvgFillColor(vg, th.text_dim);
+    nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM);
+    using namespace foyer::ui::icons;
+    const auto hint =
+        std::string{DPad}  + " pick   "
+                + A         + " set per-game   "
+                + Y         + " set system default   "
+                + X         + " clear override   "
+                + B         + " back";
+    nvgText(vg, w * 0.5f, h - 12, hint.c_str(), nullptr);
 }
 
 } // namespace
@@ -356,6 +490,20 @@ void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down
         if ((down & HidNpadButton_A) && !sys.games.empty()) {
             s.request_launch = true;
         }
+        if ((down & HidNpadButton_X) && !sys.games.empty()) {
+            s.view = View::GameDetail;
+            // Seed cursor on the currently resolved core.
+            const auto& g = sys.games[s.game_index];
+            const auto* resolved = library::resolve_core(*sys.def, g.path);
+            s.detail_core_index = 0;
+            if (resolved) {
+                std::size_t i = 0;
+                for (const auto& c : sys.def->cores) {
+                    if (c.name == resolved->name) { s.detail_core_index = i; break; }
+                    i++;
+                }
+            }
+        }
         if (down & HidNpadButton_Y) {
             // Y always uses the scraper picked in /foyer/config/general.jsonc.
             // Settings UI (Phase 8) will let the user change it from foyer
@@ -369,6 +517,41 @@ void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down
                 default:
                     s.request_scrape_kind = State::ScrapeKind::Libretro;      break;
             }
+        }
+    } else if (s.view == View::GameDetail) {
+        const auto& sys = lib.systems[s.system_index];
+        if (sys.games.empty() || sys.def->cores.empty()) {
+            s.view = View::System;
+            return;
+        }
+        const auto& g = sys.games[s.game_index];
+        const auto core_count = sys.def->cores.size();
+
+        if (down & HidNpadButton_Down) {
+            if (s.detail_core_index + 1 < core_count) s.detail_core_index++;
+        } else if (down & HidNpadButton_Up) {
+            if (s.detail_core_index > 0) s.detail_core_index--;
+        }
+
+        if (down & HidNpadButton_B) {
+            s.view = View::System;
+        }
+        if (down & HidNpadButton_A) {
+            const auto& chosen = sys.def->cores[s.detail_core_index];
+            library::set_per_game_core(g.path, chosen.name);
+            s.banner_text = std::string{"Per-game core set: "} + std::string{chosen.name};
+            s.banner_ttl  = 180;
+        }
+        if (down & HidNpadButton_Y) {
+            const auto& chosen = sys.def->cores[s.detail_core_index];
+            library::set_default_core_for(sys.def->folder_name, chosen.name);
+            s.banner_text = std::string{"System default core set: "} + std::string{chosen.name};
+            s.banner_ttl  = 180;
+        }
+        if (down & HidNpadButton_X) {
+            library::set_per_game_core(g.path, "");
+            s.banner_text = "Per-game override cleared";
+            s.banner_ttl  = 180;
         }
     }
 
@@ -387,8 +570,9 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
     nvgFill(vg);
 
     switch (s.view) {
-        case View::Home:   draw_home  (vg, w, h, s, lib); break;
-        case View::System: draw_system(vg, w, h, s, lib); break;
+        case View::Home:       draw_home       (vg, w, h, s, lib); break;
+        case View::System:     draw_system     (vg, w, h, s, lib); break;
+        case View::GameDetail: draw_game_detail(vg, w, h, s, lib); break;
     }
 
     // Banner (e.g., "Scraping NES…  3 / 24"). Drawn last so nothing covers it.

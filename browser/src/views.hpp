@@ -13,6 +13,7 @@ namespace foyer::browser {
 enum class View {
     Home,        // horizontal system carousel
     System,      // game list for the focused system
+    GameDetail,  // per-rom screen — cover, metadata, core picker
 };
 
 // Browser navigation state. Owned by main.cpp.
@@ -25,6 +26,9 @@ struct State {
 
     // Index into the current system's games vector for the System view.
     std::size_t game_index = 0;
+
+    // Cursor on the GameDetail core picker.
+    std::size_t detail_core_index = 0;
 
     // Set by Update; read by the main loop to drive launches.
     bool        request_launch = false;
