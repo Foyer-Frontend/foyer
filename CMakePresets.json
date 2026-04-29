@@ -51,7 +51,18 @@
                 "CMAKE_BUILD_TYPE": "MinSizeRel",
                 "BUILD_BROWSER": "OFF",
                 "BUILD_PLAYER":  "ON",
-                "FOYER_CORES":   "fceumm"
+                "FOYER_CORES":   "fceumm;gambatte"
+            }
+        },
+        {
+            "name": "Player-gambatte",
+            "displayName": "Player (gambatte/GB+GBC)",
+            "inherits": ["core"],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "MinSizeRel",
+                "BUILD_BROWSER": "OFF",
+                "BUILD_PLAYER":  "ON",
+                "FOYER_CORE":    "gambatte"
             }
         }
     ],
@@ -71,6 +82,10 @@
         {
             "name": "Players-All",
             "configurePreset": "Players-All"
+        },
+        {
+            "name": "Player-gambatte",
+            "configurePreset": "Player-gambatte"
         }
     ]
 }
