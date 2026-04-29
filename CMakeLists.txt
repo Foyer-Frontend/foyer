@@ -8,15 +8,19 @@ project(foyer
 # ---------------------------------------------------------------------------
 # Options
 # ---------------------------------------------------------------------------
-option(BUILD_BROWSER "Build the foyer browser nro"             ON)
-option(BUILD_PLAYER  "Build a foyer-<core> player nro"         OFF)
-set(FOYER_CORE       "" CACHE STRING
-    "Libretro core to bake into the player nro (e.g. fceumm). \
-Required when BUILD_PLAYER=ON.")
+option(BUILD_BROWSER "Build the foyer browser nro"     ON)
+option(BUILD_PLAYER  "Build per-core player nros"      OFF)
+# FOYER_CORE = single core name (legacy single-build presets).
+set(FOYER_CORE  "" CACHE STRING
+    "Single libretro core to build (e.g. fceumm). Used by Player-* presets.")
+# FOYER_CORES = semicolon-separated core list — produces one foyer-<core>.nro
+# target per entry in a single configure. Used by the Players-All preset.
+set(FOYER_CORES "" CACHE STRING
+    "Semicolon-separated list of cores to build players for.")
 
-if (BUILD_PLAYER AND NOT FOYER_CORE)
+if (BUILD_PLAYER AND NOT FOYER_CORE AND NOT FOYER_CORES)
     message(FATAL_ERROR
-        "BUILD_PLAYER=ON requires FOYER_CORE=<core_name>")
+        "BUILD_PLAYER=ON requires FOYER_CORE=<name> or FOYER_CORES=<a;b;c>")
 endif()
 
 # ---------------------------------------------------------------------------
@@ -90,12 +94,27 @@ if (BUILD_BROWSER)
 endif()
 
 if (BUILD_PLAYER)
-    add_subdirectory(player)
+    # Resolve the list of cores to build. FOYER_CORES (semicolon list) wins;
+    # fall back to single FOYER_CORE for legacy Player-* presets.
+    if (FOYER_CORES)
+        set(_foyer_player_cores ${FOYER_CORES})
+    else()
+        set(_foyer_player_cores ${FOYER_CORE})
+    endif()
+
+    # rcheevos is shared by every player binary — declare it once so we don't
+    # collide on target name when looping the player subdir.
+    include(${CMAKE_SOURCE_DIR}/cores/rcheevos.cmake)
+
+    foreach(_foyer_core IN LISTS _foyer_player_cores)
+        set(FOYER_CORE ${_foyer_core})
+        add_subdirectory(player player-${_foyer_core})
+    endforeach()
 endif()
 
 message(STATUS "foyer ${FOYER_DISPLAY_VERSION}")
 message(STATUS "  BUILD_BROWSER = ${BUILD_BROWSER}")
 message(STATUS "  BUILD_PLAYER  = ${BUILD_PLAYER}")
 if (BUILD_PLAYER)
-    message(STATUS "  FOYER_CORE    = ${FOYER_CORE}")
+    message(STATUS "  cores         = ${_foyer_player_cores}")
 endif()

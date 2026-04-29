@@ -11,6 +11,7 @@
 #include "library/scanner.hpp"
 #include "library/system_db.hpp"
 #include "library/config.hpp"
+#include "library/per_game.hpp"
 #include "scrapers/cache.hpp"
 #include "scrapers/libretro_thumbnails.hpp"
 #include "scrapers/screenscraper.hpp"
@@ -57,8 +58,9 @@ int main(int /*argc*/, char** /*argv*/) {
             if (foyer::browser::launch_game(sys, game)) {
                 app.quit();
             } else {
-                state.banner_text = "Core not installed: foyer-"
-                                  + std::string{sys.def->core_name} + ".nro";
+                const auto* core = foyer::library::resolve_core(*sys.def, game.path);
+                state.banner_text = std::string{"Core not installed: foyer-"}
+                    + (core ? std::string{core->name} : "?") + ".nro";
                 state.banner_ttl  = 180;
             }
         }

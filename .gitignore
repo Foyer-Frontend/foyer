@@ -21,6 +21,8 @@ roms/
 *.z64
 *.smd
 *.md
+!README.md
+!*.cmake.md
 *.gen
 *.iso
 *.cue

@@ -5,87 +5,98 @@
 namespace foyer::library {
 namespace {
 
-// Master system table. Add new rows here when expanding cores. The carousel
-// + scanner + launcher all key off this single source.
+// Per-system core lists. Order = priority. cores[0] is the system default
+// when no per-game / general override is set.
 //
-// Notes:
-//   - `core_name` must match an upstream libretro buildbot artifact AND the
-//     directory name we ship as cores/<core>.cmake.
-//   - `thumbnails_db` matches the folder name in the libretro-thumbnails
-//     repo (https://github.com/libretro-thumbnails/libretro-thumbnails).
+// Keep these arrays in sync with the cores/<name>.cmake recipes and with
+// the README's "Supported systems / cores" table.
+
+constexpr CoreDef kCoresFceumm[]      = { { "fceumm",        "FCEUmm"        } };
+constexpr CoreDef kCoresSnes9x[]      = { { "snes9x",        "Snes9x"        } };
+constexpr CoreDef kCoresGambatte[]    = { { "gambatte",      "Gambatte"      } };
+constexpr CoreDef kCoresMgba[]        = { { "mgba",          "mGBA"          } };
+constexpr CoreDef kCoresMupen64[]     = { { "mupen64plus",   "Mupen64Plus"   } };
+constexpr CoreDef kCoresMelonds[]     = { { "melonds",       "melonDS"       } };
+constexpr CoreDef kCoresDolphin[]     = { { "dolphin",       "Dolphin"       } };
+constexpr CoreDef kCoresGenesisGx[]   = { { "genesisplusgx", "Genesis Plus GX" } };
+constexpr CoreDef kCoresYabaSan[]     = { { "yabasanshiro",  "YabaSanshiro"  } };
+constexpr CoreDef kCoresFlycast[]     = { { "flycast",       "Flycast"       } };
+constexpr CoreDef kCoresSwanstation[] = { { "swanstation",   "Swanstation"   } };
+constexpr CoreDef kCoresPpsspp[]      = { { "ppsspp",        "PPSSPP"        } };
+constexpr CoreDef kCoresRace[]        = { { "race",          "RACE"          } };
+
 constexpr SystemDef kSystems[] = {
-    { "nes",          "Nintendo Entertainment System",
-      "NES",          "fceumm",
+    { "nes",          "Nintendo Entertainment System", "NES",
       "Nintendo - Nintendo Entertainment System",
-      "nes|fds|unif|unf" },
-    { "snes",         "Super Nintendo",
-      "SNES",         "snes9x",
+      "nes|fds|unif|unf",  kCoresFceumm },
+
+    { "snes",         "Super Nintendo",               "SNES",
       "Nintendo - Super Nintendo Entertainment System",
-      "smc|sfc|swc|fig|bs|st" },
-    { "gb",           "Game Boy",
-      "GB",           "gambatte",
+      "smc|sfc|swc|fig|bs|st", kCoresSnes9x },
+
+    { "gb",           "Game Boy",                     "GB",
       "Nintendo - Game Boy",
-      "gb" },
-    { "gbc",          "Game Boy Color",
-      "GBC",          "gambatte",
+      "gb",                kCoresGambatte },
+
+    { "gbc",          "Game Boy Color",               "GBC",
       "Nintendo - Game Boy Color",
-      "gbc" },
-    { "gba",          "Game Boy Advance",
-      "GBA",          "mgba",
+      "gbc",               kCoresGambatte },
+
+    { "gba",          "Game Boy Advance",             "GBA",
       "Nintendo - Game Boy Advance",
-      "gba" },
-    { "n64",          "Nintendo 64",
-      "N64",          "mupen64plus",
+      "gba",               kCoresMgba },
+
+    { "n64",          "Nintendo 64",                  "N64",
       "Nintendo - Nintendo 64",
-      "n64|z64|v64" },
-    { "nds",          "Nintendo DS",
-      "NDS",          "melonds",
+      "n64|z64|v64",       kCoresMupen64 },
+
+    { "nds",          "Nintendo DS",                  "NDS",
       "Nintendo - Nintendo DS",
-      "nds" },
-    { "gc",           "GameCube",
-      "GC",           "dolphin",
+      "nds",               kCoresMelonds },
+
+    { "gc",           "GameCube",                     "GC",
       "Nintendo - GameCube",
-      "iso|gcm|rvz" },
-    { "genesis",      "Sega Genesis",
-      "MD",           "genesisplusgx",
+      "iso|gcm|rvz",       kCoresDolphin },
+
+    { "genesis",      "Sega Genesis",                 "MD",
       "Sega - Mega Drive - Genesis",
-      "md|gen|smd|bin" },
-    { "megadrive",    "Sega Mega Drive",
-      "MD",           "genesisplusgx",
+      "md|gen|smd|bin",    kCoresGenesisGx },
+
+    { "megadrive",    "Sega Mega Drive",              "MD",
       "Sega - Mega Drive - Genesis",
-      "md|gen|smd|bin" },
-    { "mastersystem", "Sega Master System",
-      "SMS",          "genesisplusgx",
+      "md|gen|smd|bin",    kCoresGenesisGx },
+
+    { "mastersystem", "Sega Master System",           "SMS",
       "Sega - Master System - Mark III",
-      "sms" },
-    { "gamegear",     "Game Gear",
-      "GG",           "genesisplusgx",
+      "sms",               kCoresGenesisGx },
+
+    { "gamegear",     "Game Gear",                    "GG",
       "Sega - Game Gear",
-      "gg" },
-    { "saturn",       "Sega Saturn",
-      "SAT",          "yabasanshiro",
+      "gg",                kCoresGenesisGx },
+
+    { "saturn",       "Sega Saturn",                  "SAT",
       "Sega - Saturn",
-      "cue|chd|iso" },
-    { "dc",           "Dreamcast",
-      "DC",           "flycast",
+      "cue|chd|iso",       kCoresYabaSan },
+
+    { "dc",           "Dreamcast",                    "DC",
       "Sega - Dreamcast",
-      "cdi|chd|gdi|m3u" },
-    { "psx",          "PlayStation",
-      "PSX",          "swanstation",
+      "cdi|chd|gdi|m3u",   kCoresFlycast },
+
+    { "psx",          "PlayStation",                  "PSX",
       "Sony - PlayStation",
-      "cue|chd|pbp|m3u" },
-    { "psp",          "PlayStation Portable",
-      "PSP",          "ppsspp",
+      "cue|chd|pbp|m3u",   kCoresSwanstation },
+
+    { "psp",          "PlayStation Portable",         "PSP",
       "Sony - PlayStation Portable",
-      "iso|cso|pbp" },
-    { "ngp",          "Neo Geo Pocket",
-      "NGP",          "race",
+      "iso|cso|pbp",       kCoresPpsspp },
+
+    { "ngp",          "Neo Geo Pocket",               "NGP",
       "SNK - Neo Geo Pocket",
-      "ngp" },
-    { "ngpc",         "Neo Geo Pocket Color",
-      "NGPC",         "race",
+      "ngp",               kCoresRace },
+
+    { "ngpc",         "Neo Geo Pocket Color",         "NGPC",
       "SNK - Neo Geo Pocket Color",
-      "ngc" },
+      "ngc",               kCoresRace },
 };
 
 bool iequal(std::string_view a, std::string_view b) {
@@ -111,9 +122,23 @@ const SystemDef* find_system_by_folder(std::string_view folder) {
     return nullptr;
 }
 
-const SystemDef* find_system_by_core(std::string_view core) {
+CoreLookup find_core(std::string_view core_name) {
     for (const auto& s : kSystems) {
-        if (iequal(s.core_name, core)) return &s;
+        for (const auto& c : s.cores) {
+            if (iequal(c.name, core_name)) return { &s, &c };
+        }
+    }
+    return { nullptr, nullptr };
+}
+
+const CoreDef* default_core(const SystemDef& sys) {
+    if (sys.cores.empty()) return nullptr;
+    return &sys.cores.front();
+}
+
+const CoreDef* find_core_in_system(const SystemDef& sys, std::string_view name) {
+    for (const auto& c : sys.cores) {
+        if (iequal(c.name, name)) return &c;
     }
     return nullptr;
 }

@@ -1,6 +1,8 @@
 #pragma once
 
 #include <string>
+#include <string_view>
+#include <vector>
 
 namespace foyer::library {
 
@@ -11,16 +13,23 @@ struct Config {
 
     Scraper      preferred_scraper = Scraper::Libretro;
     std::string  rom_root          = "/foyer/roms";
+
+    // Per-system core override. Stored flat to keep the header light; the
+    // list is short (≤20 systems) so linear lookup is fine.
+    struct PerSystemCore { std::string folder; std::string core; };
+    std::vector<PerSystemCore> default_core_per_system;
+
+    // Returns the user-set default core name for a system folder, or
+    // nullptr if none is configured.
+    const char* default_core_for(std::string_view folder) const;
 };
 
 const Config& config();
 void          reload_config();
-
-// Persist the current Config back to disk. Called by Settings UI when the
-// user changes a value.
 void          save_config();
 
-// Mutators (used by the settings UI; persists immediately).
 void          set_preferred_scraper(Config::Scraper s);
+void          set_default_core_for(std::string_view folder,
+                                   std::string_view core_name);
 
 } // namespace foyer::library

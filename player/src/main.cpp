@@ -17,6 +17,7 @@
 
 #include "platform/app.hpp"
 #include "platform/log.hpp"
+#include "library/system_db.hpp"
 #include "libretro/frontend.hpp"
 #include "libretro/video.hpp"
 #include "libretro/audio.hpp"
@@ -57,8 +58,6 @@ bool ends_with_lower(const char* name, const char* suffix) {
 // extension the core accepts. Lets the user double-click the player nro
 // from hbmenu and have it auto-pick a rom, no argv plumbing required.
 std::string find_default_rom(const std::string& valid_extensions) {
-    // Map FOYER_CORE → conventional system dir.
-    const char* sys_dir = nullptr;
 #if defined(FOYER_CORE_NAME)
 #  define FOYER_STR2(x) #x
 #  define FOYER_STR(x)  FOYER_STR2(x)
@@ -68,20 +67,15 @@ std::string find_default_rom(const std::string& valid_extensions) {
 #else
     const char* core_name = "fceumm";
 #endif
-    if (!std::strcmp(core_name, "fceumm"))           sys_dir = "/foyer/roms/nes";
-    else if (!std::strcmp(core_name, "snes9x"))      sys_dir = "/foyer/roms/snes";
-    else if (!std::strcmp(core_name, "gambatte"))    sys_dir = "/foyer/roms/gb";
-    else if (!std::strcmp(core_name, "mgba"))        sys_dir = "/foyer/roms/gba";
-    else if (!std::strcmp(core_name, "genesisplusgx"))   sys_dir = "/foyer/roms/genesis";
-    else if (!std::strcmp(core_name, "mupen64plus")) sys_dir = "/foyer/roms/n64";
-    else if (!std::strcmp(core_name, "swanstation")) sys_dir = "/foyer/roms/psx";
-    else if (!std::strcmp(core_name, "ppsspp"))      sys_dir = "/foyer/roms/psp";
-    else if (!std::strcmp(core_name, "flycast"))     sys_dir = "/foyer/roms/dc";
-    else if (!std::strcmp(core_name, "dolphin"))     sys_dir = "/foyer/roms/gc";
-    else if (!std::strcmp(core_name, "yabasanshiro"))sys_dir = "/foyer/roms/saturn";
-    else                                             sys_dir = "/foyer/roms";
 
-    auto* dir = ::opendir(sys_dir);
+    // Look up the owning system for this core via the shared system db.
+    std::string sys_dir = "/foyer/roms";
+    if (auto lookup = foyer::library::find_core(core_name); lookup.sys) {
+        sys_dir = std::string{"/foyer/roms/"}
+                + std::string{lookup.sys->folder_name};
+    }
+
+    auto* dir = ::opendir(sys_dir.c_str());
     if (!dir) return {};
 
     std::string picked;
@@ -107,7 +101,7 @@ std::string find_default_rom(const std::string& valid_extensions) {
         }
         if (!ok) continue;
 
-        picked = std::string{sys_dir} + "/" + e->d_name;
+        picked = sys_dir + "/" + e->d_name;
         break;
     }
     ::closedir(dir);

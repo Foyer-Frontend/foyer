@@ -69,8 +69,17 @@ void write_locked() {
     }
     out << "// foyer browser preferences.\n";
     out << "{\n";
-    out << "    \"preferred_scraper\": \"" << scraper_to_str(g_config.preferred_scraper) << "\",\n";
-    out << "    \"rom_root\":          \"" << g_config.rom_root << "\"\n";
+    out << "    \"preferred_scraper\": \""
+        << scraper_to_str(g_config.preferred_scraper) << "\",\n";
+    out << "    \"rom_root\":          \"" << g_config.rom_root << "\",\n";
+    out << "    \"default_core_per_system\": {";
+    bool first = true;
+    for (const auto& [folder, core] : g_config.default_core_per_system) {
+        if (!first) out << ",";
+        first = false;
+        out << "\n        \"" << folder << "\": \"" << core << "\"";
+    }
+    out << (g_config.default_core_per_system.empty() ? "}\n" : "\n    }\n");
     out << "}\n";
     foyer::log::write("[config] saved %s\n", kPath);
 }
@@ -101,11 +110,22 @@ void load_locked() {
         v && yyjson_is_str(v)) {
         g_config.rom_root = yyjson_get_str(v);
     }
+    if (auto* obj = yyjson_obj_get(root, "default_core_per_system");
+        obj && yyjson_is_obj(obj)) {
+        std::size_t i, max; yyjson_val *k, *v;
+        yyjson_obj_foreach(obj, i, max, k, v) {
+            if (yyjson_is_str(k) && yyjson_is_str(v)) {
+                g_config.default_core_per_system.push_back(
+                    { yyjson_get_str(k), yyjson_get_str(v) });
+            }
+        }
+    }
     yyjson_doc_free(doc);
 
-    foyer::log::write("[config] preferred_scraper=%s rom_root=%s\n",
+    foyer::log::write("[config] preferred_scraper=%s rom_root=%s overrides=%zu\n",
         scraper_to_str(g_config.preferred_scraper),
-        g_config.rom_root.c_str());
+        g_config.rom_root.c_str(),
+        g_config.default_core_per_system.size());
 }
 
 } // namespace
@@ -136,6 +156,34 @@ void set_preferred_scraper(Config::Scraper s) {
     std::scoped_lock lk{g_mutex};
     g_config.preferred_scraper = s;
     write_locked();
+}
+
+void set_default_core_for(std::string_view folder, std::string_view core_name) {
+    std::scoped_lock lk{g_mutex};
+    for (auto& e : g_config.default_core_per_system) {
+        if (e.folder == folder) {
+            if (core_name.empty()) {
+                e = g_config.default_core_per_system.back();
+                g_config.default_core_per_system.pop_back();
+            } else {
+                e.core = std::string{core_name};
+            }
+            write_locked();
+            return;
+        }
+    }
+    if (!core_name.empty()) {
+        g_config.default_core_per_system.push_back(
+            { std::string{folder}, std::string{core_name} });
+        write_locked();
+    }
+}
+
+const char* Config::default_core_for(std::string_view folder) const {
+    for (const auto& e : default_core_per_system) {
+        if (e.folder == folder) return e.core.c_str();
+    }
+    return nullptr;
 }
 
 } // namespace foyer::library

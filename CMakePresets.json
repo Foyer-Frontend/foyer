@@ -42,6 +42,17 @@
                 "BUILD_PLAYER":  "ON",
                 "FOYER_CORE":    "fceumm"
             }
+        },
+        {
+            "name": "Players-All",
+            "displayName": "Players (every recipe'd core)",
+            "inherits": ["core"],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "MinSizeRel",
+                "BUILD_BROWSER": "OFF",
+                "BUILD_PLAYER":  "ON",
+                "FOYER_CORES":   "fceumm"
+            }
         }
     ],
     "buildPresets": [
@@ -56,6 +67,10 @@
         {
             "name": "Player-fceumm",
             "configurePreset": "Player-fceumm"
+        },
+        {
+            "name": "Players-All",
+            "configurePreset": "Players-All"
         }
     ]
 }

@@ -1,6 +1,7 @@
 #include "launch.hpp"
 #include "library/scanner.hpp"
 #include "library/system_db.hpp"
+#include "library/per_game.hpp"
 #include "platform/log.hpp"
 
 #include <cstdio>
@@ -47,10 +48,17 @@ std::string browser_self_path() {
 bool launch_game(const library::System& sys, const library::Game& game) {
     if (!sys.def) return false;
 
+    const auto* core = library::resolve_core(*sys.def, game.path);
+    if (!core) {
+        foyer::log::write("[launch] no core mapped for system %.*s\n",
+            (int)sys.def->folder_name.size(), sys.def->folder_name.data());
+        return false;
+    }
+
     char nro_path[256];
     std::snprintf(nro_path, sizeof(nro_path),
         "/foyer/cores/foyer-%.*s.nro",
-        (int)sys.def->core_name.size(), sys.def->core_name.data());
+        (int)core->name.size(), core->name.data());
 
     struct stat st{};
     if (::stat(nro_path, &st) != 0) {

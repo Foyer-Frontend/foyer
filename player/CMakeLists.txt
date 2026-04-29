@@ -1,10 +1,16 @@
 # foyer-<core>.nro — per-system player binary.
 #
-# Selected at configure time via FOYER_CORE=<name>. Each invocation produces a
-# single nro that bundles foyer's libretro frontend + that one core's static
-# library. The browser nro launches us via envSetNextLoad() with the rom path
-# as argv[1]; on exit hbloader chains back to the browser (which is installed
-# as /hbmenu.nro).
+# This subdir can be add_subdirectory()'d once per core in a single configure.
+# Top-level CMakeLists.txt is responsible for setting FOYER_CORE before each
+# include and giving us a unique binary_dir (so artifacts don't collide). All
+# targets we declare are suffixed with _${FOYER_CORE} for the same reason.
+#
+# rcheevos is built once at top-level (it's the same library across cores) and
+# linked in here.
+
+if (NOT FOYER_CORE)
+    message(FATAL_ERROR "player/ included without FOYER_CORE set")
+endif()
 
 include(${CMAKE_SOURCE_DIR}/cmake/core_recipe.cmake)
 
@@ -15,13 +21,14 @@ if (NOT EXISTS ${_core_file})
 endif()
 include(${_core_file})
 
-# RetroAchievements client (shared by every player nro).
-include(${CMAKE_SOURCE_DIR}/cores/rcheevos.cmake)
+set(_frontend foyer_libretro_frontend_${FOYER_CORE})
+set(_player   foyer_player_${FOYER_CORE})
+set(_romfs    foyer_player_romfs_${FOYER_CORE})
 
 # foyer's libretro frontend lives in shared/ but only wires up here when the
 # player target needs it. We compile it as a small static lib alongside the
 # core so identical code is reused across player builds.
-add_library(foyer_libretro_frontend STATIC
+add_library(${_frontend} STATIC
     ${CMAKE_SOURCE_DIR}/shared/libretro/frontend.cpp
     ${CMAKE_SOURCE_DIR}/shared/libretro/video.cpp
     ${CMAKE_SOURCE_DIR}/shared/libretro/audio.cpp
@@ -30,50 +37,50 @@ add_library(foyer_libretro_frontend STATIC
     ${CMAKE_SOURCE_DIR}/shared/libretro/overlay.cpp
     ${CMAKE_SOURCE_DIR}/shared/libretro/cheevos.cpp
 )
-target_include_directories(foyer_libretro_frontend PUBLIC
+target_include_directories(${_frontend} PUBLIC
     ${CMAKE_SOURCE_DIR}/shared/libretro
     ${CMAKE_SOURCE_DIR}/shared
 )
-target_link_libraries(foyer_libretro_frontend PUBLIC
+target_link_libraries(${_frontend} PUBLIC
     foyer_shared
     core_${FOYER_CORE}
     rcheevos
 )
-set_target_properties(foyer_libretro_frontend PROPERTIES
+set_target_properties(${_frontend} PROPERTIES
     CXX_STANDARD 26)
 
 # Player executable.
-add_executable(foyer_player
+add_executable(${_player}
     src/main.cpp
 )
-target_link_libraries(foyer_player PRIVATE
-    foyer_libretro_frontend
+target_link_libraries(${_player} PRIVATE
+    ${_frontend}
 )
-target_compile_definitions(foyer_player PRIVATE
+target_compile_definitions(${_player} PRIVATE
     FOYER_CORE_NAME=${FOYER_CORE})
-set_target_properties(foyer_player PROPERTIES
+set_target_properties(${_player} PROPERTIES
     OUTPUT_NAME foyer-${FOYER_CORE}
     CXX_STANDARD 26)
 
-target_compile_options(foyer_player PRIVATE
+target_compile_options(${_player} PRIVATE
     --embed-dir=${FOYER_EMBED_DIR})
 
 file(COPY ${CMAKE_SOURCE_DIR}/assets/romfs DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-dkp_add_asset_target(foyer_player_romfs ${CMAKE_CURRENT_BINARY_DIR}/romfs)
-dkp_install_assets(foyer_player_romfs
+dkp_add_asset_target(${_romfs} ${CMAKE_CURRENT_BINARY_DIR}/romfs)
+dkp_install_assets(${_romfs}
     DESTINATION shaders
     TARGETS fill_aa_fsh fill_fsh fill_vsh)
 
 nx_generate_nacp(
-    OUTPUT  foyer_player.nacp
+    OUTPUT  ${_player}.nacp
     NAME    foyer-${FOYER_CORE}
     AUTHOR  foyer
     VERSION ${PROJECT_VERSION})
 
-nx_create_nro(foyer_player
+nx_create_nro(${_player}
     OUTPUT ${CMAKE_BINARY_DIR}/foyer-${FOYER_CORE}.nro
     ICON   ${CMAKE_SOURCE_DIR}/assets/icon.jpg
-    NACP   foyer_player.nacp
-    ROMFS  foyer_player_romfs)
+    NACP   ${_player}.nacp
+    ROMFS  ${_romfs})
 
 message(STATUS "player nro -> ${CMAKE_BINARY_DIR}/foyer-${FOYER_CORE}.nro")

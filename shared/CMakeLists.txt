@@ -14,6 +14,7 @@ add_library(foyer_shared STATIC
     library/system_db.cpp
     library/scanner.cpp
     library/config.cpp
+    library/per_game.cpp
     net/http.cpp
     scrapers/cache.cpp
     scrapers/accounts.cpp
