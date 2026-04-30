@@ -113,9 +113,11 @@ CoverCache& system_splash_cache() {
 }
 
 // Resolve the per-system splash image. Tries (in order):
-//   1. <pack_dir>/systems/<folder>/splash.jpg  — when a theme pack is active
-//   2. /foyer/assets/systems/<folder>.jpg      — SD override
-//   3. romfs:/systems/<folder>.jpg             — bundled placeholder
+//   1. <pack_dir>/systems/<folder>/splash.png  — when a theme pack is active
+//   2. /foyer/assets/systems/<folder>-splash.png — SD override
+//   3. /foyer/assets/systems/<folder>.jpg        — legacy SD JPG
+//   4. romfs:/systems/<folder>-splash.png        — bundled artwork
+// PNG used so the parallelogram alpha in the bundled art is preserved.
 std::string system_splash_path(std::string_view folder) {
     auto exists = [](const std::string& p) {
         struct stat st{};
@@ -125,15 +127,20 @@ std::string system_splash_path(std::string_view folder) {
     };
     const auto& th = theme();
     if (!th.pack_dir.empty()) {
-        std::string p = th.pack_dir + "/systems/" + std::string{folder} + "/splash.jpg";
+        std::string p = th.pack_dir + "/systems/" + std::string{folder} + "/splash.png";
+        if (exists(p)) return p;
+        p = th.pack_dir + "/systems/" + std::string{folder} + "/splash.jpg";
         if (exists(p)) return p;
     }
-    char sd[256];
-    std::snprintf(sd, sizeof(sd), "/foyer/assets/systems/%.*s.jpg",
+    char sd_png[256], sd_jpg[256];
+    std::snprintf(sd_png, sizeof(sd_png), "/foyer/assets/systems/%.*s-splash.png",
         (int)folder.size(), folder.data());
-    if (exists(sd)) return sd;
+    if (exists(sd_png)) return sd_png;
+    std::snprintf(sd_jpg, sizeof(sd_jpg), "/foyer/assets/systems/%.*s.jpg",
+        (int)folder.size(), folder.data());
+    if (exists(sd_jpg)) return sd_jpg;
     char rf[256];
-    std::snprintf(rf, sizeof(rf), "romfs:/systems/%.*s.jpg",
+    std::snprintf(rf, sizeof(rf), "romfs:/systems/%.*s-splash.png",
         (int)folder.size(), folder.data());
     return rf;
 }
