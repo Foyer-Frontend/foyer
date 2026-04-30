@@ -339,11 +339,13 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
     // Tile metrics. Selected tile sits in the centre at full size; up to two
     // neighbours each side render smaller and fade out.
     // Portrait tiles matching the strip artwork aspect (~454x1080 ≈ 0.42).
-    // All tiles render at the same size, edge-to-edge (no scale variation),
-    // matching the ES-DE Art Book Next look.
+    // All tiles render at the same size; a negative gap pulls adjacent
+    // tiles into overlap so the slanted parallelogram edges interlock and
+    // the carousel reads as one continuous slanted strip — matches the
+    // ES-DE Art Book Next layout.
     constexpr float kTileW = 240.0f;
     constexpr float kTileH = 560.0f;
-    constexpr float kGap   = 0.0f;
+    constexpr float kGap   = -36.0f;
 
     const auto idx_centre = (int)s.system_index;
     const auto count      = (int)lib.systems.size();
