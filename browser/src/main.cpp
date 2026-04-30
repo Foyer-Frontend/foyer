@@ -45,15 +45,13 @@ int main(int /*argc*/, char** /*argv*/) {
         const auto held = padGetButtons(&app.pad());
         const auto down = padGetButtonsDown(&app.pad());
 
-        // Global exit — only when at the home view (so System view's B can
-        // walk back without quitting the app).
-        if ((down & HidNpadButton_Plus)
-            && state.view == foyer::browser::View::Home) {
+        foyer::browser::update(state, lib, held, down);
+
+        if (state.request_quit) {
+            foyer::browser::mtp_stop();
             app.quit();
             continue;
         }
-
-        foyer::browser::update(state, lib, held, down);
 
         if (state.request_rescan) {
             state.request_rescan = false;

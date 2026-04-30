@@ -38,6 +38,14 @@ struct State {
     int  settings_row      = 0;
     bool settings_in_content = false;
 
+    // Tico-style modal popup launched with `+`. Shadows the underlying view
+    // until B cancels or A picks an entry.
+    bool popup_open  = false;
+    int  popup_index = 0;
+
+    // Set by the popup "Exit" item; main.cpp drains it and quits the app.
+    bool request_quit = false;
+
     // Set by Update; read by the main loop to drive launches.
     bool        request_launch = false;
 

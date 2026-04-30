@@ -444,6 +444,67 @@ void draw_system(NVGcontext* vg, float w, float h, const State& s, const Library
     nvgRestore(vg);
 }
 
+// ---- TICO-STYLE PLUS MENU ------------------------------------------------
+
+// The popup floats above whatever view is underneath. Items vary by context.
+struct PopupItem { const char* label; int op; };
+enum PopupOp {
+    PopRescan = 1,
+    PopSettings,
+    PopExit,
+    PopBack,
+};
+
+std::vector<PopupItem> popup_items_for(View v) {
+    switch (v) {
+        case View::Home:
+            return { {"Rescan Games", PopRescan},
+                     {"Settings",     PopSettings},
+                     {"Exit",         PopExit} };
+        case View::System:
+            return { {"Rescan Games", PopRescan},
+                     {"Settings",     PopSettings},
+                     {"Back",         PopBack} };
+        default:
+            return { {"Rescan Games", PopRescan},
+                     {"Settings",     PopSettings},
+                     {"Back",         PopBack} };
+    }
+}
+
+void draw_popup(NVGcontext* vg, float w, float h, const State& s) {
+    if (!s.popup_open) return;
+    const auto& th = theme();
+
+    // Dim everything underneath.
+    nvgBeginPath(vg);
+    nvgRect(vg, 0, 0, w, h);
+    nvgFillColor(vg, nvgRGBAf(0, 0, 0, 0.45f));
+    nvgFill(vg);
+
+    const auto items = popup_items_for(s.view);
+    constexpr float kRow   = 64.0f;
+    constexpr float kCardW = 400.0f;
+    const     float kCardH = 18.0f * 2 + items.size() * kRow;
+    const     float cx = (w - kCardW) * 0.5f;
+    const     float cy = (h - kCardH) * 0.5f;
+
+    rrect(vg, cx, cy, kCardW, kCardH, 14.0f, th.bg_panel);
+    rrect_outline(vg, cx, cy, kCardW, kCardH, 14.0f, th.border, 1.0f);
+
+    nvgFontSize(vg, th.body_size);
+    for (std::size_t i = 0; i < items.size(); i++) {
+        const float ry = cy + 18 + i * kRow;
+        const bool sel = ((int)i == s.popup_index);
+        if (sel) {
+            rrect(vg, cx + 12, ry, kCardW - 24, kRow - 8, 10.0f, th.bg_panel_hi);
+        }
+        nvgFillColor(vg, sel ? th.text_strong : th.text);
+        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+        nvgText(vg, cx + 32, ry + (kRow - 8) * 0.5f, items[i].label, nullptr);
+    }
+}
+
 // ---- SETTINGS VIEW (Tico-style sidebar + content) ------------------------
 
 namespace settings {
@@ -943,6 +1004,42 @@ void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Li
 
 void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down) {
     if (s.banner_ttl > 0) s.banner_ttl--;
+
+    // Modal popup intercepts all input while open.
+    if (s.popup_open) {
+        const auto items = popup_items_for(s.view);
+        const int n = (int)items.size();
+        if (down & HidNpadButton_Down) s.popup_index = (s.popup_index + 1) % n;
+        if (down & HidNpadButton_Up)   s.popup_index = (s.popup_index - 1 + n) % n;
+        if (down & HidNpadButton_B)    { s.popup_open = false; return; }
+        if (down & HidNpadButton_Plus) { s.popup_open = false; return; }
+        if (down & HidNpadButton_A) {
+            const int op = items[s.popup_index].op;
+            s.popup_open = false;
+            switch (op) {
+                case PopRescan:
+                    s.request_rescan = true;
+                    s.banner_text = "Rescanning library...";
+                    s.banner_ttl  = 180;
+                    break;
+                case PopSettings:
+                    s.view = View::Settings;
+                    s.settings_category = 0;
+                    s.settings_row = 0;
+                    s.settings_in_content = false;
+                    break;
+                case PopExit:
+                    s.request_quit = true;
+                    break;
+                case PopBack:
+                    if (s.view == View::System || s.view == View::GameDetail)
+                        s.view = (s.view == View::GameDetail) ? View::System : View::Home;
+                    break;
+            }
+        }
+        return;
+    }
+
     if (lib.systems.empty()) return;
 
     if (s.view == View::Home) {
@@ -955,6 +1052,11 @@ void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down
         if (down & HidNpadButton_A) {
             s.view = View::System;
             s.game_index = 0;
+        }
+        if (down & HidNpadButton_Plus) {
+            s.popup_open  = true;
+            s.popup_index = 0;
+            return;
         }
         if (down & HidNpadButton_Minus) {
             s.view = View::Settings;
@@ -978,6 +1080,11 @@ void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down
 
         if (down & HidNpadButton_B) {
             s.view = View::Home;
+        }
+        if (down & HidNpadButton_Plus) {
+            s.popup_open  = true;
+            s.popup_index = 0;
+            return;
         }
         if ((down & HidNpadButton_A) && !sys.games.empty()) {
             s.request_launch = true;
@@ -1190,7 +1297,7 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
     switch (s.view) {
         case View::Home:
             hint = std::string{DPad} + " pick   "
-                 + A + " enter   " + Minus + " settings   " + Plus + " exit";
+                 + A + " enter   " + Minus + " settings   " + Plus + " menu";
             break;
         case View::System: {
             if (!lib.systems.empty()) {
@@ -1244,6 +1351,9 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
 
     draw_topbar   (vg, w,    title.c_str(), clock.c_str());
     draw_bottombar(vg, w, h, hint.c_str());
+
+    // Modal popup floats over everything, including bars.
+    draw_popup(vg, w, h, s);
 
     // Banner (e.g., "Scraping NES…  3 / 24"). Drawn last so nothing covers it.
     if (s.banner_ttl > 0 && !s.banner_text.empty()) {
