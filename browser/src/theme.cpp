@@ -196,6 +196,11 @@ std::vector<std::string> list_themes() {
         out.push_back(std::move(n));
     };
 
+    auto file_exists = [](const char* path) {
+        std::ifstream f{path};
+        return (bool)f;
+    };
+
     // 1. Theme packs: each subdir of /foyer/themes/ that contains theme.jsonc.
     if (auto* dir = ::opendir(kThemePacksDir)) {
         while (auto* e = ::readdir(dir)) {
@@ -203,16 +208,13 @@ std::vector<std::string> list_themes() {
             char probe[256];
             std::snprintf(probe, sizeof(probe), "%s/%s/theme.jsonc",
                 kThemePacksDir, e->d_name);
-            std::ifstream test{probe};
-            if (test) add(std::string{e->d_name});
+            if (file_exists(probe)) add(std::string{e->d_name});
         }
         ::closedir(dir);
     }
 
-    // 2. Single-file SD overrides + 3. bundled romfs themes.
-    auto pull_files = [&](const char* dir_path) {
-        auto* dir = ::opendir(dir_path);
-        if (!dir) return;
+    // 2. Single-file SD overrides via opendir.
+    if (auto* dir = ::opendir(kThemesDir)) {
         while (auto* e = ::readdir(dir)) {
             if (!e->d_name[0] || e->d_name[0] == '.') continue;
             std::string n{e->d_name};
@@ -222,9 +224,20 @@ std::vector<std::string> list_themes() {
             add(std::move(n));
         }
         ::closedir(dir);
+    }
+
+    // 3. Bundled romfs themes — opendir() on libnx's romfs device is
+    // unreliable, so probe a hardcoded list with fopen instead. Names must
+    // stay in lockstep with assets/romfs/themes/*.jsonc.
+    static constexpr const char* kBundledNames[] = {
+        "dark", "light", "midnight", "forest", "snow",
     };
-    pull_files(kThemesDir);
-    pull_files(kBundledThemesDir);
+    for (const char* n : kBundledNames) {
+        char probe[128];
+        std::snprintf(probe, sizeof(probe), "%s/%s.jsonc",
+            kBundledThemesDir, n);
+        if (file_exists(probe)) add(std::string{n});
+    }
 
     std::sort(out.begin() + 1, out.end());
     return out;
