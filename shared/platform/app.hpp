@@ -53,6 +53,22 @@ struct App {
     // input layer mirror state without polling twice.
     PadState& pad() { return m_pad; }
 
+    // Touch screen state for the just-completed frame. UI code reads this
+    // and dispatches taps to its hit-tested elements. `points[i]` is valid
+    // for i < count; positions are in framebuffer pixels.
+    struct Touch {
+        int  count = 0;
+        struct Point {
+            float x = 0;
+            float y = 0;
+            int   id = -1;
+        };
+        Point points[4]{};
+        // True on the FRAME a new finger first touched the screen.
+        bool tap_started = false;
+    };
+    const Touch& touch() const { return m_touch; }
+
     // Accessors used by UI code.
     NVGcontext* vg()         const { return m_vg; }
     int         width()      const { return m_fb_w; }
@@ -82,6 +98,8 @@ private:
     NVGcontext*     m_vg               = nullptr;
 
     PadState        m_pad{};
+    Touch           m_touch{};
+    int             m_prev_touch_count = 0;
 
     int             m_fb_w   = kLogicalW;
     int             m_fb_h   = kLogicalH;

@@ -1,6 +1,7 @@
 #include "app.hpp"
 #include "log.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <new>
@@ -249,6 +250,10 @@ void App::exit_gfx() {
 void App::init_input() {
     padConfigureInput(1, HidNpadStyleSet_NpadStandard);
     padInitializeAny(&m_pad);
+
+    // Touch: enable the screen so hidGetTouchScreenStates returns finger
+    // positions every frame.
+    hidInitializeTouchScreen();
 }
 
 bool App::tick() {
@@ -259,6 +264,26 @@ bool App::tick() {
     // No default quit gesture here — the caller decides when to call quit().
     // The browser binds + to exit; the player passes + through to the core
     // as the START button and uses a different combo (Phase 4 pause overlay).
+
+    // Pull touch state. hidGetTouchScreenStates returns positions in the
+    // 1280x720 handheld panel space; we just forward them as-is so views
+    // can map them against framebuffer pixels.
+    HidTouchScreenState ts{};
+    if (hidGetTouchScreenStates(&ts, 1) > 0) {
+        m_touch.count = (int)std::min<u32>(ts.count, 4);
+        for (int i = 0; i < m_touch.count; i++) {
+            m_touch.points[i].x  = (float)ts.touches[i].x;
+            m_touch.points[i].y  = (float)ts.touches[i].y;
+            m_touch.points[i].id = (int)ts.touches[i].finger_id;
+        }
+        m_touch.tap_started =
+            (m_prev_touch_count == 0 && m_touch.count > 0);
+        m_prev_touch_count = m_touch.count;
+    } else {
+        m_touch.count = 0;
+        m_touch.tap_started = false;
+        m_prev_touch_count = 0;
+    }
 
     auto& gfx = gfx_of(m_renderer_storage);
 

@@ -1429,7 +1429,7 @@ void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down
 
     // Quit confirmation modal intercepts everything while open.
     if (s.quit_confirm_open) {
-        if (down & (HidNpadButton_Left | HidNpadButton_Right)) {
+        if (down & (HidNpadButton_AnyLeft | HidNpadButton_AnyRight)) {
             s.quit_confirm_index = 1 - s.quit_confirm_index;
         }
         if (down & HidNpadButton_B) {
@@ -1448,8 +1448,8 @@ void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down
     if (s.popup_open) {
         const auto items = popup_items_for(s.view);
         const int n = (int)items.size();
-        if (down & HidNpadButton_Down) s.popup_index = (s.popup_index + 1) % n;
-        if (down & HidNpadButton_Up)   s.popup_index = (s.popup_index - 1 + n) % n;
+        if (down & HidNpadButton_AnyDown) s.popup_index = (s.popup_index + 1) % n;
+        if (down & HidNpadButton_AnyUp)   s.popup_index = (s.popup_index - 1 + n) % n;
         if (down & HidNpadButton_B)    { s.popup_open = false; return; }
         if (down & HidNpadButton_Plus) { s.popup_open = false; return; }
         if (down & HidNpadButton_A) {
@@ -1483,9 +1483,9 @@ void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down
 
     if (s.view == View::Home) {
         const auto n = lib.systems.size();
-        if (down & HidNpadButton_Right) {
+        if (down & HidNpadButton_AnyRight) {
             s.system_index = (s.system_index + 1) % n;
-        } else if (down & HidNpadButton_Left) {
+        } else if (down & HidNpadButton_AnyLeft) {
             s.system_index = (s.system_index + n - 1) % n;
         }
 
@@ -1512,9 +1512,9 @@ void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down
     } else if (s.view == View::System) {
         const auto& sys = lib.systems[s.system_index];
         if (!sys.games.empty()) {
-            if (down & HidNpadButton_Down) {
+            if (down & HidNpadButton_AnyDown) {
                 if (s.game_index + 1 < sys.games.size()) s.game_index++;
-            } else if (down & HidNpadButton_Up) {
+            } else if (down & HidNpadButton_AnyUp) {
                 if (s.game_index > 0) s.game_index--;
             } else if (down & HidNpadButton_AnyRight) {
                 s.game_index = std::min(s.game_index + 10, sys.games.size() - 1);
@@ -1585,9 +1585,9 @@ void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down
                                                                 : s.detail_core_index - 1)
                                    : s.detail_core_index;
 
-        if (down & HidNpadButton_Down) {
+        if (down & HidNpadButton_AnyDown) {
             if (s.detail_core_index + 1 < row_count) s.detail_core_index++;
-        } else if (down & HidNpadButton_Up) {
+        } else if (down & HidNpadButton_AnyUp) {
             if (s.detail_core_index > 0) s.detail_core_index--;
         }
 
@@ -1627,15 +1627,15 @@ void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down
                 s.view = View::Home;
                 return;
             }
-            if (down & HidNpadButton_Down) {
+            if (down & HidNpadButton_AnyDown) {
                 s.settings_category = (s.settings_category + 1) % (int)Category::Count_;
                 s.settings_row = 0;
-            } else if (down & HidNpadButton_Up) {
+            } else if (down & HidNpadButton_AnyUp) {
                 s.settings_category = (s.settings_category - 1 + (int)Category::Count_)
                                     % (int)Category::Count_;
                 s.settings_row = 0;
             }
-            if ((down & (HidNpadButton_A | HidNpadButton_Right)) && row_count > 0) {
+            if ((down & (HidNpadButton_A | HidNpadButton_AnyRight)) && row_count > 0) {
                 s.settings_in_content = true;
                 s.settings_row = 0;
             }
@@ -1645,9 +1645,9 @@ void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down
                 s.settings_in_content = false;
                 return;
             }
-            if (down & HidNpadButton_Down && row_count > 0) {
+            if (down & HidNpadButton_AnyDown && row_count > 0) {
                 s.settings_row = (s.settings_row + 1) % row_count;
-            } else if (down & HidNpadButton_Up && row_count > 0) {
+            } else if (down & HidNpadButton_AnyUp && row_count > 0) {
                 s.settings_row = (s.settings_row - 1 + row_count) % row_count;
             }
 
@@ -1656,8 +1656,8 @@ void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down
 
             // Cycle handling: Left/Right rotate the current value.
             if (it.kind == settings::ItemKind::Cycle &&
-                (down & (HidNpadButton_Left | HidNpadButton_Right))) {
-                const int delta = (down & HidNpadButton_Right) ? +1 : -1;
+                (down & (HidNpadButton_AnyLeft | HidNpadButton_AnyRight))) {
+                const int delta = (down & HidNpadButton_AnyRight) ? +1 : -1;
                 if (it.payload == settings::OpScraper) {
                     int n = ((int)library::config().preferred_scraper + delta + 3) % 3;
                     library::set_preferred_scraper((library::Config::Scraper)n);

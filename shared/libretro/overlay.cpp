@@ -9,7 +9,10 @@
 namespace foyer::libretro {
 namespace {
 
-constexpr std::uint64_t kCombo = HidNpadButton_Minus | HidNpadButton_Plus;
+// L3 + R3 — pressing both sticks at once. Minus/Plus collide with libretro
+// cores that use them for in-game menu / pause, so we moved to a combo no
+// emulated console actually exposes.
+constexpr std::uint64_t kCombo = HidNpadButton_StickL | HidNpadButton_StickR;
 
 constexpr const char* kMainItems[] = {
     "Save State",
