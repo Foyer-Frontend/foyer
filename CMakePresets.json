@@ -185,6 +185,17 @@
                 "BUILD_PLAYER":  "ON",
                 "FOYER_CORE":    "pcsx_rearmed"
             }
+        },
+        {
+            "name": "Player-handy",
+            "displayName": "Player (handy/Atari Lynx)",
+            "inherits": ["core"],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "MinSizeRel",
+                "BUILD_BROWSER": "OFF",
+                "BUILD_PLAYER":  "ON",
+                "FOYER_CORE":    "handy"
+            }
         }
     ],
     "buildPresets": [
@@ -251,6 +262,10 @@
         {
             "name": "Player-pcsx_rearmed",
             "configurePreset": "Player-pcsx_rearmed"
+        },
+        {
+            "name": "Player-handy",
+            "configurePreset": "Player-handy"
         }
     ]
 }
