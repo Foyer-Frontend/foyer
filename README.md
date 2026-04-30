@@ -6,17 +6,26 @@ player nros, with a browser nro for picking systems and games.
 
 Features delivered so far:
 
-- ES-DE-style browser: home carousel + per-system game list + metadata sidebar
+- ES-DE-style browser: home carousel + per-system game list + metadata sidebar,
+  faded game backdrops, console logo tiles, persistent topbar/bottombar with
+  button glyph hints, modal `+ Menu` popup (Rescan / Settings / Exit)
 - Per-system player binaries that boot the rom directly (`foyer-<core>.nro`)
 - Pause overlay (`− +` together): 10 timestamped save-state slots, load-state
-  picker, aspect ratio (4:3, 16:9, Core, Stretch, Integer 1×/2×/Auto), Quit
+  picker, aspect ratio (4:3, 16:9, Core, Stretch, Integer 1×/2×/Auto), per-core
+  libretro options menu (persists to `/foyer/config/cores/<core>.jsonc`), Quit
 - Audio (audrv stream at the core's sample rate)
+- "Continue" row on Game Detail auto-resumes the most recent save state
 - Box-art scrapers: libretro-thumbnails (free), ScreenScraper (auth),
   SteamGridDB (auth) — picked by the value in `general.jsonc`
 - RetroAchievements via [rcheevos](https://github.com/RetroAchievements/rcheevos)
   — login from `accounts.jsonc`, unlock toasts, server-side reporting
-- MTP server (libhaze, Phase 8) so the user can drop roms onto the SD without
-  unmounting
+- Tico-style two-column Settings (sidebar + content) with eight categories:
+  General, Display, Audio, Library, Emulator, Accounts, Updates, Experimental
+- Pluggable themes loaded from `/foyer/config/themes/<name>.jsonc`
+- libhaze MTP server scoped to `/foyer/roms` only — drop roms over USB without
+  exposing the rest of the SD card. Auto-start toggle in Experimental.
+- Multi-core architecture: per-game override + per-system default + system_db
+  ordering, all editable from the in-app Game Detail and Settings views
 
 ## Layout on SD
 
@@ -47,7 +56,7 @@ Features delivered so far:
 
 | Folder         | Display                       | Core           |
 |----------------|-------------------------------|----------------|
-| `nes`          | Nintendo Entertainment System | `fceumm`       |
+| `nes`          | Nintendo Entertainment System | `fceumm` (default) / `nestopia` |
 | `snes`         | Super Nintendo                | `snes9x`       |
 | `gb`           | Game Boy                      | `gambatte`     |
 | `gbc`          | Game Boy Color                | `gambatte`     |
@@ -61,7 +70,7 @@ Features delivered so far:
 | `gamegear`     | Sega Game Gear                | `genesisplusgx`|
 | `saturn`       | Sega Saturn                   | `yabasanshiro` |
 | `dc`           | Dreamcast                     | `flycast`      |
-| `psx`          | PlayStation                   | `swanstation`  |
+| `psx`          | PlayStation                   | `pcsx_rearmed` (default) / `swanstation` |
 | `psp`          | PlayStation Portable          | `ppsspp`       |
 | `ngp`          | Neo Geo Pocket                | `race`         |
 | `ngpc`         | Neo Geo Pocket Color          | `race`         |
@@ -75,24 +84,32 @@ first entry is the default. Resolution at launch:
    (`default_core_per_system: { "<folder>": "<name>" }`)
 3. The system's first declared core
 
-Phase 7 expands the player builds beyond `fceumm`. Each new core gets a
-`cores/<core>.cmake` recipe. Build a single core or every recipe'd core in one
-configure:
+Each core has a `cores/<name>.cmake` recipe. Build a single core or every
+recipe'd core in one configure:
 
 ```sh
-# Single core (legacy)
+# Single core
 cmake --preset Player-fceumm
 cmake --build --preset Player-fceumm
 
-# All recipe'd cores in one go (semicolon list, edit in CMakePresets.json)
+# All recipe'd cores in one go (currently 13)
 cmake --preset Players-All
 cmake --build --preset Players-All
 ```
 
+Cores currently recipe'd: `fceumm`, `nestopia`, `gambatte`, `snes9x`,
+`genesisplusgx`, `mgba`, `melonds`, `pcsx_rearmed`, `swanstation`,
+`yabasanshiro`, `race`, `mupen64plus`, `flycast`. PSP (`ppsspp`) and
+GameCube/Wii (`dolphin`) are not currently building — see
+`shared/library/system_db.cpp` for declared-but-not-recipe'd entries.
+
 ## Build
 
 Requires devkitPro with `switch-dev`, `switch-curl`, `switch-glm`,
-`switch-zlib`, `switch-mbedtls`, `deko3d`.
+`switch-zlib`, `switch-mbedtls`, `deko3d`, `switch-mesa`,
+`switch-libdrm_nouveau`, `switch-glad`, `switch-ffmpeg` (the last four are
+needed by the heavier cores — `mupen64plus`, `flycast`, eventually `ppsspp`
+and `dolphin`).
 
 ```sh
 export DEVKITPRO=/opt/devkitpro
