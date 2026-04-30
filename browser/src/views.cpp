@@ -20,6 +20,7 @@
 #include <fstream>
 #include <sys/stat.h>
 #include <unordered_map>
+#include <vector>
 
 namespace foyer::browser {
 namespace {
@@ -33,11 +34,37 @@ struct CoverCache {
         auto it = images.find(path);
         if (it != images.end()) return it->second;
 
-        const int img = nvgCreateImage(vg, path.c_str(), 0);
+        // Path-based nvgCreateImage uses stb's fopen, which returns 0 for
+        // libnx romfs files. Read the bytes ourselves and feed them through
+        // nvgCreateImageMem so the decoder doesn't depend on devoptab.
+        std::FILE* fp = std::fopen(path.c_str(), "rb");
+        if (!fp) {
+            foyer::log::write("[img] fopen %s failed\n", path.c_str());
+            images[path] = 0;
+            return 0;
+        }
+        std::fseek(fp, 0, SEEK_END);
+        const long sz = std::ftell(fp);
+        std::fseek(fp, 0, SEEK_SET);
+        if (sz <= 0) {
+            foyer::log::write("[img] %s zero-size\n", path.c_str());
+            std::fclose(fp);
+            images[path] = 0;
+            return 0;
+        }
+        std::vector<unsigned char> buf((std::size_t)sz);
+        const auto read = std::fread(buf.data(), 1, buf.size(), fp);
+        std::fclose(fp);
+        if (read != buf.size()) {
+            foyer::log::write("[img] %s short read %zu / %ld\n",
+                path.c_str(), read, sz);
+            images[path] = 0;
+            return 0;
+        }
+        const int img = nvgCreateImageMem(vg, 0, buf.data(), (int)buf.size());
+        foyer::log::write("[img] %s (%ld B) -> handle %d\n",
+            path.c_str(), sz, img);
         images[path] = img;
-        // One-shot diagnostic: every distinct path is logged exactly once
-        // (because the second lookup hits the cache early-return above).
-        foyer::log::write("[img] %s -> handle %d\n", path.c_str(), img);
         return img;
     }
     void clear(NVGcontext* vg) {
