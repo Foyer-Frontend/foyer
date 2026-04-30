@@ -15,8 +15,9 @@
 namespace foyer::browser {
 namespace {
 
-constexpr const char* kThemesDir       = "/foyer/config/themes";
+constexpr const char* kThemesDir        = "/foyer/config/themes";
 constexpr const char* kBundledThemesDir = "romfs:/themes";
+constexpr const char* kThemePacksDir    = "/foyer/themes";
 
 Theme& mutable_theme() {
     static Theme g;
@@ -99,25 +100,41 @@ void load_theme(std::string_view name) {
         return;
     }
 
-    // SD copy wins; fall through to the bundled romfs version so the
-    // built-in light/dark themes work even on a fresh install.
+    // Resolution order:
+    //   1. /foyer/themes/<name>/theme.jsonc      — full theme pack with
+    //      per-system art under systems/<folder>/
+    //   2. /foyer/config/themes/<name>.jsonc     — single-file SD theme
+    //   3. romfs:/themes/<name>.jsonc            — built-in (dark/light/...)
+    char pack_path[256];
     char sd_path[256];
     char rf_path[256];
+    std::snprintf(pack_path, sizeof(pack_path), "%s/%.*s/theme.jsonc",
+        kThemePacksDir, (int)name.size(), name.data());
     std::snprintf(sd_path, sizeof(sd_path), "%s/%.*s.jsonc",
         kThemesDir, (int)name.size(), name.data());
     std::snprintf(rf_path, sizeof(rf_path), "%s/%.*s.jsonc",
         kBundledThemesDir, (int)name.size(), name.data());
 
-    std::ifstream in{sd_path};
-    const char* path = sd_path;
+    std::ifstream in{pack_path};
+    const char* path = pack_path;
+    if (in) {
+        char dir[256];
+        std::snprintf(dir, sizeof(dir), "%s/%.*s",
+            kThemePacksDir, (int)name.size(), name.data());
+        th.pack_dir = dir;
+    } else {
+        in.clear();
+        in.open(sd_path);
+        path = sd_path;
+    }
     if (!in) {
         in.clear();
         in.open(rf_path);
         path = rf_path;
     }
     if (!in) {
-        foyer::log::write("[theme] missing %s (and %s), falling back to default\n",
-            sd_path, rf_path);
+        foyer::log::write("[theme] missing %s (and %s, %s), falling back to default\n",
+            pack_path, sd_path, rf_path);
         return;
     }
     std::stringstream ss;
@@ -158,6 +175,14 @@ void load_theme(std::string_view name) {
     apply_float(root, "label_size", th.label_size);
 
     yyjson_doc_free(doc);
+
+    // Theme pack with no explicit background → use wallpaper.jpg if present.
+    if (!th.pack_dir.empty() && th.background.empty()) {
+        std::string wp = th.pack_dir + "/wallpaper.jpg";
+        std::ifstream probe{wp};
+        if (probe) th.background = std::move(wp);
+    }
+
     foyer::log::write("[theme] loaded %s\n", path);
 }
 
@@ -165,7 +190,27 @@ std::vector<std::string> list_themes() {
     std::vector<std::string> out;
     out.emplace_back("default");
 
-    auto pull = [&](const char* dir_path) {
+    auto add = [&](std::string n) {
+        if (n == "default") return;
+        for (const auto& s : out) if (s == n) return;
+        out.push_back(std::move(n));
+    };
+
+    // 1. Theme packs: each subdir of /foyer/themes/ that contains theme.jsonc.
+    if (auto* dir = ::opendir(kThemePacksDir)) {
+        while (auto* e = ::readdir(dir)) {
+            if (!e->d_name[0] || e->d_name[0] == '.') continue;
+            char probe[256];
+            std::snprintf(probe, sizeof(probe), "%s/%s/theme.jsonc",
+                kThemePacksDir, e->d_name);
+            std::ifstream test{probe};
+            if (test) add(std::string{e->d_name});
+        }
+        ::closedir(dir);
+    }
+
+    // 2. Single-file SD overrides + 3. bundled romfs themes.
+    auto pull_files = [&](const char* dir_path) {
         auto* dir = ::opendir(dir_path);
         if (!dir) return;
         while (auto* e = ::readdir(dir)) {
@@ -174,17 +219,12 @@ std::vector<std::string> list_themes() {
             const auto dot = n.rfind(".jsonc");
             if (dot == std::string::npos || dot + 6 != n.size()) continue;
             n.erase(dot);
-            if (n == "default") continue;
-            // Dedupe across SD + romfs so a user-overridden built-in theme
-            // doesn't show up twice in the picker.
-            bool seen = false;
-            for (const auto& s : out) if (s == n) { seen = true; break; }
-            if (!seen) out.push_back(std::move(n));
+            add(std::move(n));
         }
         ::closedir(dir);
     };
-    pull(kThemesDir);          // SD overrides
-    pull(kBundledThemesDir);   // bundled romfs (light/dark/midnight/forest/snow)
+    pull_files(kThemesDir);
+    pull_files(kBundledThemesDir);
 
     std::sort(out.begin() + 1, out.end());
     return out;

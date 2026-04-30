@@ -34,12 +34,18 @@ Features delivered so far:
 /foyer/
 ├── cores/
 │   └── foyer-<core>.nro             # downloaded via Settings → Install Cores
+├── themes/<name>/                   # theme packs (ES-DE-style — full art + palette)
+│   ├── theme.jsonc                  # palette + metrics
+│   ├── wallpaper.jpg                # global background
+│   └── systems/<folder>/
+│       ├── splash.jpg               # per-system fullscreen splash
+│       └── logo.png                 # console logo
 ├── config/
 │   ├── general.jsonc                # rom_root, preferred_scraper, theme, …
 │   ├── accounts.jsonc               # ScreenScraper / SteamGridDB / RA creds
 │   ├── per_game.jsonc               # per-rom core overrides
-│   ├── themes/<name>.jsonc          # palette + metric overrides (Settings → Theme)
-│   └── cores/<core>.jsonc           # per-core libretro variables (Phase 8)
+│   ├── themes/<name>.jsonc          # single-file palette overrides
+│   └── cores/<core>.jsonc           # per-core libretro variables
 ├── data/
 │   └── log.txt
 ├── assets/
@@ -74,6 +80,30 @@ Features delivered so far:
 | `psp`          | PlayStation Portable          | `ppsspp`       |
 | `ngp`          | Neo Geo Pocket                | `race`         |
 | `ngpc`         | Neo Geo Pocket Color          | `race`         |
+
+## Themes
+
+Three flavors, in resolution priority order:
+
+1. **Theme pack** — drop a directory at `/foyer/themes/<name>/` with at least
+   `theme.jsonc` (palette) and optionally `wallpaper.jpg`,
+   `systems/<folder>/splash.jpg` (per-console fullscreen art) and
+   `systems/<folder>/logo.png`. Settings → Display → Theme lists every pack
+   alongside the single-file themes. Build one yourself or repackage an
+   ES-DE theme by flattening it into this layout — only theme.jsonc is
+   strictly required, every art asset is optional and falls back through
+   the next layers.
+2. **Single-file SD theme** — `/foyer/config/themes/<name>.jsonc`, palette
+   only. Useful for tweaking colors without bundling art.
+3. **Bundled themes** — `dark`, `light`, `midnight`, `forest`, `snow`. Ship
+   inside the nro at `romfs:/themes/<name>.{jsonc,jpg}`. Per-system splash
+   placeholders (`romfs:/systems/<folder>.jpg`) cover every declared
+   system out of the box, so the carousel never sits on a flat colour.
+
+Settings → Display → Theme cycles through them all and persists the choice
+in `general.jsonc`.
+
+## Cores
 
 A system can declare multiple cores in `shared/library/system_db.cpp`; the
 first entry is the default. Resolution at launch:

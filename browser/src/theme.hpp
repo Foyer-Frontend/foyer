@@ -29,6 +29,12 @@ struct Theme {
     // `romfs:/themes/<name>.jpg` for bundled wallpapers. Empty = none.
     std::string background;
 
+    // When the loaded theme came from a theme-pack directory
+    // (`/foyer/themes/<name>/theme.jsonc`), this points to that directory so
+    // per-system art (`<pack_dir>/systems/<folder>/{splash,logo}.{jpg,png}`)
+    // and an implicit `<pack_dir>/wallpaper.jpg` can be resolved against it.
+    std::string pack_dir;
+
     float    pad         = 24.0f;
     float    radius      = 10.0f;
     float    title_size  = 38.0f;

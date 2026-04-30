@@ -71,14 +71,24 @@ CoverCache& system_splash_cache() {
     return c;
 }
 
-// Resolve the per-system splash image. Tries SD override first
-// (/foyer/assets/systems/<folder>.jpg), then the bundled romfs version.
+// Resolve the per-system splash image. Tries (in order):
+//   1. <pack_dir>/systems/<folder>/splash.jpg  — when a theme pack is active
+//   2. /foyer/assets/systems/<folder>.jpg      — SD override
+//   3. romfs:/systems/<folder>.jpg             — bundled placeholder
 std::string system_splash_path(std::string_view folder) {
+    auto exists = [](const std::string& p) {
+        struct stat st{};
+        return ::stat(p.c_str(), &st) == 0;
+    };
+    const auto& th = theme();
+    if (!th.pack_dir.empty()) {
+        std::string p = th.pack_dir + "/systems/" + std::string{folder} + "/splash.jpg";
+        if (exists(p)) return p;
+    }
     char sd[256];
     std::snprintf(sd, sizeof(sd), "/foyer/assets/systems/%.*s.jpg",
         (int)folder.size(), folder.data());
-    struct stat st{};
-    if (::stat(sd, &st) == 0) return sd;
+    if (exists(sd)) return sd;
     char rf[256];
     std::snprintf(rf, sizeof(rf), "romfs:/systems/%.*s.jpg",
         (int)folder.size(), folder.data());
@@ -86,6 +96,18 @@ std::string system_splash_path(std::string_view folder) {
 }
 
 std::string system_logo_path(std::string_view folder) {
+    // Theme pack wins, then SD override, then the path the home view used to
+    // hit directly (kept for backwards-compat with users who already dropped
+    // PNGs there).
+    auto exists = [](const std::string& p) {
+        struct stat st{};
+        return ::stat(p.c_str(), &st) == 0;
+    };
+    const auto& th = theme();
+    if (!th.pack_dir.empty()) {
+        std::string p = th.pack_dir + "/systems/" + std::string{folder} + "/logo.png";
+        if (exists(p)) return p;
+    }
     char buf[256];
     std::snprintf(buf, sizeof(buf), "/foyer/assets/systems/%.*s.png",
         (int)folder.size(), folder.data());
