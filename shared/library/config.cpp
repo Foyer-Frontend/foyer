@@ -69,10 +69,17 @@ void write_locked() {
     }
     out << "// foyer browser preferences.\n";
     out << "{\n";
+    auto bstr = [](bool v) { return v ? "true" : "false"; };
     out << "    \"preferred_scraper\": \""
         << scraper_to_str(g_config.preferred_scraper) << "\",\n";
     out << "    \"rom_root\":          \"" << g_config.rom_root << "\",\n";
     out << "    \"theme\":             \"" << g_config.theme_name << "\",\n";
+    out << "    \"scan_subfolders\":   " << bstr(g_config.scan_subfolders) << ",\n";
+    out << "    \"show_clock\":        " << bstr(g_config.show_clock) << ",\n";
+    out << "    \"show_backgrounds\":  " << bstr(g_config.show_backgrounds) << ",\n";
+    out << "    \"show_covers\":       " << bstr(g_config.show_covers) << ",\n";
+    out << "    \"mtp_autostart\":     " << bstr(g_config.mtp_autostart) << ",\n";
+    out << "    \"debug_log\":         " << bstr(g_config.debug_log) << ",\n";
     out << "    \"default_core_per_system\": {";
     bool first = true;
     for (const auto& [folder, core] : g_config.default_core_per_system) {
@@ -115,6 +122,17 @@ void load_locked() {
         v && yyjson_is_str(v)) {
         g_config.theme_name = yyjson_get_str(v);
     }
+    auto load_bool = [&](const char* key, bool& out) {
+        if (auto* v = yyjson_obj_get(root, key); v && yyjson_is_bool(v)) {
+            out = yyjson_get_bool(v);
+        }
+    };
+    load_bool("scan_subfolders",  g_config.scan_subfolders);
+    load_bool("show_clock",       g_config.show_clock);
+    load_bool("show_backgrounds", g_config.show_backgrounds);
+    load_bool("show_covers",      g_config.show_covers);
+    load_bool("mtp_autostart",    g_config.mtp_autostart);
+    load_bool("debug_log",        g_config.debug_log);
     if (auto* obj = yyjson_obj_get(root, "default_core_per_system");
         obj && yyjson_is_obj(obj)) {
         std::size_t i, max; yyjson_val *k, *v;
@@ -166,6 +184,18 @@ void set_preferred_scraper(Config::Scraper s) {
 void set_theme_name(std::string_view name) {
     std::scoped_lock lk{g_mutex};
     g_config.theme_name = std::string{name};
+    write_locked();
+}
+
+void set_bool(std::string_view key, bool value) {
+    std::scoped_lock lk{g_mutex};
+    if      (key == "scan_subfolders")  g_config.scan_subfolders  = value;
+    else if (key == "show_clock")       g_config.show_clock       = value;
+    else if (key == "show_backgrounds") g_config.show_backgrounds = value;
+    else if (key == "show_covers")      g_config.show_covers      = value;
+    else if (key == "mtp_autostart")    g_config.mtp_autostart    = value;
+    else if (key == "debug_log")        g_config.debug_log        = value;
+    else return;
     write_locked();
 }
 

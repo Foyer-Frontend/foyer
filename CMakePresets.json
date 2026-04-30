@@ -51,7 +51,7 @@
                 "CMAKE_BUILD_TYPE": "MinSizeRel",
                 "BUILD_BROWSER": "OFF",
                 "BUILD_PLAYER":  "ON",
-                "FOYER_CORES":   "fceumm;nestopia;gambatte;genesisplusgx;snes9x"
+                "FOYER_CORES":   "fceumm;nestopia;gambatte;genesisplusgx;snes9x;mgba;melonds;swanstation;yabasanshiro;race"
             }
         },
         {
@@ -97,6 +97,61 @@
                 "BUILD_PLAYER":  "ON",
                 "FOYER_CORE":    "snes9x"
             }
+        },
+        {
+            "name": "Player-mgba",
+            "displayName": "Player (mgba/GBA)",
+            "inherits": ["core"],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "MinSizeRel",
+                "BUILD_BROWSER": "OFF",
+                "BUILD_PLAYER":  "ON",
+                "FOYER_CORE":    "mgba"
+            }
+        },
+        {
+            "name": "Player-melonds",
+            "displayName": "Player (melonds/NDS)",
+            "inherits": ["core"],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "MinSizeRel",
+                "BUILD_BROWSER": "OFF",
+                "BUILD_PLAYER":  "ON",
+                "FOYER_CORE":    "melonds"
+            }
+        },
+        {
+            "name": "Player-swanstation",
+            "displayName": "Player (swanstation/PSX)",
+            "inherits": ["core"],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "MinSizeRel",
+                "BUILD_BROWSER": "OFF",
+                "BUILD_PLAYER":  "ON",
+                "FOYER_CORE":    "swanstation"
+            }
+        },
+        {
+            "name": "Player-yabasanshiro",
+            "displayName": "Player (yabasanshiro/Saturn)",
+            "inherits": ["core"],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "MinSizeRel",
+                "BUILD_BROWSER": "OFF",
+                "BUILD_PLAYER":  "ON",
+                "FOYER_CORE":    "yabasanshiro"
+            }
+        },
+        {
+            "name": "Player-race",
+            "displayName": "Player (race/NGP+NGPC)",
+            "inherits": ["core"],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "MinSizeRel",
+                "BUILD_BROWSER": "OFF",
+                "BUILD_PLAYER":  "ON",
+                "FOYER_CORE":    "race"
+            }
         }
     ],
     "buildPresets": [
@@ -131,6 +186,26 @@
         {
             "name": "Player-snes9x",
             "configurePreset": "Player-snes9x"
+        },
+        {
+            "name": "Player-mgba",
+            "configurePreset": "Player-mgba"
+        },
+        {
+            "name": "Player-melonds",
+            "configurePreset": "Player-melonds"
+        },
+        {
+            "name": "Player-swanstation",
+            "configurePreset": "Player-swanstation"
+        },
+        {
+            "name": "Player-yabasanshiro",
+            "configurePreset": "Player-yabasanshiro"
+        },
+        {
+            "name": "Player-race",
+            "configurePreset": "Player-race"
         }
     ]
 }

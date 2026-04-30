@@ -15,6 +15,16 @@ struct Config {
     std::string  rom_root          = "/foyer/roms";
     std::string  theme_name        = "default";
 
+    // Library + UI toggles (mirror the Tico-style Settings categories).
+    bool         scan_subfolders   = true;
+    bool         show_clock        = true;
+    bool         show_backgrounds  = true;
+    bool         show_covers       = true;
+
+    // Experimental knobs — exposed under the Experimental category only.
+    bool         mtp_autostart     = false;
+    bool         debug_log         = false;
+
     // Per-system core override. Stored flat to keep the header light; the
     // list is short (≤20 systems) so linear lookup is fine.
     struct PerSystemCore { std::string folder; std::string core; };
@@ -33,5 +43,6 @@ void          set_preferred_scraper(Config::Scraper s);
 void          set_default_core_for(std::string_view folder,
                                    std::string_view core_name);
 void          set_theme_name(std::string_view name);
+void          set_bool(std::string_view key, bool value);  // accepts the field names below
 
 } // namespace foyer::library

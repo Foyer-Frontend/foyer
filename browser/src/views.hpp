@@ -31,8 +31,12 @@ struct State {
     // Cursor on the GameDetail core picker.
     std::size_t detail_core_index = 0;
 
-    // Cursor on the Settings list.
-    std::size_t settings_index = 0;
+    // Settings cursor: sidebar category + per-category content row + which
+    // column has focus. Each category renders an independent content list,
+    // so the row index is reset on category change.
+    int  settings_category = 0;
+    int  settings_row      = 0;
+    bool settings_in_content = false;
 
     // Set by Update; read by the main loop to drive launches.
     bool        request_launch = false;

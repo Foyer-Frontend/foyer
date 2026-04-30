@@ -444,79 +444,333 @@ void draw_system(NVGcontext* vg, float w, float h, const State& s, const Library
     nvgRestore(vg);
 }
 
-// ---- SETTINGS VIEW --------------------------------------------------------
+// ---- SETTINGS VIEW (Tico-style sidebar + content) ------------------------
 
-namespace settings_items {
-    enum : std::size_t {
-        PreferredScraper = 0,
-        Theme,
-        RomRoot,
-        Mtp,
-        Rescan,
-        InvalidateCovers,
-        Count,
-    };
-}
+namespace settings {
 
-const char* scraper_label(library::Config::Scraper s) {
-    switch (s) {
+enum class Category : int {
+    General = 0,
+    Display,
+    Library,
+    Emulator,
+    Accounts,
+    Updates,
+    Experimental,
+    Count_
+};
+
+struct CategoryEntry {
+    const char* label;
+    const char* hint;       // glyph stand-in (one or two chars)
+};
+
+constexpr CategoryEntry kCategories[(int)Category::Count_] = {
+    { "General",      "GEN" },
+    { "Display",      "DIS" },
+    { "Library",      "LIB" },
+    { "Emulator",     "EMU" },
+    { "Accounts",     "ACC" },
+    { "Updates",      "UPD" },
+    { "Experimental", "EXP" },
+};
+
+// Flat list of items inside a category — each row is one of these kinds so
+// the input handler can dispatch generically.
+enum class ItemKind { Cycle, Toggle, Action, Static, Drill };
+
+struct Item {
+    ItemKind     kind;
+    const char*  label;
+    std::string  value;       // displayed right side
+    std::string  hint;        // optional dim sub-label below the row
+    int          payload = 0; // category-specific opcode
+};
+
+const char* scraper_label(library::Config::Scraper sc) {
+    switch (sc) {
         case library::Config::Scraper::ScreenScraper: return "ScreenScraper";
         case library::Config::Scraper::SteamGridDB:   return "SteamGridDB";
         case library::Config::Scraper::Libretro:
-        default:                                       return "libretro-thumbnails";
+        default:                                      return "libretro-thumbnails";
     }
 }
+
+// Item payloads — opaque small ids that the input dispatcher matches on.
+enum : int {
+    OpScraper = 1, OpTheme, OpRomRoot, OpScanSub,
+    OpShowClock, OpShowBg, OpShowCovers,
+    OpRescan, OpInvalidateCovers,
+    OpEmuList,
+    OpAccCreds,
+    OpUpdScrapeAll, OpUpdInstalledCores,
+    OpExpMtp, OpExpMtpAutostart, OpExpDebugLog,
+};
+
+std::vector<Item> build_items(Category cat) {
+    std::vector<Item> rows;
+    const auto& cfg = library::config();
+    switch (cat) {
+        case Category::General:
+            rows.push_back({ItemKind::Cycle,  "Preferred scraper", scraper_label(cfg.preferred_scraper),
+                "Y on a game scrapes via this provider.",            OpScraper});
+            rows.push_back({ItemKind::Static, "Rom root",          cfg.rom_root,
+                "Edit /foyer/config/general.jsonc to change.",       OpRomRoot});
+            rows.push_back({ItemKind::Toggle, "Scan subfolders",   "", "",     OpScanSub});
+            break;
+        case Category::Display:
+            rows.push_back({ItemKind::Cycle,  "Theme",        cfg.theme_name,
+                "Drop palettes into /foyer/config/themes/.",          OpTheme});
+            rows.push_back({ItemKind::Toggle, "Show clock",       "", "",     OpShowClock});
+            rows.push_back({ItemKind::Toggle, "Show backgrounds", "",
+                "Use /foyer/assets/backgrounds/<sys>/<stem>.jpg.",    OpShowBg});
+            rows.push_back({ItemKind::Toggle, "Show covers",      "", "",     OpShowCovers});
+            break;
+        case Category::Library:
+            rows.push_back({ItemKind::Action, "Rescan library",         "A: run",     "", OpRescan});
+            rows.push_back({ItemKind::Action, "Invalidate cover cache", "A: refresh", "", OpInvalidateCovers});
+            break;
+        case Category::Emulator:
+            rows.push_back({ItemKind::Static, "Cores listed below are declared in system_db; install the matching nro under /foyer/cores/.",
+                "", "", OpEmuList});
+            break;
+        case Category::Accounts:
+            rows.push_back({ItemKind::Static, "Credentials live in /foyer/config/accounts.jsonc",
+                "", "Edit on the SD or via Roms-over-USB (Experimental).", OpAccCreds});
+            break;
+        case Category::Updates:
+            rows.push_back({ItemKind::Action, "Scrape all systems", "A: run",
+                "Walks every system using the preferred scraper.",   OpUpdScrapeAll});
+            rows.push_back({ItemKind::Drill,  "Installed cores",    "A: open",
+                "List of foyer-<core>.nro present under /foyer/cores/.", OpUpdInstalledCores});
+            break;
+        case Category::Experimental:
+            rows.push_back({ItemKind::Toggle, "Roms over USB",
+                /*value*/ "", "Spin up libhaze MTP scoped to /foyer/roms.",   OpExpMtp});
+            rows.push_back({ItemKind::Toggle, "Auto-start USB on boot",
+                /*value*/ "", "Skip the manual toggle on every launch.",       OpExpMtpAutostart});
+            rows.push_back({ItemKind::Toggle, "Verbose log",
+                /*value*/ "", "Write extra diagnostics to /foyer/data/log.txt.", OpExpDebugLog});
+            break;
+        default: break;
+    }
+    return rows;
+}
+
+// True/false getter for whichever toggle the row points at.
+bool toggle_get(int op) {
+    const auto& cfg = library::config();
+    switch (op) {
+        case OpScanSub:          return cfg.scan_subfolders;
+        case OpShowClock:        return cfg.show_clock;
+        case OpShowBg:           return cfg.show_backgrounds;
+        case OpShowCovers:       return cfg.show_covers;
+        case OpExpMtpAutostart:  return cfg.mtp_autostart;
+        case OpExpDebugLog:      return cfg.debug_log;
+        case OpExpMtp:           return mtp_running();
+    }
+    return false;
+}
+
+void toggle_set(int op, bool val) {
+    switch (op) {
+        case OpScanSub:          library::set_bool("scan_subfolders",  val); break;
+        case OpShowClock:        library::set_bool("show_clock",       val); break;
+        case OpShowBg:           library::set_bool("show_backgrounds", val); break;
+        case OpShowCovers:       library::set_bool("show_covers",      val); break;
+        case OpExpMtpAutostart:  library::set_bool("mtp_autostart",    val); break;
+        case OpExpDebugLog:      library::set_bool("debug_log",        val); break;
+        case OpExpMtp:
+            if (val) mtp_start(); else mtp_stop();
+            break;
+    }
+}
+
+// ---- widgets --------------------------------------------------------------
+
+void draw_pill_toggle(NVGcontext* vg, float x, float y, float w, float h,
+                      bool on, NVGcolor on_color, NVGcolor off_color) {
+    nvgBeginPath(vg);
+    nvgRoundedRect(vg, x, y, w, h, h * 0.5f);
+    nvgFillColor(vg, on ? on_color : off_color);
+    nvgFill(vg);
+
+    const float r   = (h - 6.0f) * 0.5f;
+    const float kx  = on ? (x + w - h * 0.5f) : (x + h * 0.5f);
+    const float ky  = y + h * 0.5f;
+    nvgBeginPath(vg);
+    nvgCircle(vg, kx, ky, r);
+    nvgFillColor(vg, nvgRGBA(0xFF, 0xFF, 0xFF, 0xFF));
+    nvgFill(vg);
+}
+
+void draw_chevron_right(NVGcontext* vg, float cx, float cy, float size, NVGcolor c) {
+    nvgBeginPath(vg);
+    nvgMoveTo(vg, cx - size * 0.4f, cy - size * 0.6f);
+    nvgLineTo(vg, cx + size * 0.4f, cy);
+    nvgLineTo(vg, cx - size * 0.4f, cy + size * 0.6f);
+    nvgStrokeColor(vg, c);
+    nvgStrokeWidth(vg, 2.0f);
+    nvgLineCap(vg, NVG_ROUND);
+    nvgLineJoin(vg, NVG_ROUND);
+    nvgStroke(vg);
+}
+
+// Active-row outline drawn in the accent gradient — sphaira / Tico cue that
+// "this is the focused element". Falls back to a flat accent when the theme
+// only carries one accent color.
+void draw_active_outline(NVGcontext* vg, float x, float y, float w, float h, float r,
+                         NVGcolor a, NVGcolor b) {
+    auto pat = nvgLinearGradient(vg, x, y, x + w, y, a, b);
+    nvgBeginPath(vg);
+    nvgRoundedRect(vg, x, y, w, h, r);
+    nvgStrokePaint(vg, pat);
+    nvgStrokeWidth(vg, 2.5f);
+    nvgStroke(vg);
+}
+
+// ---- draw -----------------------------------------------------------------
 
 void draw_settings(NVGcontext* vg, float w, float h, const State& s, const Library&) {
     const auto& th = theme();
 
-    const float content_y = kTopBarH + 16.0f;
-    const float content_h = h - content_y - kBottomBarH - 16.0f;
-    rrect(vg, th.pad, content_y, w - th.pad * 2.0f, content_h, th.radius, th.bg_panel);
+    constexpr float kSidebarW   = 280.0f;
+    constexpr float kSidebarPad = 16.0f;
+    constexpr float kSideRowH   = 56.0f;
+    constexpr float kCardPad    = 18.0f;
 
-    constexpr float kRow = 64.0f;
-    float ry = content_y + th.pad;
+    const float content_y = kTopBarH + 12.0f;
+    const float content_h = h - content_y - kBottomBarH - 12.0f;
 
-    auto draw_row = [&](std::size_t idx, const char* label, const char* value, bool actionable) {
-        const bool sel = (idx == s.settings_index);
+    // Sidebar panel.
+    rrect(vg, kSidebarPad, content_y, kSidebarW, content_h, 14.0f, th.bg_panel);
+
+    nvgFontSize(vg, th.label_size);
+    nvgFillColor(vg, th.text_dim);
+    nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+    nvgText(vg, kSidebarPad + 22, content_y + 28, "foyer", nullptr);
+    nvgFontSize(vg, th.head_size);
+    nvgFillColor(vg, th.text_strong);
+    nvgText(vg, kSidebarPad + 22, content_y + 56, "Settings", nullptr);
+
+    const float side_list_y = content_y + 96;
+    for (int i = 0; i < (int)Category::Count_; i++) {
+        const float ry  = side_list_y + i * kSideRowH;
+        const bool sel  = (i == s.settings_category);
+        const float rx  = kSidebarPad + 12;
+        const float rw  = kSidebarW - 24;
+
         if (sel) {
-            rrect(vg, th.pad + th.pad * 0.5f, ry, w - th.pad * 3.0f,
-                  kRow - 8, 8.0f, th.bg_panel_hi);
+            rrect(vg, rx, ry, rw, kSideRowH - 8, 12.0f, th.bg_panel_hi);
+            // Gradient outline only when the focus is on the sidebar.
+            if (!s.settings_in_content) {
+                draw_active_outline(vg, rx, ry, rw, kSideRowH - 8, 12.0f,
+                    nvgRGBA(0x6E, 0xC0, 0xFF, 0xFF),
+                    nvgRGBA(0xC2, 0x86, 0xFF, 0xFF));
+            }
         }
+
+        // Glyph-style category badge.
+        nvgFontSize(vg, th.label_size);
+        nvgFillColor(vg, sel ? th.accent : th.text_dim);
+        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+        nvgText(vg, rx + 14, ry + (kSideRowH - 8) * 0.5f,
+                kCategories[i].hint, nullptr);
+
+        nvgFontSize(vg, th.body_size);
+        nvgFillColor(vg, sel ? th.text_strong : th.text);
+        nvgText(vg, rx + 64, ry + (kSideRowH - 8) * 0.5f,
+                kCategories[i].label, nullptr);
+    }
+
+    // Content panel.
+    const float cx = kSidebarPad + kSidebarW + kSidebarPad;
+    const float cy = content_y;
+    const float cw = w - cx - kSidebarPad;
+    const float ch = content_h;
+
+    // Page title line above the card.
+    nvgFontSize(vg, th.title_size);
+    nvgFillColor(vg, th.text_strong);
+    nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_TOP);
+    nvgText(vg, cx, cy + 4, kCategories[s.settings_category].label, nullptr);
+
+    const auto rows = build_items((Category)s.settings_category);
+    if (rows.empty()) return;
+
+    const float card_x = cx;
+    const float card_y = cy + 56;
+    const float card_w = cw;
+    const float card_h = ch - 56;
+
+    rrect(vg, card_x, card_y, card_w, card_h, 14.0f, th.bg_panel);
+    if (s.settings_in_content) {
+        draw_active_outline(vg, card_x, card_y, card_w, card_h, 14.0f,
+            nvgRGBA(0x6E, 0xC0, 0xFF, 0xFF),
+            nvgRGBA(0xC2, 0x86, 0xFF, 0xFF));
+    }
+
+    constexpr float kRowH = 60.0f;
+    const float inner_x = card_x + kCardPad;
+    const float inner_w = card_w - kCardPad * 2.0f;
+
+    float ry = card_y + kCardPad;
+    for (int i = 0; i < (int)rows.size(); i++) {
+        const auto& it  = rows[i];
+        const bool sel  = s.settings_in_content && (i == s.settings_row);
+
+        if (sel) {
+            rrect(vg, inner_x - 4, ry - 2, inner_w + 8, kRowH - 8, 8.0f, th.bg_panel_hi);
+        }
+
         nvgFontSize(vg, th.body_size);
         nvgFillColor(vg, sel ? th.text_strong : th.text);
         nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
-        nvgText(vg, th.pad + th.pad, ry + (kRow - 8) * 0.5f, label, nullptr);
+        nvgText(vg, inner_x + 8, ry + (kRowH - 12) * 0.5f, it.label, nullptr);
 
-        if (value && value[0]) {
-            nvgFontSize(vg, th.body_size);
-            nvgFillColor(vg, actionable ? th.accent : th.text_dim);
-            nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
-            nvgText(vg, w - th.pad * 2.0f, ry + (kRow - 8) * 0.5f, value, nullptr);
+        const float vx = inner_x + inner_w - 8;
+        const float vy = ry + (kRowH - 12) * 0.5f;
+
+        switch (it.kind) {
+            case ItemKind::Toggle: {
+                const bool on = toggle_get(it.payload);
+                draw_pill_toggle(vg,
+                    vx - 56, vy - 14, 52.0f, 28.0f,
+                    on, nvgRGBA(0x4C, 0xC2, 0x6F, 0xFF), th.border);
+                break;
+            }
+            case ItemKind::Cycle:
+            case ItemKind::Static:
+            case ItemKind::Action: {
+                nvgFontSize(vg, th.body_size);
+                nvgFillColor(vg, it.kind == ItemKind::Action ? th.accent : th.text_dim);
+                nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+                nvgText(vg, vx, vy, it.value.c_str(), nullptr);
+                break;
+            }
+            case ItemKind::Drill: {
+                nvgFontSize(vg, th.body_size);
+                nvgFillColor(vg, th.text_dim);
+                nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+                nvgText(vg, vx - 18, vy, it.value.c_str(), nullptr);
+                draw_chevron_right(vg, vx - 8, vy, 7.0f, th.text_dim);
+                break;
+            }
         }
-        ry += kRow;
-    };
 
-    const auto& cfg = library::config();
-    draw_row(settings_items::PreferredScraper, "Preferred scraper",
-             scraper_label(cfg.preferred_scraper), true);
-    draw_row(settings_items::Theme, "Theme",
-             cfg.theme_name.c_str(), true);
-    draw_row(settings_items::RomRoot, "Rom root",
-             cfg.rom_root.c_str(), false);
-    draw_row(settings_items::Mtp, "Roms over USB",
-             mtp_running() ? "ON  (A toggle)" : "off (A toggle)", true);
-    draw_row(settings_items::Rescan, "Rescan library", "A: run", true);
-    draw_row(settings_items::InvalidateCovers, "Invalidate cover cache",
-             "A: refresh", true);
+        if (!it.hint.empty()) {
+            nvgFontSize(vg, th.label_size);
+            nvgFillColor(vg, th.text_dim);
+            nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_TOP);
+            nvgText(vg, inner_x + 8, ry + kRowH - 18, it.hint.c_str(), nullptr);
+        }
+        ry += kRowH;
+    }
+}
 
-    // Footer hint inside the panel — explains where account creds still live.
-    nvgFontSize(vg, th.label_size);
-    nvgFillColor(vg, th.text_dim);
-    nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_BOTTOM);
-    nvgText(vg, th.pad + th.pad, content_y + content_h - th.pad,
-            "Edit /foyer/config/accounts.jsonc + general.jsonc for credentials and rom_root.",
-            nullptr);
+} // namespace settings
+
+void draw_settings(NVGcontext* vg, float w, float h, const State& s, const Library& lib) {
+    settings::draw_settings(vg, w, h, s, lib);
 }
 
 // ---- GAME DETAIL VIEW -----------------------------------------------------
@@ -698,7 +952,9 @@ void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down
         }
         if (down & HidNpadButton_Minus) {
             s.view = View::Settings;
-            s.settings_index = 0;
+            s.settings_category   = 0;
+            s.settings_row        = 0;
+            s.settings_in_content = false;
         }
     } else if (s.view == View::System) {
         const auto& sys = lib.systems[s.system_index];
@@ -803,77 +1059,94 @@ void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down
             s.banner_ttl  = 180;
         }
     } else if (s.view == View::Settings) {
-        if (down & HidNpadButton_B) {
-            s.view = View::Home;
-        }
+        using settings::Category;
+        const auto rows = settings::build_items((Category)s.settings_category);
+        const int  row_count = (int)rows.size();
 
-        if (down & HidNpadButton_Down) {
-            if (s.settings_index + 1 < settings_items::Count) s.settings_index++;
-        } else if (down & HidNpadButton_Up) {
-            if (s.settings_index > 0) s.settings_index--;
-        }
-
-        const auto cycle_scraper = [](library::Config::Scraper c, int delta) {
-            int n = (int)c + delta;
-            if (n < 0) n = 2;
-            if (n > 2) n = 0;
-            return (library::Config::Scraper)n;
-        };
-
-        if (s.settings_index == settings_items::PreferredScraper) {
-            if (down & HidNpadButton_Right) {
-                library::set_preferred_scraper(
-                    cycle_scraper(library::config().preferred_scraper, +1));
-            } else if (down & HidNpadButton_Left) {
-                library::set_preferred_scraper(
-                    cycle_scraper(library::config().preferred_scraper, -1));
+        if (!s.settings_in_content) {
+            // Sidebar focus.
+            if (down & HidNpadButton_B) {
+                s.view = View::Home;
+                return;
             }
-        }
-
-        if (s.settings_index == settings_items::Theme &&
-            (down & (HidNpadButton_Left | HidNpadButton_Right))) {
-            const auto themes = list_themes();
-            if (!themes.empty()) {
-                std::size_t cur = 0;
-                const auto& current = library::config().theme_name;
-                for (std::size_t i = 0; i < themes.size(); i++) {
-                    if (themes[i] == current) { cur = i; break; }
-                }
-                if (down & HidNpadButton_Right) {
-                    cur = (cur + 1) % themes.size();
-                } else {
-                    cur = (cur == 0) ? themes.size() - 1 : cur - 1;
-                }
-                library::set_theme_name(themes[cur]);
-                load_theme(themes[cur]);
-                s.banner_text = std::string{"Theme: "} + themes[cur];
-                s.banner_ttl  = 120;
+            if (down & HidNpadButton_Down) {
+                s.settings_category = (s.settings_category + 1) % (int)Category::Count_;
+                s.settings_row = 0;
+            } else if (down & HidNpadButton_Up) {
+                s.settings_category = (s.settings_category - 1 + (int)Category::Count_)
+                                    % (int)Category::Count_;
+                s.settings_row = 0;
             }
-        }
-        if (down & HidNpadButton_A) {
-            switch (s.settings_index) {
-                case settings_items::Rescan:
-                    s.request_rescan = true;
-                    s.banner_text = "Rescanning library...";
-                    s.banner_ttl  = 180;
-                    break;
-                case settings_items::InvalidateCovers:
-                    s.request_invalidate_covers = true;
-                    s.banner_text = "Cover cache cleared";
-                    s.banner_ttl  = 120;
-                    break;
-                case settings_items::Mtp:
-                    if (mtp_running()) {
-                        mtp_stop();
-                        s.banner_text = "Roms-over-USB: off";
-                    } else if (mtp_start()) {
-                        s.banner_text = "Roms-over-USB: connect cable";
-                    } else {
-                        s.banner_text = "MTP failed to start";
+            if ((down & (HidNpadButton_A | HidNpadButton_Right)) && row_count > 0) {
+                s.settings_in_content = true;
+                s.settings_row = 0;
+            }
+        } else {
+            // Content focus.
+            if (down & HidNpadButton_B) {
+                s.settings_in_content = false;
+                return;
+            }
+            if (down & HidNpadButton_Down && row_count > 0) {
+                s.settings_row = (s.settings_row + 1) % row_count;
+            } else if (down & HidNpadButton_Up && row_count > 0) {
+                s.settings_row = (s.settings_row - 1 + row_count) % row_count;
+            }
+
+            if (s.settings_row >= row_count) return;
+            const auto& it = rows[s.settings_row];
+
+            // Cycle handling: Left/Right rotate the current value.
+            if (it.kind == settings::ItemKind::Cycle &&
+                (down & (HidNpadButton_Left | HidNpadButton_Right))) {
+                const int delta = (down & HidNpadButton_Right) ? +1 : -1;
+                if (it.payload == settings::OpScraper) {
+                    int n = ((int)library::config().preferred_scraper + delta + 3) % 3;
+                    library::set_preferred_scraper((library::Config::Scraper)n);
+                } else if (it.payload == settings::OpTheme) {
+                    const auto themes = list_themes();
+                    if (!themes.empty()) {
+                        std::size_t cur = 0;
+                        const auto& current = library::config().theme_name;
+                        for (std::size_t i = 0; i < themes.size(); i++) {
+                            if (themes[i] == current) { cur = i; break; }
+                        }
+                        cur = (delta > 0) ? (cur + 1) % themes.size()
+                                          : (cur == 0 ? themes.size() - 1 : cur - 1);
+                        library::set_theme_name(themes[cur]);
+                        load_theme(themes[cur]);
+                        s.banner_text = std::string{"Theme: "} + themes[cur];
+                        s.banner_ttl  = 120;
                     }
-                    s.banner_ttl = 180;
-                    break;
-                default: break;
+                }
+            }
+
+            // A — toggle / action / drill.
+            if (down & HidNpadButton_A) {
+                switch (it.kind) {
+                    case settings::ItemKind::Toggle:
+                        settings::toggle_set(it.payload, !settings::toggle_get(it.payload));
+                        break;
+                    case settings::ItemKind::Action:
+                        if (it.payload == settings::OpRescan) {
+                            s.request_rescan = true;
+                            s.banner_text = "Rescanning library...";
+                            s.banner_ttl  = 180;
+                        } else if (it.payload == settings::OpInvalidateCovers) {
+                            s.request_invalidate_covers = true;
+                            s.banner_text = "Cover cache cleared";
+                            s.banner_ttl  = 120;
+                        } else if (it.payload == settings::OpUpdScrapeAll) {
+                            s.banner_text = "Open a system and press Y — bulk scrape next pass";
+                            s.banner_ttl  = 240;
+                        }
+                        break;
+                    case settings::ItemKind::Drill:
+                        s.banner_text = "Drill-down view comes in the next pass";
+                        s.banner_ttl  = 180;
+                        break;
+                    default: break;
+                }
             }
         }
     }
@@ -950,12 +1223,17 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
                  + X + " clear override   " + B + " back";
             break;
         }
-        case View::Settings:
-            title = "foyer  >  Settings";
-            hint  = std::string{DPad} + " pick   "
+        case View::Settings: {
+            const auto cat = (s.settings_category < (int)settings::Category::Count_)
+                ? settings::kCategories[s.settings_category].label : "";
+            char buf[160];
+            std::snprintf(buf, sizeof(buf), "foyer  >  Settings  >  %s", cat);
+            title = buf;
+            hint  = std::string{DPad} + " navigate   "
                   + Left + Right + " adjust   "
-                  + A + " run   " + B + " back";
+                  + A + " select   " + B + " back";
             break;
+        }
     }
 
     draw_topbar   (vg, w,    title.c_str(), clock.c_str());
