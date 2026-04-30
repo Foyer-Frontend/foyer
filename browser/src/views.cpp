@@ -451,6 +451,7 @@ namespace settings {
 enum class Category : int {
     General = 0,
     Display,
+    Audio,
     Library,
     Emulator,
     Accounts,
@@ -467,6 +468,7 @@ struct CategoryEntry {
 constexpr CategoryEntry kCategories[(int)Category::Count_] = {
     { "General",      "GEN" },
     { "Display",      "DIS" },
+    { "Audio",        "AUD" },
     { "Library",      "LIB" },
     { "Emulator",     "EMU" },
     { "Accounts",     "ACC" },
@@ -524,6 +526,10 @@ std::vector<Item> build_items(Category cat) {
             rows.push_back({ItemKind::Toggle, "Show backgrounds", "",
                 "Use /foyer/assets/backgrounds/<sys>/<stem>.jpg.",    OpShowBg});
             rows.push_back({ItemKind::Toggle, "Show covers",      "", "",     OpShowCovers});
+            break;
+        case Category::Audio:
+            rows.push_back({ItemKind::Static, "System volume controls live in the Switch home menu",
+                "", "Per-core audio settings are exposed in the in-game pause overlay.", 0});
             break;
         case Category::Library:
             rows.push_back({ItemKind::Action, "Rescan library",         "A: run",     "", OpRescan});
