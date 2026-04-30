@@ -16,6 +16,7 @@
 #include <cstdio>
 #include <ctime>
 #include <dirent.h>
+#include <fstream>
 #include <sys/stat.h>
 #include <unordered_map>
 
@@ -78,7 +79,9 @@ CoverCache& system_splash_cache() {
 std::string system_splash_path(std::string_view folder) {
     auto exists = [](const std::string& p) {
         struct stat st{};
-        return ::stat(p.c_str(), &st) == 0;
+        if (::stat(p.c_str(), &st) == 0) return true;
+        std::ifstream f{p};
+        return (bool)f;
     };
     const auto& th = theme();
     if (!th.pack_dir.empty()) {
@@ -96,22 +99,28 @@ std::string system_splash_path(std::string_view folder) {
 }
 
 std::string system_logo_path(std::string_view folder) {
-    // Theme pack wins, then SD override, then the path the home view used to
-    // hit directly (kept for backwards-compat with users who already dropped
-    // PNGs there).
+    // Resolution: theme pack → SD override → bundled romfs.
     auto exists = [](const std::string& p) {
         struct stat st{};
-        return ::stat(p.c_str(), &st) == 0;
+        if (::stat(p.c_str(), &st) == 0) return true;
+        // stat doesn't always traverse libnx's romfs devoptab; fall back to
+        // an fopen probe.
+        std::ifstream f{p};
+        return (bool)f;
     };
     const auto& th = theme();
     if (!th.pack_dir.empty()) {
         std::string p = th.pack_dir + "/systems/" + std::string{folder} + "/logo.png";
         if (exists(p)) return p;
     }
-    char buf[256];
-    std::snprintf(buf, sizeof(buf), "/foyer/assets/systems/%.*s.png",
+    char sd[256];
+    std::snprintf(sd, sizeof(sd), "/foyer/assets/systems/%.*s.png",
         (int)folder.size(), folder.data());
-    return buf;
+    if (exists(sd)) return sd;
+    char rf[256];
+    std::snprintf(rf, sizeof(rf), "romfs:/systems/%.*s.png",
+        (int)folder.size(), folder.data());
+    return rf;
 }
 std::string backdrop_path(std::string_view folder, std::string_view stem) {
     char buf[256];
