@@ -1,6 +1,7 @@
 build/
 build-*/
 out/
+.claude/
 *.nro
 *.nacp
 *.elf
