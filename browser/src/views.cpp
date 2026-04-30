@@ -320,7 +320,7 @@ void draw_system(NVGcontext* vg, float w, float h, const State& s, const Library
     const auto& sys = lib.systems[s.system_index];
 
     // Faded full-screen backdrop pulled from the focused game's art.
-    if (!sys.games.empty()) {
+    if (library::config().show_backgrounds && !sys.games.empty()) {
         const auto& gsel = sys.games[s.game_index];
         const int handle = backdrop_cache().get_or_load(vg,
             backdrop_path(sys.def->folder_name, gsel.stem));
@@ -399,7 +399,9 @@ void draw_system(NVGcontext* vg, float w, float h, const State& s, const Library
 
     rrect(vg, cover_x, cover_y, cover_w, cover_h, 8.0f, th.bg_panel_hi);
 
-    const int handle = cover_cache().get_or_load(vg, cover);
+    const int handle = library::config().show_covers
+        ? cover_cache().get_or_load(vg, cover)
+        : 0;
     if (handle > 0) {
         // Aspect-fit centred inside cover_h slot.
         int iw = 0, ih = 0;
@@ -888,7 +890,7 @@ void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Li
     const auto& g = sys.games[s.game_index];
 
     // Backdrop behind the detail panels for visual context.
-    {
+    if (library::config().show_backgrounds) {
         const int handle = backdrop_cache().get_or_load(vg,
             backdrop_path(sys.def->folder_name, g.stem));
         if (handle > 0) {
@@ -917,7 +919,9 @@ void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Li
     const float cy = content_y + th.pad;
     const float cw = left_w - th.pad * 2.0f;
     const float ch = content_h - th.pad * 2.0f - 60.0f;
-    const int handle = cover_cache().get_or_load(vg, cover);
+    const int handle = library::config().show_covers
+        ? cover_cache().get_or_load(vg, cover)
+        : 0;
     if (handle > 0) {
         int iw = 0, ih = 0;
         nvgImageSize(vg, handle, &iw, &ih);
@@ -1330,7 +1334,7 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
     using namespace foyer::ui::icons;
 
     std::string title = "foyer";
-    std::string clock = clock_label();
+    std::string clock = library::config().show_clock ? clock_label() : std::string{};
     std::string hint;
     switch (s.view) {
         case View::Home:
@@ -1347,8 +1351,13 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
                 title = buf;
                 if (!sys.games.empty()) {
                     char rhs[64];
-                    std::snprintf(rhs, sizeof(rhs), "%zu / %zu  ·  %s",
-                        s.game_index + 1, sys.games.size(), clock.c_str());
+                    if (clock.empty()) {
+                        std::snprintf(rhs, sizeof(rhs), "%zu / %zu",
+                            s.game_index + 1, sys.games.size());
+                    } else {
+                        std::snprintf(rhs, sizeof(rhs), "%zu / %zu  ·  %s",
+                            s.game_index + 1, sys.games.size(), clock.c_str());
+                    }
                     clock = rhs;
                 }
             }
