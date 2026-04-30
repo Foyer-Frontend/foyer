@@ -30,9 +30,12 @@ int main(int /*argc*/, char** /*argv*/) {
 
     foyer::browser::load_theme(foyer::library::config().theme_name);
 
-    if (foyer::library::config().mtp_autostart) {
-        foyer::browser::mtp_start();
-    }
+    // NOTE: temporarily skipping MTP autostart — libhaze appears to break
+    // libnx's romfs devoptab so subsequent fopen("romfs:/...") returns
+    // ENOSYS. Re-enable once we understand the interaction.
+    // if (foyer::library::config().mtp_autostart) {
+    //     foyer::browser::mtp_start();
+    // }
 
     foyer::library::ScanOptions opts;
     opts.rom_root = foyer::library::config().rom_root;

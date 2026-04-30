@@ -13,6 +13,7 @@
 #include <switch.h>
 
 #include <algorithm>
+#include <cerrno>
 #include <cmath>
 #include <cstdio>
 #include <ctime>
@@ -39,7 +40,20 @@ struct CoverCache {
         // nvgCreateImageMem so the decoder doesn't depend on devoptab.
         std::FILE* fp = std::fopen(path.c_str(), "rb");
         if (!fp) {
-            foyer::log::write("[img] fopen %s failed\n", path.c_str());
+            foyer::log::write("[img] fopen %s failed (errno=%d)\n",
+                path.c_str(), errno);
+            // One-shot sanity probe: did fopen on a known-good romfs path
+            // succeed from the same call site? If shaders also fail, the
+            // failure is global. If only JPG fails, the romfs metadata
+            // listing has the file but libnx can't open it.
+            static bool probed = false;
+            if (!probed) {
+                probed = true;
+                std::FILE* shader = std::fopen("romfs:/shaders/fill_vsh.dksh", "rb");
+                foyer::log::write("[img] probe shader fp=%p errno=%d\n",
+                    (void*)shader, shader ? 0 : errno);
+                if (shader) std::fclose(shader);
+            }
             images[path] = 0;
             return 0;
         }
@@ -308,22 +322,6 @@ void rrect_outline(NVGcontext* vg, float x, float y, float ww, float hh, float r
 void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& lib) {
     const auto& th = theme();
 
-    // ES-DE-style per-system splash behind the carousel: load the focused
-    // system's image and aspect-fill it across the screen, then drop a
-    // dim/blur veil so the tiles still read.
-    if (!lib.systems.empty()) {
-        const auto& sys = lib.systems[s.system_index];
-        const int handle = system_splash_cache().get_or_load(vg,
-            system_splash_path(sys.def->folder_name));
-        if (handle > 0) {
-            blit_cover(vg, handle, 0, 0, w, h, 1.0f);
-            nvgBeginPath(vg);
-            nvgRect(vg, 0, 0, w, h);
-            nvgFillColor(vg, nvgRGBAf(th.bg.r, th.bg.g, th.bg.b, 0.40f));
-            nvgFill(vg);
-        }
-    }
-
     if (lib.systems.empty()) {
         draw_empty(vg, w, h,
             "No systems found",
@@ -357,52 +355,37 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
         const float y     = cy - thh * 0.5f;
 
         const bool centre = (offset == 0);
-        rrect(vg, x, y, tw, thh, th.radius,
-            centre ? th.bg_panel_hi : th.bg_panel);
 
+        // Tile body: strip artwork only — no card background, no outline.
+        // Rounded scissor so corners stay clean.
         nvgSave(vg);
-        nvgIntersectScissor(vg, x, y, tw, thh);
+        nvgScissor(vg, x, y, tw, thh);
 
-        // Console logo (PNG at /foyer/assets/systems/<folder>.png) takes the
-        // top half of the tile; the system's display name sits below. Tiles
-        // without a logo fall back to a big short-name treatment so the
-        // carousel keeps its silhouette.
+        const int strip_h = system_splash_cache().get_or_load(vg,
+            system_splash_path(sys.def->folder_name));
+        if (strip_h > 0) {
+            blit_cover(vg, strip_h, x, y, tw, thh, centre ? 1.0f : 0.55f);
+        }
+
+        // Console logo overlay — centered, takes ~70% of tile width.
         const auto logo_path = system_logo_path(sys.def->folder_name);
         const int  logo_h    = system_logo_cache().get_or_load(vg, logo_path);
         if (logo_h > 0) {
-            const float logo_box = thh * 0.62f;
             blit_aspect_fit(vg, logo_h,
-                x + tw * 0.10f, y + thh * 0.08f,
-                tw * 0.80f, logo_box, 4.0f, centre ? 1.0f : 0.85f);
-
-            nvgFontSize(vg, th.body_size * scale);
-            nvgFillColor(vg, centre ? th.text_strong : th.text_dim);
-            // Display name sits above the badge slot (~36 px from the
-            // bottom) and aligns BOTTOM so the baseline is predictable.
-            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM);
-            nvgText(vg, x + tw * 0.5f, y + thh - 36 * scale,
-                std::string{sys.def->display_name}.c_str(), nullptr);
-        } else {
-            nvgFontSize(vg, th.title_size * scale);
-            nvgFillColor(vg, centre ? th.text_strong : th.text);
-            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-            nvgText(vg, x + tw * 0.5f, y + thh * 0.5f - 18 * scale,
-                std::string{sys.def->short_name}.c_str(), nullptr);
-
-            nvgFontSize(vg, th.body_size * scale);
-            nvgFillColor(vg, th.text_dim);
-            nvgText(vg, x + tw * 0.5f, y + thh * 0.5f + 22 * scale,
-                std::string{sys.def->display_name}.c_str(), nullptr);
+                x + tw * 0.15f, y + thh * 0.30f,
+                tw * 0.70f, thh * 0.40f,
+                0.0f, centre ? 1.0f : 0.85f);
         }
 
-        // Game count badge bottom-right.
+        // Game count badge bottom-right when this is the focused tile.
         if (centre) {
             char badge[32];
             std::snprintf(badge, sizeof(badge), "%zu games", sys.games.size());
             nvgFontSize(vg, th.label_size);
-            nvgFillColor(vg, th.accent);
+            nvgFillColor(vg, nvgRGBA(0xFF, 0xFF, 0xFF, 0xE0));
             nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM);
-            nvgText(vg, x + tw - th.pad * 0.5f, y + thh - th.pad * 0.5f, badge, nullptr);
+            nvgText(vg, x + tw - th.pad * 0.5f, y + thh - th.pad * 0.5f,
+                badge, nullptr);
         }
         nvgRestore(vg);
     }

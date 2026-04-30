@@ -53,6 +53,12 @@ App::App() {
 
     init_fs();
     init_gfx();
+    // nanovg-deko3d's DkRenderer::Create wraps its shader load in its own
+    // romfsInit/romfsExit pair, which on libnx 4.12 leaves the romfs
+    // devoptab in a state where subsequent fopen("romfs:/...") returns
+    // ENOSYS. Bringing the refcount back up here keeps the mount alive
+    // for the rest of the process.
+    if (R_SUCCEEDED(romfsInit())) m_romfs_mounted = true;
     init_input();
 }
 
