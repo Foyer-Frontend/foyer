@@ -408,13 +408,16 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
         }
 
         // Console logo overlay only on the focused tile, ES-DE style.
+        // Box doubled in area: full tile width and ~60% tile height so
+        // wide wordmarks (e.g. "PlayStation Portable") render large
+        // instead of tiny. Aspect-fit still keeps the logo proportional.
         if (centre) {
             const auto logo_path = system_logo_path(sys.def->folder_name);
             const int  logo_h    = system_logo_cache().get_or_load(vg, logo_path);
             if (logo_h > 0) {
                 blit_aspect_fit(vg, logo_h,
-                    x + tw * 0.10f, y + thh * 0.35f,
-                    tw * 0.80f, thh * 0.30f,
+                    x, y + thh * 0.20f,
+                    tw, thh * 0.60f,
                     0.0f, 1.0f);
             }
         }
