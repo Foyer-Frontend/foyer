@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <ctime>
+#include <dirent.h>
 #include <sys/stat.h>
 #include <unordered_map>
 
@@ -543,7 +544,7 @@ enum class ItemKind { Cycle, Toggle, Action, Static, Drill };
 
 struct Item {
     ItemKind     kind;
-    const char*  label;
+    std::string  label;
     std::string  value;       // displayed right side
     std::string  hint;        // optional dim sub-label below the row
     int          payload = 0; // category-specific opcode
@@ -604,12 +605,49 @@ std::vector<Item> build_items(Category cat) {
             rows.push_back({ItemKind::Static, "Credentials live in /foyer/config/accounts.jsonc",
                 "", "Edit on the SD or via Roms-over-USB (Experimental).", OpAccCreds});
             break;
-        case Category::Updates:
+        case Category::Updates: {
             rows.push_back({ItemKind::Action, "Scrape all systems", "A: run",
                 "Walks every system using the preferred scraper.",   OpUpdScrapeAll});
-            rows.push_back({ItemKind::Drill,  "Installed cores",    "A: open",
-                "List of foyer-<core>.nro present under /foyer/cores/.", OpUpdInstalledCores});
+            // Inline list of cores actually present on the SD. Each row is
+            // labeled with the core name + nro size; missing cores from the
+            // system_db core list are flagged so the user knows what's
+            // pending install.
+            rows.push_back({ItemKind::Static, "Installed cores", "", "", 0});
+            std::vector<std::string> seen;
+            if (auto* dir = ::opendir("/foyer/cores")) {
+                while (auto* e = ::readdir(dir)) {
+                    if (!e->d_name[0] || e->d_name[0] == '.') continue;
+                    std::string_view n{e->d_name};
+                    if (!n.starts_with("foyer-") || !n.ends_with(".nro")) continue;
+                    std::string core_name{n.substr(6, n.size() - 6 - 4)};
+                    char path[256];
+                    std::snprintf(path, sizeof(path), "/foyer/cores/%.*s",
+                        (int)n.size(), n.data());
+                    struct stat st{};
+                    char rhs[64] = "present";
+                    if (::stat(path, &st) == 0) {
+                        std::snprintf(rhs, sizeof(rhs), "%lld KB",
+                            (long long)(st.st_size / 1024));
+                    }
+                    rows.push_back({ItemKind::Static, std::string{"  "} + core_name, rhs, "", 0});
+                    seen.push_back(std::move(core_name));
+                }
+                ::closedir(dir);
+            }
+            // Flag the cores referenced in system_db that aren't on disk yet.
+            for (const auto& sys : library::all_systems()) {
+                for (const auto& c : sys.cores) {
+                    bool installed = false;
+                    for (const auto& n : seen) if (n == c.name) { installed = true; break; }
+                    if (!installed) {
+                        rows.push_back({ItemKind::Static,
+                            std::string{"  "} + std::string{c.name}, "missing", "", 0});
+                        seen.emplace_back(c.name);
+                    }
+                }
+            }
             break;
+        }
         case Category::Experimental:
             rows.push_back({ItemKind::Toggle, "Roms over USB",
                 /*value*/ "", "Spin up libhaze MTP scoped to /foyer/roms.",   OpExpMtp});
@@ -792,7 +830,7 @@ void draw_settings(NVGcontext* vg, float w, float h, const State& s, const Libra
         nvgFontSize(vg, th.body_size);
         nvgFillColor(vg, sel ? th.text_strong : th.text);
         nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
-        nvgText(vg, inner_x + 8, ry + (kRowH - 12) * 0.5f, it.label, nullptr);
+        nvgText(vg, inner_x + 8, ry + (kRowH - 12) * 0.5f, it.label.c_str(), nullptr);
 
         const float vx = inner_x + inner_w - 8;
         const float vy = ry + (kRowH - 12) * 0.5f;
