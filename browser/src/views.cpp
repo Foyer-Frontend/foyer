@@ -32,11 +32,10 @@ struct CoverCache {
         auto it = images.find(path);
         if (it != images.end()) return it->second;
 
-        struct stat st{};
-        if (::stat(path.c_str(), &st) != 0) {
-            images[path] = 0;
-            return 0;
-        }
+        // No stat() gate — libnx's romfs devoptab returns ENOENT for stat
+        // even on files that fopen(2) can read. nvgCreateImage already
+        // returns 0 when the path is missing, so the negative lookup
+        // happens there for free.
         const int img = nvgCreateImage(vg, path.c_str(), 0);
         images[path] = img;
         return img;
@@ -199,15 +198,14 @@ void draw_empty(NVGcontext* vg, float w, float h, const char* title, const char*
 void draw_topbar(NVGcontext* vg, float w, const char* left, const char* right) {
     const auto& th = theme();
 
-    // Bar background + accent underline.
+    // Bar background — flat against the rest of the chrome, no accent line.
     nvgBeginPath(vg);
     nvgRect(vg, 0, 0, w, kTopBarH);
     nvgFillColor(vg, th.bg_panel);
     nvgFill(vg);
-
     nvgBeginPath(vg);
-    nvgRect(vg, 0, kTopBarH - 2.0f, w, 2.0f);
-    nvgFillColor(vg, th.accent);
+    nvgRect(vg, 0, kTopBarH - 1.0f, w, 1.0f);
+    nvgFillColor(vg, th.border);
     nvgFill(vg);
 
     nvgFontSize(vg, th.head_size);
@@ -331,9 +329,6 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
         const bool centre = (offset == 0);
         rrect(vg, x, y, tw, thh, th.radius,
             centre ? th.bg_panel_hi : th.bg_panel);
-        if (centre) {
-            rrect_outline(vg, x, y, tw, thh, th.radius, th.accent, 3.0f);
-        }
 
         nvgSave(vg);
         nvgIntersectScissor(vg, x, y, tw, thh);
@@ -352,8 +347,10 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
 
             nvgFontSize(vg, th.body_size * scale);
             nvgFillColor(vg, centre ? th.text_strong : th.text_dim);
-            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-            nvgText(vg, x + tw * 0.5f, y + thh - 26 * scale,
+            // Display name sits above the badge slot (~36 px from the
+            // bottom) and aligns BOTTOM so the baseline is predictable.
+            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM);
+            nvgText(vg, x + tw * 0.5f, y + thh - 36 * scale,
                 std::string{sys.def->display_name}.c_str(), nullptr);
         } else {
             nvgFontSize(vg, th.title_size * scale);
