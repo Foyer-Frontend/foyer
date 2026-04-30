@@ -36,6 +36,7 @@ int main(int /*argc*/, char** /*argv*/) {
 
     foyer::library::ScanOptions opts;
     opts.rom_root = foyer::library::config().rom_root;
+    opts.recurse  = foyer::library::config().scan_subfolders;
     foyer::browser::Library lib;
     lib.systems = foyer::library::scan_library(opts);
 
@@ -61,6 +62,7 @@ int main(int /*argc*/, char** /*argv*/) {
             state.request_rescan = false;
             foyer::library::reload_config();
             opts.rom_root = foyer::library::config().rom_root;
+            opts.recurse  = foyer::library::config().scan_subfolders;
             lib.systems = foyer::library::scan_library(opts);
             // Cursors might point past the end of the rescanned library.
             if (state.system_index >= lib.systems.size()) state.system_index = 0;

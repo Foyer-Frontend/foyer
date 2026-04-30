@@ -52,6 +52,35 @@ bool ext_in_pipe_list(std::string_view ext, std::string_view list) {
     return false;
 }
 
+void scan_dir_into(const std::string& path,
+                   const SystemDef& def,
+                   std::vector<Game>& out,
+                   bool recurse) {
+    auto* dir = ::opendir(path.c_str());
+    if (!dir) return;
+    while (auto* g = ::readdir(dir)) {
+        if (g->d_name[0] == '.') continue;
+        const std::string full = path + "/" + g->d_name;
+        if (g->d_type == DT_DIR) {
+            if (recurse) scan_dir_into(full, def, out, true);
+            continue;
+        }
+        if (g->d_type != DT_REG) continue;
+        const auto ext = ext_of(g->d_name);
+        if (ext.empty()) continue;
+        if (!ext_in_pipe_list(ext, def.extensions)) continue;
+
+        Game game;
+        game.path     = full;
+        game.filename = g->d_name;
+        game.stem     = stem_of(g->d_name);
+        game.ext      = ext;
+        game.display  = game.stem;
+        out.emplace_back(std::move(game));
+    }
+    ::closedir(dir);
+}
+
 } // namespace
 
 std::vector<System> scan_library(const ScanOptions& opts) {
@@ -77,28 +106,7 @@ std::vector<System> scan_library(const ScanOptions& opts) {
         sys.def       = def;
         sys.root_path = opts.rom_root + "/" + d->d_name;
 
-        auto* sub = ::opendir(sys.root_path.c_str());
-        if (!sub) continue;
-
-        while (auto* g = ::readdir(sub)) {
-            if (g->d_name[0] == '.' || g->d_type != DT_REG) continue;
-            const auto ext = ext_of(g->d_name);
-            if (ext.empty()) continue;
-
-            // Match raw extension first. Archive peeking lands in scope 3.7.
-            if (!ext_in_pipe_list(ext, def->extensions)) {
-                continue;
-            }
-
-            Game game;
-            game.path     = sys.root_path + "/" + g->d_name;
-            game.filename = g->d_name;
-            game.stem     = stem_of(g->d_name);
-            game.ext      = ext;
-            game.display  = game.stem; // gamelist override lands in 3.3
-            sys.games.emplace_back(std::move(game));
-        }
-        ::closedir(sub);
+        scan_dir_into(sys.root_path, *def, sys.games, opts.recurse);
 
         // Stable alphabetical order until the user picks a sort.
         std::sort(sys.games.begin(), sys.games.end(),
