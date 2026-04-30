@@ -331,9 +331,13 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
 
     // Tile metrics. Selected tile sits in the centre at full size; up to two
     // neighbours each side render smaller and fade out.
-    constexpr float kTileW = 360.0f;
-    constexpr float kTileH = 220.0f;
-    constexpr float kGap   = 32.0f;
+    // Portrait tiles matching the strip artwork aspect (~454x1080 ≈ 0.42).
+    // Centre tile takes most of the content area between topbar + bottombar
+    // so the strip reads top-to-bottom; side tiles shrink via the scale
+    // multiplier below.
+    constexpr float kTileW = 240.0f;
+    constexpr float kTileH = 560.0f;
+    constexpr float kGap   = 24.0f;
 
     const auto idx_centre = (int)s.system_index;
     const auto count      = (int)lib.systems.size();
