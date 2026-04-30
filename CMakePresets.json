@@ -196,6 +196,17 @@
                 "BUILD_PLAYER":  "ON",
                 "FOYER_CORE":    "handy"
             }
+        },
+        {
+            "name": "Player-prosystem",
+            "displayName": "Player (prosystem/Atari 7800)",
+            "inherits": ["core"],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "MinSizeRel",
+                "BUILD_BROWSER": "OFF",
+                "BUILD_PLAYER":  "ON",
+                "FOYER_CORE":    "prosystem"
+            }
         }
     ],
     "buildPresets": [
@@ -266,6 +277,10 @@
         {
             "name": "Player-handy",
             "configurePreset": "Player-handy"
+        },
+        {
+            "name": "Player-prosystem",
+            "configurePreset": "Player-prosystem"
         }
     ]
 }
