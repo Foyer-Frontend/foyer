@@ -43,6 +43,11 @@ struct State {
     bool popup_open  = false;
     int  popup_index = 0;
 
+    // Yes/No quit confirmation. B on the Home view opens this; A on Yes
+    // raises request_quit, A on No closes it.
+    bool quit_confirm_open = false;
+    int  quit_confirm_index = 1; // 0=Yes 1=No, default to safer "No"
+
     // Set by the popup "Exit" item; main.cpp drains it and quits the app.
     bool request_quit = false;
 

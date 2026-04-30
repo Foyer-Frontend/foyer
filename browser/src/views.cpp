@@ -375,7 +375,15 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
         const int strip_h = system_splash_cache().get_or_load(vg,
             system_splash_path(sys.def->folder_name));
         if (strip_h > 0) {
-            blit_cover(vg, strip_h, x, y, tw, thh, centre ? 1.0f : 0.55f);
+            // Overzoom by 1.25x so the parallelogram artwork extends past
+            // the tile bounds (the scissor crops the transparent corners,
+            // minimizing the visible gap between adjacent tiles).
+            constexpr float kZoom = 1.25f;
+            const float ex  = (tw  * (kZoom - 1.0f)) * 0.5f;
+            const float ey  = (thh * (kZoom - 1.0f)) * 0.5f;
+            blit_cover(vg, strip_h, x - ex, y - ey,
+                       tw * kZoom, thh * kZoom,
+                       centre ? 1.0f : 0.55f);
         }
 
         // Console logo overlay only on the focused tile, ES-DE style.
@@ -390,16 +398,6 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
             }
         }
 
-        // Game count badge bottom-right when this is the focused tile.
-        if (centre) {
-            char badge[32];
-            std::snprintf(badge, sizeof(badge), "%zu games", sys.games.size());
-            nvgFontSize(vg, th.label_size);
-            nvgFillColor(vg, nvgRGBA(0xFF, 0xFF, 0xFF, 0xE0));
-            nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM);
-            nvgText(vg, x + tw - th.pad * 0.5f, y + thh - th.pad * 0.5f,
-                badge, nullptr);
-        }
         nvgRestore(vg);
     }
 
@@ -577,6 +575,46 @@ std::vector<PopupItem> popup_items_for(View v) {
                      {"Settings",     PopSettings},
                      {"Back",         PopBack} };
     }
+}
+
+void draw_quit_confirm(NVGcontext* vg, float w, float h, const State& s) {
+    if (!s.quit_confirm_open) return;
+    const auto& th = theme();
+
+    nvgBeginPath(vg);
+    nvgRect(vg, 0, 0, w, h);
+    nvgFillColor(vg, nvgRGBAf(0, 0, 0, 0.55f));
+    nvgFill(vg);
+
+    constexpr float kCardW = 460.0f;
+    constexpr float kCardH = 200.0f;
+    const float cx = (w - kCardW) * 0.5f;
+    const float cy = (h - kCardH) * 0.5f;
+
+    rrect(vg, cx, cy, kCardW, kCardH, 14.0f, th.bg_panel);
+    rrect_outline(vg, cx, cy, kCardW, kCardH, 14.0f, th.border, 1.0f);
+
+    nvgFontSize(vg, th.head_size);
+    nvgFillColor(vg, th.text_strong);
+    nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
+    nvgText(vg, cx + kCardW * 0.5f, cy + 28, "Quit foyer?", nullptr);
+
+    constexpr float kBtnW = 140.0f;
+    constexpr float kBtnH = 56.0f;
+    const float by = cy + kCardH - 28 - kBtnH;
+    const float yes_x = cx + kCardW * 0.25f - kBtnW * 0.5f;
+    const float no_x  = cx + kCardW * 0.75f - kBtnW * 0.5f;
+
+    auto button = [&](float bx, const char* label, bool sel) {
+        rrect(vg, bx, by, kBtnW, kBtnH, 10.0f,
+              sel ? th.accent : th.bg_panel_hi);
+        nvgFontSize(vg, th.body_size);
+        nvgFillColor(vg, sel ? th.bg : th.text_strong);
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+        nvgText(vg, bx + kBtnW * 0.5f, by + kBtnH * 0.5f, label, nullptr);
+    };
+    button(yes_x, "Yes",  s.quit_confirm_index == 0);
+    button(no_x,  "No",   s.quit_confirm_index == 1);
 }
 
 void draw_popup(NVGcontext* vg, float w, float h, const State& s) {
@@ -1365,6 +1403,23 @@ void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Li
 void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down) {
     if (s.banner_ttl > 0) s.banner_ttl--;
 
+    // Quit confirmation modal intercepts everything while open.
+    if (s.quit_confirm_open) {
+        if (down & (HidNpadButton_Left | HidNpadButton_Right)) {
+            s.quit_confirm_index = 1 - s.quit_confirm_index;
+        }
+        if (down & HidNpadButton_B) {
+            s.quit_confirm_open = false;
+            return;
+        }
+        if (down & HidNpadButton_A) {
+            const bool yes = (s.quit_confirm_index == 0);
+            s.quit_confirm_open = false;
+            if (yes) s.request_quit = true;
+        }
+        return;
+    }
+
     // Modal popup intercepts all input while open.
     if (s.popup_open) {
         const auto items = popup_items_for(s.view);
@@ -1413,6 +1468,11 @@ void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down
         if (down & HidNpadButton_A) {
             s.view = View::System;
             s.game_index = 0;
+        }
+        if (down & HidNpadButton_B) {
+            s.quit_confirm_open  = true;
+            s.quit_confirm_index = 1; // default to "No"
+            return;
         }
         if (down & HidNpadButton_Plus) {
             s.popup_open  = true;
@@ -1685,10 +1745,28 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
     std::string clock = library::config().show_clock ? clock_label() : std::string{};
     std::string hint;
     switch (s.view) {
-        case View::Home:
+        case View::Home: {
+            if (!lib.systems.empty()) {
+                const auto& sys = lib.systems[s.system_index];
+                char rhs[180];
+                if (clock.empty()) {
+                    std::snprintf(rhs, sizeof(rhs), "%.*s  ·  %zu games",
+                        (int)sys.def->display_name.size(),
+                        sys.def->display_name.data(),
+                        sys.games.size());
+                } else {
+                    std::snprintf(rhs, sizeof(rhs), "%.*s  ·  %zu games  ·  %s",
+                        (int)sys.def->display_name.size(),
+                        sys.def->display_name.data(),
+                        sys.games.size(), clock.c_str());
+                }
+                clock = rhs;
+            }
             hint = std::string{DPad} + " pick   "
-                 + A + " enter   " + Minus + " settings   " + Plus + " menu";
+                 + A + " enter   " + Minus + " settings   "
+                 + Plus + " menu   " + B + " quit";
             break;
+        }
         case View::System: {
             if (!lib.systems.empty()) {
                 const auto& sys = lib.systems[s.system_index];
@@ -1749,6 +1827,7 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
 
     // Modal popup floats over everything, including bars.
     draw_popup(vg, w, h, s);
+    draw_quit_confirm(vg, w, h, s);
 
     // Banner (e.g., "Scraping NES…  3 / 24"). Drawn last so nothing covers it.
     if (s.banner_ttl > 0 && !s.banner_text.empty()) {
