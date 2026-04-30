@@ -51,7 +51,7 @@
                 "CMAKE_BUILD_TYPE": "MinSizeRel",
                 "BUILD_BROWSER": "OFF",
                 "BUILD_PLAYER":  "ON",
-                "FOYER_CORES":   "fceumm;nestopia;gambatte;genesisplusgx;snes9x;mgba;melonds;swanstation;yabasanshiro;race"
+                "FOYER_CORES":   "fceumm;nestopia;gambatte;genesisplusgx;snes9x;mgba;melonds;swanstation;yabasanshiro;race;mupen64plus;flycast"
             }
         },
         {
@@ -152,6 +152,28 @@
                 "BUILD_PLAYER":  "ON",
                 "FOYER_CORE":    "race"
             }
+        },
+        {
+            "name": "Player-mupen64plus",
+            "displayName": "Player (mupen64plus/N64) — interpreter, EGL stub, will not render",
+            "inherits": ["core"],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "MinSizeRel",
+                "BUILD_BROWSER": "OFF",
+                "BUILD_PLAYER":  "ON",
+                "FOYER_CORE":    "mupen64plus"
+            }
+        },
+        {
+            "name": "Player-flycast",
+            "displayName": "Player (flycast/Dreamcast) — norend stub, no dynarec",
+            "inherits": ["core"],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "MinSizeRel",
+                "BUILD_BROWSER": "OFF",
+                "BUILD_PLAYER":  "ON",
+                "FOYER_CORE":    "flycast"
+            }
         }
     ],
     "buildPresets": [
@@ -206,6 +228,14 @@
         {
             "name": "Player-race",
             "configurePreset": "Player-race"
+        },
+        {
+            "name": "Player-mupen64plus",
+            "configurePreset": "Player-mupen64plus"
+        },
+        {
+            "name": "Player-flycast",
+            "configurePreset": "Player-flycast"
         }
     ]
 }
