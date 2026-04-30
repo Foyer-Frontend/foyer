@@ -1,6 +1,7 @@
 #include "scanner.hpp"
 #include "system_db.hpp"
 #include "platform/log.hpp"
+#include "util/archive.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -52,6 +53,10 @@ bool ext_in_pipe_list(std::string_view ext, std::string_view list) {
     return false;
 }
 
+bool is_archive_ext(std::string_view ext) {
+    return ext == "zip" || ext == "7z";
+}
+
 void scan_dir_into(const std::string& path,
                    const SystemDef& def,
                    std::vector<Game>& out,
@@ -68,7 +73,15 @@ void scan_dir_into(const std::string& path,
         if (g->d_type != DT_REG) continue;
         const auto ext = ext_of(g->d_name);
         if (ext.empty()) continue;
-        if (!ext_in_pipe_list(ext, def.extensions)) continue;
+
+        bool accept = ext_in_pipe_list(ext, def.extensions);
+        if (!accept && is_archive_ext(ext)) {
+            // Peek the archive: only accept if it carries a rom whose
+            // inner extension matches this system's known list.
+            auto inner = foyer::util::archive_peek_inner_rom(full, def.extensions);
+            accept = !inner.empty();
+        }
+        if (!accept) continue;
 
         Game game;
         game.path     = full;

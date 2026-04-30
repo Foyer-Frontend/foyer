@@ -20,6 +20,7 @@
 #include "platform/log.hpp"
 #include "library/system_db.hpp"
 #include "libretro/frontend.hpp"
+#include "util/archive.hpp"
 #include "libretro/video.hpp"
 #include "libretro/audio.hpp"
 #include "libretro/input.hpp"
@@ -151,6 +152,45 @@ int main(int argc, char** argv) {
             return 1;
         }
         foyer::log::write("[player] auto-picked %s\n", rom_path.c_str());
+    }
+
+    // Archive support: if the user picked a .zip / .7z, extract the first
+    // matching inner rom into /foyer/data/extract/<stem>.<ext> and load
+    // that path instead. The core only sees a regular file on disk.
+    auto ends_with_ci = [](std::string_view s, std::string_view suf) {
+        if (s.size() < suf.size()) return false;
+        for (std::size_t i = 0; i < suf.size(); i++) {
+            char a = s[s.size() - suf.size() + i];
+            char b = suf[i];
+            if (a >= 'A' && a <= 'Z') a = (char)(a + 32);
+            if (b >= 'A' && b <= 'Z') b = (char)(b + 32);
+            if (a != b) return false;
+        }
+        return true;
+    };
+    if (ends_with_ci(rom_path, ".zip") || ends_with_ci(rom_path, ".7z")) {
+        const std::string& valid = fe.system_info().valid_extensions;
+        const auto inner = foyer::util::archive_peek_inner_rom(rom_path, valid);
+        if (inner.empty()) {
+            foyer::log::write("[player] archive %s holds no compatible rom\n",
+                rom_path.c_str());
+        } else {
+            // Use just the basename of the inner entry for the temp file.
+            const auto slash = inner.rfind('/');
+            const std::string inner_base = (slash == std::string::npos)
+                ? inner : inner.substr(slash + 1);
+            const std::string out = "/foyer/data/extract/" + inner_base;
+            ::mkdir("/foyer/data", 0777);
+            ::mkdir("/foyer/data/extract", 0777);
+            if (foyer::util::archive_extract_inner_rom(rom_path, valid, out)) {
+                foyer::log::write("[player] extracted %s -> %s\n",
+                    inner.c_str(), out.c_str());
+                rom_path = out;
+            } else {
+                foyer::log::write("[player] failed to extract %s from %s\n",
+                    inner.c_str(), rom_path.c_str());
+            }
+        }
     }
 
     if (!fe.load_game(rom_path)) {

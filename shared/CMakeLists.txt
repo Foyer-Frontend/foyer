@@ -21,6 +21,7 @@ add_library(foyer_shared STATIC
     scrapers/libretro_thumbnails.cpp
     scrapers/screenscraper.cpp
     scrapers/steamgriddb.cpp
+    util/archive.cpp
 )
 
 target_include_directories(foyer_shared PUBLIC
@@ -39,6 +40,11 @@ target_link_libraries(foyer_shared PUBLIC
     yyjson
     ZLIB::ZLIB
     CURL::libcurl
+    archive
+    lzma
+    bz2
+    zstd
+    lz4
 )
 
 # Compile flags shared with consumers
