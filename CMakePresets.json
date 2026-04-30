@@ -207,6 +207,17 @@
                 "BUILD_PLAYER":  "ON",
                 "FOYER_CORE":    "prosystem"
             }
+        },
+        {
+            "name": "Player-stella",
+            "displayName": "Player (stella/Atari 2600)",
+            "inherits": ["core"],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "MinSizeRel",
+                "BUILD_BROWSER": "OFF",
+                "BUILD_PLAYER":  "ON",
+                "FOYER_CORE":    "stella"
+            }
         }
     ],
     "buildPresets": [
@@ -281,6 +292,10 @@
         {
             "name": "Player-prosystem",
             "configurePreset": "Player-prosystem"
+        },
+        {
+            "name": "Player-stella",
+            "configurePreset": "Player-stella"
         }
     ]
 }
