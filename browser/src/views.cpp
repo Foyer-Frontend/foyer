@@ -227,6 +227,35 @@ void blit_cover(NVGcontext* vg, int handle, float x, float y, float w, float h,
     nvgFill(vg);
 }
 
+// Aspect-fill an image into a parallelogram-shaped tile. The shape leans
+// left (top edge shifted right by `slant`, bottom edge shifted left by the
+// same amount) so adjacent tiles interlock when negative-gapped.
+void blit_cover_parallelogram(NVGcontext* vg, int handle,
+                              float x, float y, float w, float h,
+                              float slant, float alpha) {
+    if (handle <= 0) return;
+    int iw = 0, ih = 0;
+    nvgImageSize(vg, handle, &iw, &ih);
+    if (iw <= 0 || ih <= 0) return;
+    const float ar_img = (float)iw / (float)ih;
+    const float ar_box = w / h;
+    float dw, dh;
+    if (ar_img > ar_box) { dh = h; dw = h * ar_img; }
+    else                  { dw = w; dh = w / ar_img; }
+    const float dx = x + (w - dw) * 0.5f;
+    const float dy = y + (h - dh) * 0.5f;
+    auto pat = nvgImagePattern(vg, dx, dy, dw, dh, 0.f, handle, alpha);
+
+    nvgBeginPath(vg);
+    nvgMoveTo(vg, x + slant,     y);
+    nvgLineTo(vg, x + w,         y);
+    nvgLineTo(vg, x + w - slant, y + h);
+    nvgLineTo(vg, x,             y + h);
+    nvgClosePath(vg);
+    nvgFillPaint(vg, pat);
+    nvgFill(vg);
+}
+
 // Empty-state helper used when the library has no systems / no games.
 void draw_empty(NVGcontext* vg, float w, float h, const char* title, const char* hint) {
     const auto& th = theme();
@@ -338,14 +367,14 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
 
     // Tile metrics. Selected tile sits in the centre at full size; up to two
     // neighbours each side render smaller and fade out.
-    // Portrait tiles matching the strip artwork aspect (~454x1080 ≈ 0.42).
-    // All tiles render at the same size; a negative gap pulls adjacent
-    // tiles into overlap so the slanted parallelogram edges interlock and
-    // the carousel reads as one continuous slanted strip — matches the
-    // ES-DE Art Book Next layout.
+    // Portrait parallelogram tiles. Each tile is a slanted shape (top-right
+    // and bottom-left corners shifted by kSlant) so adjacent tiles interlock
+    // exactly — kGap = -kSlant pulls them together along the slanted edges
+    // matching the ES-DE Art Book Next layout.
     constexpr float kTileW = 240.0f;
     constexpr float kTileH = 560.0f;
-    constexpr float kGap   = -36.0f;
+    constexpr float kSlant = 56.0f;
+    constexpr float kGap   = -kSlant;
 
     const auto idx_centre = (int)s.system_index;
     const auto count      = (int)lib.systems.size();
@@ -369,24 +398,13 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
 
         const bool centre = (offset == 0);
 
-        // Tile body: strip artwork only — no card background, no outline.
-        // Rounded scissor so corners stay clean.
         nvgSave(vg);
-        nvgScissor(vg, x, y, tw, thh);
-
         const int strip_h = system_splash_cache().get_or_load(vg,
             system_splash_path(sys.def->folder_name));
         if (strip_h > 0) {
-            // Overzoom enough that the strip's transparent parallelogram
-            // corners get clipped off both vertical edges of the tile —
-            // adjacent tiles read as one continuous slanted strip with no
-            // black wedges between them.
-            constexpr float kZoom = 1.65f;
-            const float ex  = (tw  * (kZoom - 1.0f)) * 0.5f;
-            const float ey  = (thh * (kZoom - 1.0f)) * 0.5f;
-            blit_cover(vg, strip_h, x - ex, y - ey,
-                       tw * kZoom, thh * kZoom,
-                       centre ? 1.0f : 0.55f);
+            blit_cover_parallelogram(vg, strip_h,
+                x, y, tw, thh, kSlant,
+                centre ? 1.0f : 0.55f);
         }
 
         // Console logo overlay only on the focused tile, ES-DE style.
