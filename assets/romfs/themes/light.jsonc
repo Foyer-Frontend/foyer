@@ -1,0 +1,18 @@
+// Built-in light theme inspired by Tico's palette. Drop a custom light.jsonc
+// in /foyer/config/themes/ to override.
+{
+    "bg":          "#F4F6FA",
+    "bg_panel":    "#FFFFFF",
+    "bg_panel_hi": "#E8ECF4",
+
+    "accent":      "#3D9BFF",
+    "accent_dim":  "#2D6FBF",
+
+    "text_strong": "#161A22",
+    "text":        "#2E3340",
+    "text_dim":    "#6F778A",
+
+    "border":      "#C7CEDA",
+
+    "background":  ""
+}

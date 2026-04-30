@@ -51,4 +51,8 @@ const Accounts& accounts();
 // Force re-read (used after the user edits the file via MTP).
 void reload_accounts();
 
+// Generic setter — `path` is "section.key" where section is one of
+// "screenscraper", "steamgriddb", "retroachievements". Persists to disk.
+void set_account_field(std::string_view path, std::string_view value);
+
 } // namespace foyer::scrapers

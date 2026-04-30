@@ -144,4 +144,48 @@ void reload_accounts() {
     g_loaded = true;
 }
 
+namespace {
+
+// Re-emit the JSONC file from g_accounts. Keeps section ordering stable.
+void write_locked() {
+    std::ofstream out{kPath, std::ios::trunc};
+    if (!out) {
+        foyer::log::write("[accounts] could not write %s\n", kPath);
+        return;
+    }
+    out << "// foyer scraper credentials.\n";
+    out << "{\n";
+    out << "    \"screenscraper\": {\n";
+    out << "        \"devid\":       \"" << g_accounts.screenscraper.devid << "\",\n";
+    out << "        \"devpassword\": \"" << g_accounts.screenscraper.devpassword << "\",\n";
+    out << "        \"ssid\":        \"" << g_accounts.screenscraper.ssid << "\",\n";
+    out << "        \"sspassword\":  \"" << g_accounts.screenscraper.sspassword << "\"\n";
+    out << "    },\n";
+    out << "    \"steamgriddb\": {\n";
+    out << "        \"api_key\": \"" << g_accounts.steamgriddb.api_key << "\"\n";
+    out << "    },\n";
+    out << "    \"retroachievements\": {\n";
+    out << "        \"user\":  \"" << g_accounts.retroachievements.user << "\",\n";
+    out << "        \"token\": \"" << g_accounts.retroachievements.token << "\"\n";
+    out << "    }\n";
+    out << "}\n";
+}
+
+} // namespace
+
+void set_account_field(std::string_view path, std::string_view value) {
+    std::scoped_lock lk{g_mutex};
+    if (!g_loaded.load()) { load_locked(); g_loaded = true; }
+    const std::string v{value};
+    if      (path == "screenscraper.devid")       g_accounts.screenscraper.devid       = v;
+    else if (path == "screenscraper.devpassword") g_accounts.screenscraper.devpassword = v;
+    else if (path == "screenscraper.ssid")        g_accounts.screenscraper.ssid        = v;
+    else if (path == "screenscraper.sspassword")  g_accounts.screenscraper.sspassword  = v;
+    else if (path == "steamgriddb.api_key")       g_accounts.steamgriddb.api_key       = v;
+    else if (path == "retroachievements.user")    g_accounts.retroachievements.user    = v;
+    else if (path == "retroachievements.token")   g_accounts.retroachievements.token   = v;
+    else return;
+    write_locked();
+}
+
 } // namespace foyer::scrapers

@@ -5,10 +5,14 @@
 #include "library/system_db.hpp"
 #include "library/config.hpp"
 #include "library/per_game.hpp"
+#include "scrapers/accounts.hpp"
 #include "scrapers/cache.hpp"
 #include "ui/icons.hpp"
 
+#include <switch.h>
+
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <ctime>
 #include <dirent.h>
@@ -55,6 +59,10 @@ CoverCache& system_logo_cache() {
     return c;
 }
 CoverCache& backdrop_cache() {
+    static CoverCache c;
+    return c;
+}
+CoverCache& theme_bg_cache() {
     static CoverCache c;
     return c;
 }
@@ -526,7 +534,7 @@ enum class Category : int {
 
 struct CategoryEntry {
     const char* label;
-    const char* hint;       // glyph stand-in (one or two chars)
+    const char* hint;       // glyph stand-in (kept as a fallback for logs)
 };
 
 constexpr CategoryEntry kCategories[(int)Category::Count_] = {
@@ -539,6 +547,160 @@ constexpr CategoryEntry kCategories[(int)Category::Count_] = {
     { "Updates",      "UPD" },
     { "Experimental", "EXP" },
 };
+
+// Vector icons drawn into the sidebar slot. Each draws a small glyph centered
+// on (cx, cy) at the given size. Color follows accent-vs-dim of the row.
+void draw_icon_general(NVGcontext* vg, float cx, float cy, float sz, NVGcolor c) {
+    // Gear: outer gear ring (8 teeth via dashed circle), inner hole.
+    nvgStrokeColor(vg, c);
+    nvgStrokeWidth(vg, 2.0f);
+    nvgBeginPath(vg);
+    nvgCircle(vg, cx, cy, sz * 0.45f);
+    nvgStroke(vg);
+    nvgBeginPath(vg);
+    nvgCircle(vg, cx, cy, sz * 0.18f);
+    nvgStroke(vg);
+    for (int i = 0; i < 8; i++) {
+        const float a = i * 6.2832f / 8;
+        const float x1 = cx + std::cos(a) * sz * 0.45f;
+        const float y1 = cy + std::sin(a) * sz * 0.45f;
+        const float x2 = cx + std::cos(a) * sz * 0.62f;
+        const float y2 = cy + std::sin(a) * sz * 0.62f;
+        nvgBeginPath(vg);
+        nvgMoveTo(vg, x1, y1);
+        nvgLineTo(vg, x2, y2);
+        nvgStroke(vg);
+    }
+}
+void draw_icon_display(NVGcontext* vg, float cx, float cy, float sz, NVGcolor c) {
+    // Monitor: rounded screen + stand.
+    nvgStrokeColor(vg, c); nvgStrokeWidth(vg, 2.0f);
+    nvgBeginPath(vg);
+    nvgRoundedRect(vg, cx - sz * 0.55f, cy - sz * 0.40f,
+                       sz * 1.10f, sz * 0.70f, 4.0f);
+    nvgStroke(vg);
+    nvgBeginPath(vg);
+    nvgMoveTo(vg, cx - sz * 0.25f, cy + sz * 0.50f);
+    nvgLineTo(vg, cx + sz * 0.25f, cy + sz * 0.50f);
+    nvgStroke(vg);
+}
+void draw_icon_audio(NVGcontext* vg, float cx, float cy, float sz, NVGcolor c) {
+    // Speaker triangle + sound waves.
+    nvgFillColor(vg, c);
+    nvgBeginPath(vg);
+    nvgMoveTo(vg, cx - sz * 0.35f, cy - sz * 0.18f);
+    nvgLineTo(vg, cx - sz * 0.10f, cy - sz * 0.18f);
+    nvgLineTo(vg, cx + sz * 0.15f, cy - sz * 0.40f);
+    nvgLineTo(vg, cx + sz * 0.15f, cy + sz * 0.40f);
+    nvgLineTo(vg, cx - sz * 0.10f, cy + sz * 0.18f);
+    nvgLineTo(vg, cx - sz * 0.35f, cy + sz * 0.18f);
+    nvgClosePath(vg);
+    nvgFill(vg);
+    nvgStrokeColor(vg, c); nvgStrokeWidth(vg, 1.6f);
+    for (int i = 0; i < 2; i++) {
+        const float r = sz * (0.32f + i * 0.16f);
+        nvgBeginPath(vg);
+        nvgArc(vg, cx + sz * 0.10f, cy, r, -0.6f, 0.6f, NVG_CW);
+        nvgStroke(vg);
+    }
+}
+void draw_icon_library(NVGcontext* vg, float cx, float cy, float sz, NVGcolor c) {
+    // 2x2 dotted grid.
+    nvgFillColor(vg, c);
+    const float r = sz * 0.10f;
+    for (int row = 0; row < 2; row++) {
+        for (int col = 0; col < 2; col++) {
+            nvgBeginPath(vg);
+            nvgRoundedRect(vg,
+                cx + (col == 0 ? -sz * 0.35f : sz * 0.05f),
+                cy + (row == 0 ? -sz * 0.35f : sz * 0.05f),
+                sz * 0.30f, sz * 0.30f, r);
+            nvgFill(vg);
+        }
+    }
+}
+void draw_icon_emulator(NVGcontext* vg, float cx, float cy, float sz, NVGcolor c) {
+    // Gamepad silhouette: rounded body + dpad + buttons.
+    nvgFillColor(vg, c);
+    nvgBeginPath(vg);
+    nvgRoundedRect(vg, cx - sz * 0.50f, cy - sz * 0.22f,
+                       sz * 1.00f, sz * 0.45f, 8.0f);
+    nvgFill(vg);
+    nvgFillColor(vg, nvgRGBAf(0, 0, 0, 0.55f));
+    // dpad cross
+    nvgBeginPath(vg);
+    nvgRect(vg, cx - sz * 0.34f, cy - sz * 0.04f, sz * 0.18f, sz * 0.06f);
+    nvgRect(vg, cx - sz * 0.28f, cy - sz * 0.10f, sz * 0.06f, sz * 0.18f);
+    nvgFill(vg);
+    // Two action buttons.
+    nvgBeginPath(vg);
+    nvgCircle(vg, cx + sz * 0.22f, cy + 1, sz * 0.07f);
+    nvgCircle(vg, cx + sz * 0.36f, cy - sz * 0.06f, sz * 0.07f);
+    nvgFill(vg);
+}
+void draw_icon_accounts(NVGcontext* vg, float cx, float cy, float sz, NVGcolor c) {
+    // Key: round head + shaft + tooth.
+    nvgStrokeColor(vg, c); nvgStrokeWidth(vg, 2.0f);
+    nvgBeginPath(vg);
+    nvgCircle(vg, cx - sz * 0.18f, cy, sz * 0.20f);
+    nvgStroke(vg);
+    nvgBeginPath(vg);
+    nvgMoveTo(vg, cx + sz * 0.02f, cy);
+    nvgLineTo(vg, cx + sz * 0.45f, cy);
+    nvgMoveTo(vg, cx + sz * 0.30f, cy);
+    nvgLineTo(vg, cx + sz * 0.30f, cy + sz * 0.14f);
+    nvgMoveTo(vg, cx + sz * 0.42f, cy);
+    nvgLineTo(vg, cx + sz * 0.42f, cy + sz * 0.10f);
+    nvgStroke(vg);
+}
+void draw_icon_updates(NVGcontext* vg, float cx, float cy, float sz, NVGcolor c) {
+    // Down arrow into a tray (download glyph).
+    nvgStrokeColor(vg, c); nvgStrokeWidth(vg, 2.0f);
+    nvgBeginPath(vg);
+    nvgMoveTo(vg, cx, cy - sz * 0.40f);
+    nvgLineTo(vg, cx, cy + sz * 0.10f);
+    nvgMoveTo(vg, cx - sz * 0.18f, cy - sz * 0.08f);
+    nvgLineTo(vg, cx,             cy + sz * 0.10f);
+    nvgLineTo(vg, cx + sz * 0.18f, cy - sz * 0.08f);
+    nvgStroke(vg);
+    nvgBeginPath(vg);
+    nvgMoveTo(vg, cx - sz * 0.36f, cy + sz * 0.30f);
+    nvgLineTo(vg, cx + sz * 0.36f, cy + sz * 0.30f);
+    nvgStroke(vg);
+}
+void draw_icon_experimental(NVGcontext* vg, float cx, float cy, float sz, NVGcolor c) {
+    // Erlenmeyer flask outline.
+    nvgStrokeColor(vg, c); nvgStrokeWidth(vg, 2.0f);
+    nvgBeginPath(vg);
+    nvgMoveTo(vg, cx - sz * 0.18f, cy - sz * 0.36f);
+    nvgLineTo(vg, cx + sz * 0.18f, cy - sz * 0.36f);
+    nvgMoveTo(vg, cx - sz * 0.16f, cy - sz * 0.36f);
+    nvgLineTo(vg, cx - sz * 0.16f, cy - sz * 0.10f);
+    nvgLineTo(vg, cx - sz * 0.42f, cy + sz * 0.34f);
+    nvgLineTo(vg, cx + sz * 0.42f, cy + sz * 0.34f);
+    nvgLineTo(vg, cx + sz * 0.16f, cy - sz * 0.10f);
+    nvgLineTo(vg, cx + sz * 0.16f, cy - sz * 0.36f);
+    nvgStroke(vg);
+    // Bubble dot inside.
+    nvgFillColor(vg, c);
+    nvgBeginPath(vg);
+    nvgCircle(vg, cx, cy + sz * 0.16f, sz * 0.05f);
+    nvgFill(vg);
+}
+
+void draw_category_icon(NVGcontext* vg, Category cat, float cx, float cy, float sz, NVGcolor c) {
+    switch (cat) {
+        case Category::General:      draw_icon_general(vg, cx, cy, sz, c); break;
+        case Category::Display:      draw_icon_display(vg, cx, cy, sz, c); break;
+        case Category::Audio:        draw_icon_audio(vg, cx, cy, sz, c); break;
+        case Category::Library:      draw_icon_library(vg, cx, cy, sz, c); break;
+        case Category::Emulator:     draw_icon_emulator(vg, cx, cy, sz, c); break;
+        case Category::Accounts:     draw_icon_accounts(vg, cx, cy, sz, c); break;
+        case Category::Updates:      draw_icon_updates(vg, cx, cy, sz, c); break;
+        case Category::Experimental: draw_icon_experimental(vg, cx, cy, sz, c); break;
+        default: break;
+    }
+}
 
 // Flat list of items inside a category — each row is one of these kinds so
 // the input handler can dispatch generically.
@@ -570,7 +732,52 @@ enum : int {
     OpAccCreds,
     OpUpdScrapeAll, OpUpdInstalledCores,
     OpExpMtp, OpExpMtpAutostart, OpExpDebugLog,
+    // Account fields opened via on-screen keyboard.
+    OpAccSsDevId, OpAccSsDevPw, OpAccSsUser, OpAccSsPw,
+    OpAccSgKey,
+    OpAccRaUser, OpAccRaToken,
 };
+
+// Maps an OpAcc* opcode to the (path, guide, current value) tuple needed to
+// drive swkbd input.
+struct AccountField {
+    const char* path;
+    const char* guide;
+    std::string current;
+};
+AccountField account_field_for(int op) {
+    const auto& a = scrapers::accounts();
+    switch (op) {
+        case OpAccSsDevId: return { "screenscraper.devid",       "ScreenScraper dev ID",         a.screenscraper.devid };
+        case OpAccSsDevPw: return { "screenscraper.devpassword", "ScreenScraper dev password",   a.screenscraper.devpassword };
+        case OpAccSsUser:  return { "screenscraper.ssid",        "ScreenScraper username",       a.screenscraper.ssid };
+        case OpAccSsPw:    return { "screenscraper.sspassword",  "ScreenScraper password",       a.screenscraper.sspassword };
+        case OpAccSgKey:   return { "steamgriddb.api_key",       "SteamGridDB API key",          a.steamgriddb.api_key };
+        case OpAccRaUser:  return { "retroachievements.user",    "RetroAchievements username",   a.retroachievements.user };
+        case OpAccRaToken: return { "retroachievements.token",   "RetroAchievements API token",  a.retroachievements.token };
+    }
+    return { nullptr, nullptr, {} };
+}
+
+std::string swkbd_prompt(const char* guide, const std::string& initial) {
+    SwkbdConfig kbd;
+    if (R_FAILED(swkbdCreate(&kbd, 0))) return initial;
+    swkbdConfigMakePresetDefault(&kbd);
+    if (guide) swkbdConfigSetGuideText(&kbd, guide);
+    if (!initial.empty()) swkbdConfigSetInitialText(&kbd, initial.c_str());
+    swkbdConfigSetType(&kbd, SwkbdType_Normal);
+    char out[512] = {};
+    const Result rc = swkbdShow(&kbd, out, sizeof(out));
+    swkbdClose(&kbd);
+    if (R_FAILED(rc)) return initial;
+    return std::string{out};
+}
+
+std::string mask_credential(const std::string& s) {
+    if (s.empty()) return "unset";
+    if (s.size() <= 4) return std::string(s.size(), '*');
+    return s.substr(0, 4) + std::string(s.size() - 4, '*');
+}
 
 std::vector<Item> build_items(Category cat) {
     std::vector<Item> rows;
@@ -603,10 +810,25 @@ std::vector<Item> build_items(Category cat) {
             rows.push_back({ItemKind::Static, "Cores listed below are declared in system_db; install the matching nro under /foyer/cores/.",
                 "", "", OpEmuList});
             break;
-        case Category::Accounts:
-            rows.push_back({ItemKind::Static, "Credentials live in /foyer/config/accounts.jsonc",
-                "", "Edit on the SD or via Roms-over-USB (Experimental).", OpAccCreds});
+        case Category::Accounts: {
+            const auto& a = scrapers::accounts();
+            rows.push_back({ItemKind::Drill, "ScreenScraper dev ID",
+                mask_credential(a.screenscraper.devid),
+                "A: edit via on-screen keyboard.", OpAccSsDevId});
+            rows.push_back({ItemKind::Drill, "ScreenScraper dev password",
+                mask_credential(a.screenscraper.devpassword), "", OpAccSsDevPw});
+            rows.push_back({ItemKind::Drill, "ScreenScraper username",
+                mask_credential(a.screenscraper.ssid), "", OpAccSsUser});
+            rows.push_back({ItemKind::Drill, "ScreenScraper password",
+                mask_credential(a.screenscraper.sspassword), "", OpAccSsPw});
+            rows.push_back({ItemKind::Drill, "SteamGridDB API key",
+                mask_credential(a.steamgriddb.api_key), "", OpAccSgKey});
+            rows.push_back({ItemKind::Drill, "RetroAchievements username",
+                mask_credential(a.retroachievements.user), "", OpAccRaUser});
+            rows.push_back({ItemKind::Drill, "RetroAchievements API token",
+                mask_credential(a.retroachievements.token), "", OpAccRaToken});
             break;
+        }
         case Category::Updates: {
             rows.push_back({ItemKind::Action, "Scrape all systems", "A: run",
                 "Walks every system using the preferred scraper.",   OpUpdScrapeAll});
@@ -776,15 +998,15 @@ void draw_settings(NVGcontext* vg, float w, float h, const State& s, const Libra
             }
         }
 
-        // Glyph-style category badge.
-        nvgFontSize(vg, th.label_size);
-        nvgFillColor(vg, sel ? th.accent : th.text_dim);
-        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
-        nvgText(vg, rx + 14, ry + (kSideRowH - 8) * 0.5f,
-                kCategories[i].hint, nullptr);
+        // Vector icon for the category.
+        const float icon_cx = rx + 28;
+        const float icon_cy = ry + (kSideRowH - 8) * 0.5f;
+        draw_category_icon(vg, (Category)i, icon_cx, icon_cy, 28.0f,
+            sel ? th.accent : th.text_dim);
 
         nvgFontSize(vg, th.body_size);
         nvgFillColor(vg, sel ? th.text_strong : th.text);
+        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
         nvgText(vg, rx + 64, ry + (kSideRowH - 8) * 0.5f,
                 kCategories[i].label, nullptr);
     }
@@ -1270,6 +1492,7 @@ void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down
                                           : (cur == 0 ? themes.size() - 1 : cur - 1);
                         library::set_theme_name(themes[cur]);
                         load_theme(themes[cur]);
+                        s.request_invalidate_covers = true; // refresh theme_bg
                         s.banner_text = std::string{"Theme: "} + themes[cur];
                         s.banner_ttl  = 120;
                     }
@@ -1296,10 +1519,29 @@ void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down
                             s.banner_ttl  = 240;
                         }
                         break;
-                    case settings::ItemKind::Drill:
-                        s.banner_text = "Drill-down view comes in the next pass";
-                        s.banner_ttl  = 180;
+                    case settings::ItemKind::Drill: {
+                        const int op = it.payload;
+                        const bool is_account =
+                            op == settings::OpAccSsDevId || op == settings::OpAccSsDevPw ||
+                            op == settings::OpAccSsUser  || op == settings::OpAccSsPw    ||
+                            op == settings::OpAccSgKey   ||
+                            op == settings::OpAccRaUser  || op == settings::OpAccRaToken;
+                        if (is_account) {
+                            const auto field = settings::account_field_for(op);
+                            const auto entered = settings::swkbd_prompt(
+                                field.guide, field.current);
+                            if (!entered.empty() || !field.current.empty()) {
+                                scrapers::set_account_field(field.path, entered);
+                                scrapers::reload_accounts();
+                                s.banner_text = std::string{field.guide} + " saved";
+                                s.banner_ttl  = 120;
+                            }
+                        } else {
+                            s.banner_text = "Drill-down view comes in the next pass";
+                            s.banner_ttl  = 180;
+                        }
                         break;
+                    }
                     default: break;
                 }
             }
@@ -1313,6 +1555,7 @@ void invalidate_cover_cache(NVGcontext* vg) {
     cover_cache().clear(vg);
     system_logo_cache().clear(vg);
     backdrop_cache().clear(vg);
+    theme_bg_cache().clear(vg);
 }
 
 void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) {
@@ -1321,6 +1564,13 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
     nvgRect(vg, 0, 0, w, h);
     nvgFillColor(vg, th.bg);
     nvgFill(vg);
+
+    // Optional theme wallpaper. Drawn first so it sits behind every view's
+    // panels but on top of the flat-colour backdrop.
+    if (!th.background.empty()) {
+        const int handle = theme_bg_cache().get_or_load(vg, th.background);
+        if (handle > 0) blit_cover(vg, handle, 0, 0, w, h, 1.0f);
+    }
 
     switch (s.view) {
         case View::Home:       draw_home       (vg, w, h, s, lib); break;

@@ -25,6 +25,10 @@ struct Theme {
 
     NVGcolor border      = nvgRGBA(0x2D, 0x32, 0x3A, 0xFF);
 
+    // Optional full-screen background image. Absolute SD path or
+    // `romfs:/themes/<name>.jpg` for bundled wallpapers. Empty = none.
+    std::string background;
+
     float    pad         = 24.0f;
     float    radius      = 10.0f;
     float    title_size  = 38.0f;

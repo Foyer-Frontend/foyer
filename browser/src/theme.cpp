@@ -15,7 +15,8 @@
 namespace foyer::browser {
 namespace {
 
-constexpr const char* kThemesDir = "/foyer/config/themes";
+constexpr const char* kThemesDir       = "/foyer/config/themes";
+constexpr const char* kBundledThemesDir = "romfs:/themes";
 
 Theme& mutable_theme() {
     static Theme g;
@@ -98,13 +99,25 @@ void load_theme(std::string_view name) {
         return;
     }
 
-    char path[256];
-    std::snprintf(path, sizeof(path), "%s/%.*s.jsonc",
+    // SD copy wins; fall through to the bundled romfs version so the
+    // built-in light/dark themes work even on a fresh install.
+    char sd_path[256];
+    char rf_path[256];
+    std::snprintf(sd_path, sizeof(sd_path), "%s/%.*s.jsonc",
         kThemesDir, (int)name.size(), name.data());
+    std::snprintf(rf_path, sizeof(rf_path), "%s/%.*s.jsonc",
+        kBundledThemesDir, (int)name.size(), name.data());
 
-    std::ifstream in{path};
+    std::ifstream in{sd_path};
+    const char* path = sd_path;
     if (!in) {
-        foyer::log::write("[theme] missing %s, falling back to default\n", path);
+        in.clear();
+        in.open(rf_path);
+        path = rf_path;
+    }
+    if (!in) {
+        foyer::log::write("[theme] missing %s (and %s), falling back to default\n",
+            sd_path, rf_path);
         return;
     }
     std::stringstream ss;
@@ -133,6 +146,10 @@ void load_theme(std::string_view name) {
     apply_color(root, "text_dim",    th.text_dim);
     apply_color(root, "border",      th.border);
 
+    if (auto* v = yyjson_obj_get(root, "background"); v && yyjson_is_str(v)) {
+        th.background = yyjson_get_str(v);
+    }
+
     apply_float(root, "pad",        th.pad);
     apply_float(root, "radius",     th.radius);
     apply_float(root, "title_size", th.title_size);
@@ -148,17 +165,27 @@ std::vector<std::string> list_themes() {
     std::vector<std::string> out;
     out.emplace_back("default");
 
-    auto* dir = ::opendir(kThemesDir);
-    if (!dir) return out;
-    while (auto* e = ::readdir(dir)) {
-        if (!e->d_name[0] || e->d_name[0] == '.') continue;
-        std::string n{e->d_name};
-        const auto dot = n.rfind(".jsonc");
-        if (dot == std::string::npos || dot + 6 != n.size()) continue;
-        n.erase(dot);
-        if (n != "default") out.push_back(std::move(n));
-    }
-    ::closedir(dir);
+    auto pull = [&](const char* dir_path) {
+        auto* dir = ::opendir(dir_path);
+        if (!dir) return;
+        while (auto* e = ::readdir(dir)) {
+            if (!e->d_name[0] || e->d_name[0] == '.') continue;
+            std::string n{e->d_name};
+            const auto dot = n.rfind(".jsonc");
+            if (dot == std::string::npos || dot + 6 != n.size()) continue;
+            n.erase(dot);
+            if (n == "default") continue;
+            // Dedupe across SD + romfs so a user-overridden built-in theme
+            // doesn't show up twice in the picker.
+            bool seen = false;
+            for (const auto& s : out) if (s == n) { seen = true; break; }
+            if (!seen) out.push_back(std::move(n));
+        }
+        ::closedir(dir);
+    };
+    pull(kThemesDir);          // SD overrides
+    pull(kBundledThemesDir);   // bundled romfs (light/dark/midnight/forest/snow)
+
     std::sort(out.begin() + 1, out.end());
     return out;
 }
