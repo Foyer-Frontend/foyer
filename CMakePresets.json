@@ -51,7 +51,7 @@
                 "CMAKE_BUILD_TYPE": "MinSizeRel",
                 "BUILD_BROWSER": "OFF",
                 "BUILD_PLAYER":  "ON",
-                "FOYER_CORES":   "fceumm;nestopia;gambatte;genesisplusgx;snes9x;mgba;melonds;swanstation;yabasanshiro;race;mupen64plus;flycast"
+                "FOYER_CORES":   "fceumm;nestopia;gambatte;genesisplusgx;snes9x;mgba;melonds;swanstation;pcsx_rearmed;yabasanshiro;race;mupen64plus;flycast"
             }
         },
         {
@@ -155,7 +155,7 @@
         },
         {
             "name": "Player-mupen64plus",
-            "displayName": "Player (mupen64plus/N64) — interpreter, EGL stub, will not render",
+            "displayName": "Player (mupen64plus/N64)",
             "inherits": ["core"],
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "MinSizeRel",
@@ -166,13 +166,24 @@
         },
         {
             "name": "Player-flycast",
-            "displayName": "Player (flycast/Dreamcast) — norend stub, no dynarec",
+            "displayName": "Player (flycast/Dreamcast)",
             "inherits": ["core"],
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "MinSizeRel",
                 "BUILD_BROWSER": "OFF",
                 "BUILD_PLAYER":  "ON",
                 "FOYER_CORE":    "flycast"
+            }
+        },
+        {
+            "name": "Player-pcsx_rearmed",
+            "displayName": "Player (pcsx_rearmed/PSX, NEON dynarec)",
+            "inherits": ["core"],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "MinSizeRel",
+                "BUILD_BROWSER": "OFF",
+                "BUILD_PLAYER":  "ON",
+                "FOYER_CORE":    "pcsx_rearmed"
             }
         }
     ],
@@ -236,6 +247,10 @@
         {
             "name": "Player-flycast",
             "configurePreset": "Player-flycast"
+        },
+        {
+            "name": "Player-pcsx_rearmed",
+            "configurePreset": "Player-pcsx_rearmed"
         }
     ]
 }

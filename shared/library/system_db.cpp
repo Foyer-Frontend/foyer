@@ -24,7 +24,10 @@ constexpr CoreDef kCoresDolphin[]     = { { "dolphin",       "Dolphin"       } }
 constexpr CoreDef kCoresGenesisGx[]   = { { "genesisplusgx", "Genesis Plus GX" } };
 constexpr CoreDef kCoresYabaSan[]     = { { "yabasanshiro",  "YabaSanshiro"  } };
 constexpr CoreDef kCoresFlycast[]     = { { "flycast",       "Flycast"       } };
-constexpr CoreDef kCoresSwanstation[] = { { "swanstation",   "Swanstation"   } };
+constexpr CoreDef kCoresPsx[]         = {
+    { "pcsx_rearmed", "PCSX ReARMed" },
+    { "swanstation",  "Swanstation"  },
+};
 constexpr CoreDef kCoresPpsspp[]      = { { "ppsspp",        "PPSSPP"        } };
 constexpr CoreDef kCoresRace[]        = { { "race",          "RACE"          } };
 
@@ -87,7 +90,7 @@ constexpr SystemDef kSystems[] = {
 
     { "psx",          "PlayStation",                  "PSX",
       "Sony - PlayStation",
-      "cue|chd|pbp|m3u",   kCoresSwanstation },
+      "cue|chd|pbp|m3u",   kCoresPsx },
 
     { "psp",          "PlayStation Portable",         "PSP",
       "Sony - PlayStation Portable",
