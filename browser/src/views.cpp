@@ -5,6 +5,7 @@
 #include "library/system_db.hpp"
 #include "library/config.hpp"
 #include "library/per_game.hpp"
+#include "platform/log.hpp"
 #include "scrapers/accounts.hpp"
 #include "scrapers/cache.hpp"
 #include "ui/icons.hpp"
@@ -32,12 +33,11 @@ struct CoverCache {
         auto it = images.find(path);
         if (it != images.end()) return it->second;
 
-        // No stat() gate — libnx's romfs devoptab returns ENOENT for stat
-        // even on files that fopen(2) can read. nvgCreateImage already
-        // returns 0 when the path is missing, so the negative lookup
-        // happens there for free.
         const int img = nvgCreateImage(vg, path.c_str(), 0);
         images[path] = img;
+        // One-shot diagnostic: every distinct path is logged exactly once
+        // (because the second lookup hits the cache early-return above).
+        foyer::log::write("[img] %s -> handle %d\n", path.c_str(), img);
         return img;
     }
     void clear(NVGcontext* vg) {
@@ -315,8 +315,11 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
     const float cy        = h * 0.5f;
 
     for (int offset = -2; offset <= 2; offset++) {
-        const int idx = idx_centre + offset;
-        if (idx < 0 || idx >= count) continue;
+        if (count <= 0) break;
+        // Circular wrap: NES → ... ← saturn so the user always sees two
+        // systems on either side of the focus.
+        int idx = idx_centre + offset;
+        idx = ((idx % count) + count) % count;
         const auto& sys = lib.systems[idx];
 
         const float scale = (offset == 0) ? 1.0f : (std::abs(offset) == 1 ? 0.78f : 0.55f);
@@ -1377,10 +1380,11 @@ void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down
     if (lib.systems.empty()) return;
 
     if (s.view == View::Home) {
+        const auto n = lib.systems.size();
         if (down & HidNpadButton_Right) {
-            if (s.system_index + 1 < lib.systems.size()) s.system_index++;
+            s.system_index = (s.system_index + 1) % n;
         } else if (down & HidNpadButton_Left) {
-            if (s.system_index > 0) s.system_index--;
+            s.system_index = (s.system_index + n - 1) % n;
         }
 
         if (down & HidNpadButton_A) {
