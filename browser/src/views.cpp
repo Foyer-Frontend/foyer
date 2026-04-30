@@ -66,6 +66,24 @@ CoverCache& theme_bg_cache() {
     static CoverCache c;
     return c;
 }
+CoverCache& system_splash_cache() {
+    static CoverCache c;
+    return c;
+}
+
+// Resolve the per-system splash image. Tries SD override first
+// (/foyer/assets/systems/<folder>.jpg), then the bundled romfs version.
+std::string system_splash_path(std::string_view folder) {
+    char sd[256];
+    std::snprintf(sd, sizeof(sd), "/foyer/assets/systems/%.*s.jpg",
+        (int)folder.size(), folder.data());
+    struct stat st{};
+    if (::stat(sd, &st) == 0) return sd;
+    char rf[256];
+    std::snprintf(rf, sizeof(rf), "romfs:/systems/%.*s.jpg",
+        (int)folder.size(), folder.data());
+    return rf;
+}
 
 std::string system_logo_path(std::string_view folder) {
     char buf[256];
@@ -234,6 +252,22 @@ void rrect_outline(NVGcontext* vg, float x, float y, float ww, float hh, float r
 void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& lib) {
     const auto& th = theme();
 
+    // ES-DE-style per-system splash behind the carousel: load the focused
+    // system's image and aspect-fill it across the screen, then drop a
+    // dim/blur veil so the tiles still read.
+    if (!lib.systems.empty()) {
+        const auto& sys = lib.systems[s.system_index];
+        const int handle = system_splash_cache().get_or_load(vg,
+            system_splash_path(sys.def->folder_name));
+        if (handle > 0) {
+            blit_cover(vg, handle, 0, 0, w, h, 1.0f);
+            nvgBeginPath(vg);
+            nvgRect(vg, 0, 0, w, h);
+            nvgFillColor(vg, nvgRGBAf(th.bg.r, th.bg.g, th.bg.b, 0.40f));
+            nvgFill(vg);
+        }
+    }
+
     if (lib.systems.empty()) {
         draw_empty(vg, w, h,
             "No systems found",
@@ -327,16 +361,24 @@ void draw_system(NVGcontext* vg, float w, float h, const State& s, const Library
     }
     const auto& sys = lib.systems[s.system_index];
 
-    // Faded full-screen backdrop pulled from the focused game's art.
-    if (library::config().show_backgrounds && !sys.games.empty()) {
-        const auto& gsel = sys.games[s.game_index];
-        const int handle = backdrop_cache().get_or_load(vg,
-            backdrop_path(sys.def->folder_name, gsel.stem));
+    // Faded full-screen backdrop. Per-game art (if scraped) wins; falls back
+    // to the system splash so every System view has visual identity.
+    if (library::config().show_backgrounds) {
+        int handle = 0;
+        if (!sys.games.empty()) {
+            const auto& gsel = sys.games[s.game_index];
+            handle = backdrop_cache().get_or_load(vg,
+                backdrop_path(sys.def->folder_name, gsel.stem));
+        }
+        if (handle <= 0) {
+            handle = system_splash_cache().get_or_load(vg,
+                system_splash_path(sys.def->folder_name));
+        }
         if (handle > 0) {
             blit_cover(vg, handle, 0, 0, w, h, 0.30f);
             nvgBeginPath(vg);
             nvgRect(vg, 0, 0, w, h);
-            nvgFillColor(vg, nvgRGBAf(th.bg.r, th.bg.g, th.bg.b, 0.55f));
+            nvgFillColor(vg, nvgRGBAf(th.bg.r, th.bg.g, th.bg.b, 0.65f));
             nvgFill(vg);
         }
     }
@@ -1556,6 +1598,7 @@ void invalidate_cover_cache(NVGcontext* vg) {
     system_logo_cache().clear(vg);
     backdrop_cache().clear(vg);
     theme_bg_cache().clear(vg);
+    system_splash_cache().clear(vg);
 }
 
 void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) {
