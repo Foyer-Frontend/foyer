@@ -371,9 +371,9 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
     // and bottom-left corners shifted by kSlant) so adjacent tiles interlock
     // exactly — kGap = -kSlant pulls them together along the slanted edges
     // matching the ES-DE Art Book Next layout.
-    constexpr float kTileW = 240.0f;
-    constexpr float kTileH = 560.0f;
-    constexpr float kSlant = 56.0f;
+    constexpr float kTileW = 360.0f;
+    constexpr float kTileH = 840.0f;
+    constexpr float kSlant = 84.0f;
     constexpr float kGap   = -kSlant;
 
     const auto idx_centre = (int)s.system_index;
