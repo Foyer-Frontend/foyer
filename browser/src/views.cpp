@@ -339,12 +339,11 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
     // Tile metrics. Selected tile sits in the centre at full size; up to two
     // neighbours each side render smaller and fade out.
     // Portrait tiles matching the strip artwork aspect (~454x1080 ≈ 0.42).
-    // Centre tile takes most of the content area between topbar + bottombar
-    // so the strip reads top-to-bottom; side tiles shrink via the scale
-    // multiplier below.
+    // All tiles render at the same size, edge-to-edge (no scale variation),
+    // matching the ES-DE Art Book Next look.
     constexpr float kTileW = 240.0f;
     constexpr float kTileH = 560.0f;
-    constexpr float kGap   = 24.0f;
+    constexpr float kGap   = 0.0f;
 
     const auto idx_centre = (int)s.system_index;
     const auto count      = (int)lib.systems.size();
@@ -358,10 +357,11 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
         idx = ((idx % count) + count) % count;
         const auto& sys = lib.systems[idx];
 
-        const float scale = (offset == 0) ? 1.0f : (std::abs(offset) == 1 ? 0.78f : 0.55f);
-        const float tw    = kTileW * scale;
-        const float thh   = kTileH * scale;
-        const float cx    = w * 0.5f + offset * (kTileW + kGap) * 0.85f;
+        // All tiles share the same size; selection is communicated via the
+        // logo overlay (only on the focused tile) and an alpha boost.
+        const float tw    = kTileW;
+        const float thh   = kTileH;
+        const float cx    = w * 0.5f + offset * (kTileW + kGap);
         const float x     = cx - tw * 0.5f;
         const float y     = cy - thh * 0.5f;
 
@@ -378,14 +378,16 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
             blit_cover(vg, strip_h, x, y, tw, thh, centre ? 1.0f : 0.55f);
         }
 
-        // Console logo overlay — centered, takes ~70% of tile width.
-        const auto logo_path = system_logo_path(sys.def->folder_name);
-        const int  logo_h    = system_logo_cache().get_or_load(vg, logo_path);
-        if (logo_h > 0) {
-            blit_aspect_fit(vg, logo_h,
-                x + tw * 0.15f, y + thh * 0.30f,
-                tw * 0.70f, thh * 0.40f,
-                0.0f, centre ? 1.0f : 0.85f);
+        // Console logo overlay only on the focused tile, ES-DE style.
+        if (centre) {
+            const auto logo_path = system_logo_path(sys.def->folder_name);
+            const int  logo_h    = system_logo_cache().get_or_load(vg, logo_path);
+            if (logo_h > 0) {
+                blit_aspect_fit(vg, logo_h,
+                    x + tw * 0.10f, y + thh * 0.35f,
+                    tw * 0.80f, thh * 0.30f,
+                    0.0f, 1.0f);
+            }
         }
 
         // Game count badge bottom-right when this is the focused tile.
