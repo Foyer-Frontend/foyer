@@ -375,10 +375,11 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
         const int strip_h = system_splash_cache().get_or_load(vg,
             system_splash_path(sys.def->folder_name));
         if (strip_h > 0) {
-            // Overzoom by 1.25x so the parallelogram artwork extends past
-            // the tile bounds (the scissor crops the transparent corners,
-            // minimizing the visible gap between adjacent tiles).
-            constexpr float kZoom = 1.25f;
+            // Overzoom enough that the strip's transparent parallelogram
+            // corners get clipped off both vertical edges of the tile —
+            // adjacent tiles read as one continuous slanted strip with no
+            // black wedges between them.
+            constexpr float kZoom = 1.65f;
             const float ex  = (tw  * (kZoom - 1.0f)) * 0.5f;
             const float ey  = (thh * (kZoom - 1.0f)) * 0.5f;
             blit_cover(vg, strip_h, x - ex, y - ey,
@@ -1749,16 +1750,17 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
             if (!lib.systems.empty()) {
                 const auto& sys = lib.systems[s.system_index];
                 char rhs[180];
+                const char* gword = (sys.games.size() == 1) ? "game" : "games";
                 if (clock.empty()) {
-                    std::snprintf(rhs, sizeof(rhs), "%.*s  ·  %zu games",
+                    std::snprintf(rhs, sizeof(rhs), "%.*s  ·  %zu %s",
                         (int)sys.def->display_name.size(),
                         sys.def->display_name.data(),
-                        sys.games.size());
+                        sys.games.size(), gword);
                 } else {
-                    std::snprintf(rhs, sizeof(rhs), "%.*s  ·  %zu games  ·  %s",
+                    std::snprintf(rhs, sizeof(rhs), "%.*s  ·  %zu %s  ·  %s",
                         (int)sys.def->display_name.size(),
                         sys.def->display_name.data(),
-                        sys.games.size(), clock.c_str());
+                        sys.games.size(), gword, clock.c_str());
                 }
                 clock = rhs;
             }
