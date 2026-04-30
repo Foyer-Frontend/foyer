@@ -13,6 +13,8 @@
 
     "border":      "#C7CEDA",
 
+    "background":  "romfs:/themes/snow.jpg",
+
     "pad":         24,
     "radius":      10,
     "title_size":  38,

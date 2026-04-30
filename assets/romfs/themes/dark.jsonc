@@ -14,5 +14,5 @@
 
     "border":      "#2D323A",
 
-    "background":  ""
+    "background":  "romfs:/themes/dark.jpg"
 }

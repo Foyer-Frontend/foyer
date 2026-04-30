@@ -14,6 +14,8 @@
 
     "border":      "#202650",
 
+    "background":  "romfs:/themes/midnight.jpg",
+
     "pad":         24,
     "radius":      12,
     "title_size":  38,

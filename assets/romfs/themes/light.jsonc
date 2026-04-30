@@ -14,5 +14,5 @@
 
     "border":      "#C7CEDA",
 
-    "background":  ""
+    "background":  "romfs:/themes/light.jpg"
 }
