@@ -117,9 +117,13 @@ void App::init_gfx() {
         .setFlags(DkQueueFlags_Graphics)
         .create();
 
+    // Pool sized for: framebuffer (~8 MB) + depth (~4 MB) + the splash /
+    // cover / logo cache (worst case 1920x1080 RGBA = 8 MB per image times
+    // a handful in flight). 128 MB leaves headroom for new images without
+    // pressuring deko3d's pool.
     gfx->pool_images.emplace(gfx->device,
         DkMemBlockFlags_GpuCached | DkMemBlockFlags_Image,
-        16 * 1024 * 1024);
+        128 * 1024 * 1024);
     gfx->pool_code.emplace(gfx->device,
         DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached | DkMemBlockFlags_Code,
         128 * 1024);
