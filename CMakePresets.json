@@ -218,6 +218,17 @@
                 "BUILD_PLAYER":  "ON",
                 "FOYER_CORE":    "stella"
             }
+        },
+        {
+            "name": "Player-picodrive",
+            "displayName": "Player (picodrive/MD+SMS+GG+32X+SegaCD+Pico)",
+            "inherits": ["core"],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "MinSizeRel",
+                "BUILD_BROWSER": "OFF",
+                "BUILD_PLAYER":  "ON",
+                "FOYER_CORE":    "picodrive"
+            }
         }
     ],
     "buildPresets": [
@@ -296,6 +307,10 @@
         {
             "name": "Player-stella",
             "configurePreset": "Player-stella"
+        },
+        {
+            "name": "Player-picodrive",
+            "configurePreset": "Player-picodrive"
         }
     ]
 }
