@@ -80,6 +80,7 @@ void write_locked() {
     out << "    \"show_covers\":       " << bstr(g_config.show_covers) << ",\n";
     out << "    \"mtp_autostart\":     " << bstr(g_config.mtp_autostart) << ",\n";
     out << "    \"debug_log\":         " << bstr(g_config.debug_log) << ",\n";
+    out << "    \"cores_manifest_url\": \"" << g_config.cores_manifest_url << "\",\n";
     out << "    \"default_core_per_system\": {";
     bool first = true;
     for (const auto& [folder, core] : g_config.default_core_per_system) {
@@ -133,6 +134,10 @@ void load_locked() {
     load_bool("show_covers",      g_config.show_covers);
     load_bool("mtp_autostart",    g_config.mtp_autostart);
     load_bool("debug_log",        g_config.debug_log);
+    if (auto* v = yyjson_obj_get(root, "cores_manifest_url");
+        v && yyjson_is_str(v)) {
+        g_config.cores_manifest_url = yyjson_get_str(v);
+    }
     if (auto* obj = yyjson_obj_get(root, "default_core_per_system");
         obj && yyjson_is_obj(obj)) {
         std::size_t i, max; yyjson_val *k, *v;

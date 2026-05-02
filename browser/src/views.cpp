@@ -1062,7 +1062,7 @@ enum : int {
     OpRescan, OpInvalidateCovers,
     OpEmuList,
     OpAccCreds,
-    OpUpdScrapeAll, OpUpdInstalledCores,
+    OpUpdScrapeAll, OpUpdInstalledCores, OpUpdInstallCores,
     OpExpMtp, OpExpMtpAutostart, OpExpDebugLog,
     // Account fields opened via on-screen keyboard.
     OpAccSsDevId, OpAccSsDevPw, OpAccSsUser, OpAccSsPw,
@@ -1164,6 +1164,9 @@ std::vector<Item> build_items(Category cat) {
         case Category::Updates: {
             rows.push_back({ItemKind::Action, "Scrape all systems", "A: run",
                 "Walks every system using the preferred scraper.",   OpUpdScrapeAll});
+            rows.push_back({ItemKind::Action, "Install / update cores", "A: run",
+                "Fetches the foyer-cores manifest and downloads any "
+                "missing or out-of-date nros to /foyer/cores/.",     OpUpdInstallCores});
             // Inline list of cores actually present on the SD. Each row is
             // labeled with the core name + nro size; missing cores from the
             // system_db core list are flagged so the user knows what's
@@ -2041,6 +2044,10 @@ void update(State& s, const Library& lib,
                         } else if (it.payload == settings::OpUpdScrapeAll) {
                             s.banner_text = "Open a system and press Y — bulk scrape next pass";
                             s.banner_ttl  = 240;
+                        } else if (it.payload == settings::OpUpdInstallCores) {
+                            s.request_install_cores = true;
+                            s.banner_text = "Fetching cores manifest...";
+                            s.banner_ttl  = 180;
                         }
                         break;
                     case settings::ItemKind::Drill: {

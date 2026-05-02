@@ -16,6 +16,7 @@ add_library(foyer_shared STATIC
     library/config.cpp
     library/per_game.cpp
     library/game_meta.cpp
+    library/core_installer.cpp
     net/http.cpp
     scrapers/cache.cpp
     scrapers/accounts.cpp

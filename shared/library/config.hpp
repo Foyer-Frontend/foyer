@@ -25,6 +25,12 @@ struct Config {
     bool         mtp_autostart     = false;
     bool         debug_log         = false;
 
+    // Where Settings → Updates → Install/update cores reads its manifest.
+    // Defaults to the foyer-frontend release; override for forks running
+    // their own cores release.
+    std::string  cores_manifest_url =
+        "https://github.com/foyer-frontend/foyer-cores/releases/latest/download/manifest.json";
+
     // Per-system core override. Stored flat to keep the header light; the
     // list is short (≤20 systems) so linear lookup is fine.
     struct PerSystemCore { std::string folder; std::string core; };

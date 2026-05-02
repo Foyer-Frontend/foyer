@@ -62,6 +62,7 @@ struct State {
     // Settings actions handed off to main.cpp.
     bool        request_rescan           = false;
     bool        request_invalidate_covers = false;
+    bool        request_install_cores     = false;
 
     // Set by Update; read by the main loop to trigger a one-shot scrape of
     // every rom in the focused system. The "kind" picks which scraper to use.
