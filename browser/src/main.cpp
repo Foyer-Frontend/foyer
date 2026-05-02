@@ -13,6 +13,7 @@
 #include "library/config.hpp"
 #include "library/per_game.hpp"
 #include "library/core_installer.hpp"
+#include "library/foyer_updater.hpp"
 #include "scrapers/cache.hpp"
 #include "scrapers/libretro_thumbnails.hpp"
 #include "scrapers/screenscraper.hpp"
@@ -24,9 +25,34 @@
 #include "mtp.hpp"
 
 #include <cstdio>
+#include <cstring>
 #include <sys/stat.h>
 
+namespace {
+
+// Path to the running foyer.nro on the SD card. Hard-coded because nxlink
+// builds and direct-launches both use this canonical install path.
+constexpr const char* kFoyerNroPath    = "/switch/foyer/foyer.nro";
+constexpr const char* kFoyerNroNewPath = "/switch/foyer/foyer.nro.new";
+
+// If the previous run staged an update, swap it in before we boot the
+// rest of the app. We're not the loaded-into-memory image; renaming the
+// SD-side file is safe — the next launch picks up the new bytes.
+void apply_staged_update_if_present() {
+    struct stat st{};
+    if (::stat(kFoyerNroNewPath, &st) != 0) return;
+    if (::rename(kFoyerNroNewPath, kFoyerNroPath) != 0) {
+        foyer::log::write("[foyer_update] rename of staged nro failed\n");
+        return;
+    }
+    foyer::log::write("[foyer_update] applied staged nro -> %s\n", kFoyerNroPath);
+}
+
+} // namespace
+
 int main(int /*argc*/, char** /*argv*/) {
+    apply_staged_update_if_present();
+
     foyer::platform::App app;
 
     foyer::browser::load_theme(foyer::library::config().theme_name);
@@ -45,6 +71,23 @@ int main(int /*argc*/, char** /*argv*/) {
     lib.systems = foyer::library::scan_library(opts);
 
     foyer::browser::State state;
+
+    // One-shot self-update check on boot. Sets a passive banner if a newer
+    // release is on GitHub; the user still has to explicitly approve the
+    // download from Settings → Updates.
+    {
+        const auto m = foyer::library::fetch_foyer_manifest(
+            foyer::library::config().foyer_manifest_url);
+        if (!m.version.empty() &&
+            foyer::library::is_newer_version(FOYER_VERSION, m.version)) {
+            state.foyer_update_available = true;
+            state.foyer_update_version   = m.version;
+            std::string msg = "Foyer update available: v" + m.version
+                + " — Settings → Updates → Update foyer";
+            state.banner_text = std::move(msg);
+            state.banner_ttl  = 360;
+        }
+    }
 
     app.set_draw_fn([&](NVGcontext* vg, float w, float h) {
         foyer::browser::draw(vg, w, h, state, lib);
@@ -79,6 +122,48 @@ int main(int /*argc*/, char** /*argv*/) {
         if (state.request_invalidate_covers) {
             state.request_invalidate_covers = false;
             foyer::browser::invalidate_cover_cache(app.vg());
+        }
+
+        if (state.request_check_foyer_update) {
+            state.request_check_foyer_update = false;
+            const auto m = foyer::library::fetch_foyer_manifest(
+                foyer::library::config().foyer_manifest_url);
+            if (m.version.empty()) {
+                state.banner_text = "Foyer manifest fetch failed";
+                state.banner_ttl  = 240;
+            } else if (foyer::library::is_newer_version(FOYER_VERSION, m.version)) {
+                state.foyer_update_available = true;
+                state.foyer_update_version   = m.version;
+                state.banner_text = std::string{"Update available: v"} + m.version;
+                state.banner_ttl  = 240;
+            } else {
+                state.foyer_update_available = false;
+                state.foyer_update_version.clear();
+                state.banner_text = "Foyer is up to date";
+                state.banner_ttl  = 180;
+            }
+        }
+
+        if (state.request_install_foyer_update) {
+            state.request_install_foyer_update = false;
+            const auto m = foyer::library::fetch_foyer_manifest(
+                foyer::library::config().foyer_manifest_url);
+            if (m.version.empty() || m.url.empty()) {
+                state.banner_text = "Update fetch failed — try again";
+                state.banner_ttl  = 240;
+            } else if (!foyer::library::download_foyer_update(m,
+                           "/switch/foyer/foyer.nro")) {
+                state.banner_text = "Update download failed";
+                state.banner_ttl  = 240;
+            } else {
+                state.banner_text =
+                    "Update v" + m.version +
+                    " downloaded — restart foyer to apply";
+                state.banner_ttl  = 600;
+                // Keep foyer_update_available true so the Settings row
+                // still reads "Update foyer to vX.Y.Z" until the next boot
+                // applies it.
+            }
         }
 
         if (state.request_refresh_manifest) {

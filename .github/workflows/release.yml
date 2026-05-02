@@ -48,6 +48,24 @@ jobs:
           mkdir -p out
           cp build/Release/foyer.nro out/foyer.nro
           ( cd out && sha256sum foyer.nro > foyer.nro.sha256 )
+
+          # foyer-manifest.json is what foyer's self-update flow polls.
+          # Tag-only — workflow_dispatch runs leave it absent.
+          if [ -n "${GITHUB_REF_NAME:-}" ] && [[ "$GITHUB_REF_NAME" == v* ]]; then
+              version="${GITHUB_REF_NAME#v}"
+              size=$(stat -c%s out/foyer.nro)
+              sum=$(sha256sum out/foyer.nro | cut -d' ' -f1)
+              url="https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/foyer.nro"
+              cat > out/foyer-manifest.json <<EOF
+          {
+            "version": "${version}",
+            "url": "${url}",
+            "size": ${size},
+            "sha256": "${sum}"
+          }
+          EOF
+              cat out/foyer-manifest.json
+          fi
           ls -lh out/
 
       - name: Upload build artefact
@@ -63,5 +81,6 @@ jobs:
           files: |
             out/foyer.nro
             out/foyer.nro.sha256
+            out/foyer-manifest.json
           generate_release_notes: true
           fail_on_unmatched_files: true

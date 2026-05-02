@@ -81,6 +81,7 @@ void write_locked() {
     out << "    \"mtp_autostart\":     " << bstr(g_config.mtp_autostart) << ",\n";
     out << "    \"debug_log\":         " << bstr(g_config.debug_log) << ",\n";
     out << "    \"cores_manifest_url\": \"" << g_config.cores_manifest_url << "\",\n";
+    out << "    \"foyer_manifest_url\": \"" << g_config.foyer_manifest_url << "\",\n";
     out << "    \"default_core_per_system\": {";
     bool first = true;
     for (const auto& [folder, core] : g_config.default_core_per_system) {
@@ -137,6 +138,10 @@ void load_locked() {
     if (auto* v = yyjson_obj_get(root, "cores_manifest_url");
         v && yyjson_is_str(v)) {
         g_config.cores_manifest_url = yyjson_get_str(v);
+    }
+    if (auto* v = yyjson_obj_get(root, "foyer_manifest_url");
+        v && yyjson_is_str(v)) {
+        g_config.foyer_manifest_url = yyjson_get_str(v);
     }
     if (auto* obj = yyjson_obj_get(root, "default_core_per_system");
         obj && yyjson_is_obj(obj)) {

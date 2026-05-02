@@ -31,6 +31,12 @@ struct Config {
     std::string  cores_manifest_url =
         "https://github.com/foyer-frontend/foyer-cores/releases/latest/download/manifest.json";
 
+    // Where the self-update flow looks for a newer foyer.nro. Same fork
+    // semantics — point at a different repo to follow a custom release
+    // line.
+    std::string  foyer_manifest_url =
+        "https://github.com/foyer-frontend/foyer/releases/latest/download/foyer-manifest.json";
+
     // Per-system core override. Stored flat to keep the header light; the
     // list is short (≤20 systems) so linear lookup is fine.
     struct PerSystemCore { std::string folder; std::string core; };

@@ -50,6 +50,12 @@ struct State {
     bool quit_confirm_open = false;
     int  quit_confirm_index = 1; // 0=Yes 1=No, default to safer "No"
 
+    // Yes/No confirmation before downloading + staging a foyer self-update.
+    // Opened by the OpUpdInstallFoyer action; A on Yes raises
+    // request_install_foyer_update, A on No closes.
+    bool update_confirm_open = false;
+    int  update_confirm_index = 1; // default to "No"
+
     // Set by the popup "Exit" item; main.cpp drains it and quits the app.
     bool request_quit = false;
 
@@ -68,6 +74,13 @@ struct State {
     // When non-empty, request_install_cores acts on just this one core.
     // Cleared by main.cpp after the install runs.
     std::string install_only_core;
+
+    // Self-update flow. Boot-time check populates `foyer_update_*` once
+    // and a banner shows if a newer release is on GitHub.
+    bool        request_check_foyer_update   = false;
+    bool        request_install_foyer_update = false;
+    bool        foyer_update_available       = false;
+    std::string foyer_update_version;
 
     // Set by Update; read by the main loop to trigger a one-shot scrape of
     // every rom in the focused system. The "kind" picks which scraper to use.
