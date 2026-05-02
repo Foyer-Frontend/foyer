@@ -27,9 +27,19 @@ jobs:
         run: git config --global --add safe.directory '*'
 
       - name: Install Switch portlibs
+        # pkg.devkitpro.org's CDN intermittently 403s on db sync; retry up
+        # to 5 times with a small backoff before giving up.
         run: |
-          dkp-pacman -Syu --needed --noconfirm \
-              switch-portlibs switch-sdl2 switch-sdl2-libs
+          for attempt in 1 2 3 4 5; do
+              if dkp-pacman -Syu --needed --noconfirm \
+                  switch-portlibs switch-sdl2 switch-sdl2-libs; then
+                  exit 0
+              fi
+              echo "dkp-pacman attempt $attempt failed; sleeping 15s..."
+              sleep 15
+          done
+          echo "dkp-pacman failed after 5 attempts" >&2
+          exit 1
 
       - name: Configure
         env:
