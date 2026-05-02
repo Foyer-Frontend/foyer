@@ -14,10 +14,17 @@ namespace {
 constexpr CoreDef kCoresNes[]         = {
     { "fceumm",   "FCEUmm"   },
     { "nestopia", "Nestopia UE" },
+    { "mesen",    "Mesen"    },
 };
 constexpr CoreDef kCoresSnes9x[]      = { { "snes9x",        "Snes9x"        } };
-constexpr CoreDef kCoresGambatte[]    = { { "gambatte",      "Gambatte"      } };
-constexpr CoreDef kCoresMgba[]        = { { "mgba",          "mGBA"          } };
+constexpr CoreDef kCoresGambatte[]    = {
+    { "gambatte", "Gambatte" },
+    { "sameboy",  "SameBoy"  },
+};
+constexpr CoreDef kCoresMgba[]        = {
+    { "mgba",     "mGBA"     },
+    { "vba_next", "VBA Next" },
+};
 constexpr CoreDef kCoresMupen64[]     = { { "mupen64plus",   "Mupen64Plus"   } };
 constexpr CoreDef kCoresMelonds[]     = { { "melonds",       "melonDS"       } };
 constexpr CoreDef kCoresDolphin[]     = { { "dolphin",       "Dolphin"       } };
@@ -37,7 +44,10 @@ constexpr CoreDef kCoresPsx[]         = {
     { "swanstation",  "Swanstation"  },
 };
 constexpr CoreDef kCoresPpsspp[]      = { { "ppsspp",        "PPSSPP"        } };
-constexpr CoreDef kCoresRace[]        = { { "race",          "RACE"          } };
+constexpr CoreDef kCoresRace[]        = {
+    { "race",         "RACE"         },
+    { "mednafen_ngp", "Beetle NGP"   },
+};
 constexpr CoreDef kCoresStella[]      = { { "stella",        "Stella"        } };
 constexpr CoreDef kCoresProsystem[]   = { { "prosystem",     "ProSystem"     } };
 constexpr CoreDef kCoresHandy[]       = { { "handy",         "Handy"         } };

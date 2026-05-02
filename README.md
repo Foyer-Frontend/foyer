@@ -62,11 +62,11 @@ Features delivered so far:
 
 | Folder         | Display                       | Cores (default first)            |
 |----------------|-------------------------------|----------------------------------|
-| `nes`          | Nintendo Entertainment System | `fceumm` / `nestopia`            |
+| `nes`          | Nintendo Entertainment System | `fceumm` / `nestopia` / `mesen`  |
 | `snes`         | Super Nintendo                | `snes9x`                         |
-| `gb`           | Game Boy                      | `gambatte`                       |
-| `gbc`          | Game Boy Color                | `gambatte`                       |
-| `gba`          | Game Boy Advance              | `mgba`                           |
+| `gb`           | Game Boy                      | `gambatte` / `sameboy`           |
+| `gbc`          | Game Boy Color                | `gambatte` / `sameboy`           |
+| `gba`          | Game Boy Advance              | `mgba` / `vba_next`              |
 | `n64`          | Nintendo 64                   | `mupen64plus`                    |
 | `nds`          | Nintendo DS                   | `melonds`                        |
 | `gc`           | GameCube                      | `dolphin` (recipe TBD)           |
@@ -80,8 +80,8 @@ Features delivered so far:
 | `dc`           | Dreamcast                     | `flycast`                        |
 | `psx`          | PlayStation                   | `pcsx_rearmed` / `swanstation`   |
 | `psp`          | PlayStation Portable          | `ppsspp` (recipe TBD)            |
-| `ngp`          | Neo Geo Pocket                | `race`                           |
-| `ngpc`         | Neo Geo Pocket Color          | `race`                           |
+| `ngp`          | Neo Geo Pocket                | `race` / `mednafen_ngp`          |
+| `ngpc`         | Neo Geo Pocket Color          | `race` / `mednafen_ngp`          |
 | `atari2600`    | Atari 2600                    | `stella`                         |
 | `atari7800`    | Atari 7800                    | `prosystem`                      |
 | `atarilynx`    | Atari Lynx                    | `handy`                          |
