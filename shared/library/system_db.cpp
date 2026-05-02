@@ -14,7 +14,7 @@ namespace {
 constexpr CoreDef kCoresNes[]         = {
     { "fceumm",   "FCEUmm"   },
     { "nestopia", "Nestopia UE" },
-    // mesen pending — recipe needs HQX/xBRZ scalers + SevenZip wired in.
+    { "mesen",    "Mesen"    },
 };
 constexpr CoreDef kCoresSnes9x[]      = {
     { "snes9x",         "Snes9x"          },
@@ -22,7 +22,7 @@ constexpr CoreDef kCoresSnes9x[]      = {
 };
 constexpr CoreDef kCoresGambatte[]    = {
     { "gambatte", "Gambatte" },
-    // sameboy pending — recipe needs bootrom .bin → .c generation.
+    { "sameboy",  "SameBoy"  },
 };
 constexpr CoreDef kCoresMgba[]        = {
     { "mgba",     "mGBA"     },
