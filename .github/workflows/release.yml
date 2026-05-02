@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: write
+  packages: read
 
 jobs:
   build:
@@ -20,6 +21,9 @@ jobs:
       # foyer-cores's build-image.yml so we don't depend on
       # pkg.devkitpro.org being responsive at runtime.
       image: ghcr.io/foyer-frontend/foyer-cores-builder:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout foyer
         uses: actions/checkout@v4
