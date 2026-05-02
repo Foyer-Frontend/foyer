@@ -21,7 +21,15 @@ constexpr CoreDef kCoresMgba[]        = { { "mgba",          "mGBA"          } }
 constexpr CoreDef kCoresMupen64[]     = { { "mupen64plus",   "Mupen64Plus"   } };
 constexpr CoreDef kCoresMelonds[]     = { { "melonds",       "melonDS"       } };
 constexpr CoreDef kCoresDolphin[]     = { { "dolphin",       "Dolphin"       } };
-constexpr CoreDef kCoresGenesisGx[]   = { { "genesisplusgx", "Genesis Plus GX" } };
+// Genesis / Mega Drive / Master System / Game Gear share the same core
+// list. Order = priority — genesisplusgx is the safe default,
+// genesis_plus_gx_wide gives the H40 widescreen patch (16:9 fit on
+// supported titles), picodrive is a lighter alternative.
+constexpr CoreDef kCoresGenesisGx[]   = {
+    { "genesisplusgx",       "Genesis Plus GX"      },
+    { "genesis_plus_gx_wide","Genesis Plus GX Wide" },
+    { "picodrive",           "PicoDrive"            },
+};
 constexpr CoreDef kCoresYabaSan[]     = { { "yabasanshiro",  "YabaSanshiro"  } };
 constexpr CoreDef kCoresFlycast[]     = { { "flycast",       "Flycast"       } };
 constexpr CoreDef kCoresPsx[]         = {
@@ -30,6 +38,11 @@ constexpr CoreDef kCoresPsx[]         = {
 };
 constexpr CoreDef kCoresPpsspp[]      = { { "ppsspp",        "PPSSPP"        } };
 constexpr CoreDef kCoresRace[]        = { { "race",          "RACE"          } };
+constexpr CoreDef kCoresStella[]      = { { "stella",        "Stella"        } };
+constexpr CoreDef kCoresProsystem[]   = { { "prosystem",     "ProSystem"     } };
+constexpr CoreDef kCoresHandy[]       = { { "handy",         "Handy"         } };
+// 32X and SegaCD currently ship via picodrive only.
+constexpr CoreDef kCoresPicoOnly[]    = { { "picodrive",     "PicoDrive"     } };
 
 constexpr SystemDef kSystems[] = {
     { "nes",          "Nintendo Entertainment System", "NES",
@@ -103,6 +116,26 @@ constexpr SystemDef kSystems[] = {
     { "ngpc",         "Neo Geo Pocket Color",         "NGPC",
       "SNK - Neo Geo Pocket Color",
       "ngc",               kCoresRace },
+
+    { "atari2600",    "Atari 2600",                   "A2600",
+      "Atari - 2600",
+      "a26|bin",           kCoresStella },
+
+    { "atari7800",    "Atari 7800",                   "A7800",
+      "Atari - 7800",
+      "a78|bin",           kCoresProsystem },
+
+    { "atarilynx",    "Atari Lynx",                   "Lynx",
+      "Atari - Lynx",
+      "lnx|lyx",           kCoresHandy },
+
+    { "32x",          "Sega 32X",                     "32X",
+      "Sega - 32X",
+      "32x|bin|md",        kCoresPicoOnly },
+
+    { "segacd",       "Sega CD",                      "SegaCD",
+      "Sega - Mega-CD - Sega CD",
+      "cue|iso|chd|m3u",   kCoresPicoOnly },
 };
 
 bool iequal(std::string_view a, std::string_view b) {

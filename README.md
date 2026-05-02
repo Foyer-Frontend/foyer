@@ -60,26 +60,31 @@ Features delivered so far:
 
 ## Supported systems / cores
 
-| Folder         | Display                       | Core           |
-|----------------|-------------------------------|----------------|
-| `nes`          | Nintendo Entertainment System | `fceumm` (default) / `nestopia` |
-| `snes`         | Super Nintendo                | `snes9x`       |
-| `gb`           | Game Boy                      | `gambatte`     |
-| `gbc`          | Game Boy Color                | `gambatte`     |
-| `gba`          | Game Boy Advance              | `mgba`         |
-| `n64`          | Nintendo 64                   | `mupen64plus`  |
-| `nds`          | Nintendo DS                   | `melonds`      |
-| `gc`           | GameCube                      | `dolphin`      |
-| `genesis`      | Sega Genesis                  | `genesisplusgx`|
-| `megadrive`    | Sega Mega Drive               | `genesisplusgx`|
-| `mastersystem` | Sega Master System            | `genesisplusgx`|
-| `gamegear`     | Sega Game Gear                | `genesisplusgx`|
-| `saturn`       | Sega Saturn                   | `yabasanshiro` |
-| `dc`           | Dreamcast                     | `flycast`      |
-| `psx`          | PlayStation                   | `pcsx_rearmed` (default) / `swanstation` |
-| `psp`          | PlayStation Portable          | `ppsspp`       |
-| `ngp`          | Neo Geo Pocket                | `race`         |
-| `ngpc`         | Neo Geo Pocket Color          | `race`         |
+| Folder         | Display                       | Cores (default first)            |
+|----------------|-------------------------------|----------------------------------|
+| `nes`          | Nintendo Entertainment System | `fceumm` / `nestopia`            |
+| `snes`         | Super Nintendo                | `snes9x`                         |
+| `gb`           | Game Boy                      | `gambatte`                       |
+| `gbc`          | Game Boy Color                | `gambatte`                       |
+| `gba`          | Game Boy Advance              | `mgba`                           |
+| `n64`          | Nintendo 64                   | `mupen64plus`                    |
+| `nds`          | Nintendo DS                   | `melonds`                        |
+| `gc`           | GameCube                      | `dolphin` (recipe TBD)           |
+| `genesis`      | Sega Genesis                  | `genesisplusgx` / `genesis_plus_gx_wide` / `picodrive` |
+| `megadrive`    | Sega Mega Drive               | `genesisplusgx` / `genesis_plus_gx_wide` / `picodrive` |
+| `mastersystem` | Sega Master System            | `genesisplusgx` / `genesis_plus_gx_wide` / `picodrive` |
+| `gamegear`     | Sega Game Gear                | `genesisplusgx` / `genesis_plus_gx_wide` / `picodrive` |
+| `32x`          | Sega 32X                      | `picodrive`                      |
+| `segacd`       | Sega CD                       | `picodrive`                      |
+| `saturn`       | Sega Saturn                   | `yabasanshiro`                   |
+| `dc`           | Dreamcast                     | `flycast`                        |
+| `psx`          | PlayStation                   | `pcsx_rearmed` / `swanstation`   |
+| `psp`          | PlayStation Portable          | `ppsspp` (recipe TBD)            |
+| `ngp`          | Neo Geo Pocket                | `race`                           |
+| `ngpc`         | Neo Geo Pocket Color          | `race`                           |
+| `atari2600`    | Atari 2600                    | `stella`                         |
+| `atari7800`    | Atari 7800                    | `prosystem`                      |
+| `atarilynx`    | Atari Lynx                    | `handy`                          |
 
 ## Themes
 
