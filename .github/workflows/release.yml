@@ -1,0 +1,63 @@
+name: Release
+
+# Builds foyer.nro for the Switch and attaches it to a GitHub release.
+# Triggers on tag push v*.*.*; can also be run manually for dry-runs.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: devkitpro/devkita64:latest
+    steps:
+      - name: Checkout foyer
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # so `git rev-parse --short HEAD` works
+
+      - name: Trust the workspace inside container
+        run: git config --global --add safe.directory '*'
+
+      - name: Install Switch portlibs
+        run: |
+          dkp-pacman -Syu --needed --noconfirm \
+              switch-portlibs switch-sdl2 switch-sdl2-libs
+
+      - name: Configure
+        env:
+          DEVKITPRO: /opt/devkitpro
+        run: cmake --preset Release
+
+      - name: Build
+        run: cmake --build --preset Release -j
+
+      - name: Stage release artefacts
+        run: |
+          mkdir -p out
+          cp build/Release/foyer.nro out/foyer.nro
+          ( cd out && sha256sum foyer.nro > foyer.nro.sha256 )
+          ls -lh out/
+
+      - name: Upload build artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: foyer-nro
+          path: out/
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            out/foyer.nro
+            out/foyer.nro.sha256
+          generate_release_notes: true
+          fail_on_unmatched_files: true
