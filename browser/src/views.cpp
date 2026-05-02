@@ -1200,10 +1200,46 @@ std::vector<Item> build_items(Category cat, const State& s) {
             rows.push_back({ItemKind::Action, "Rescan library",         "A: run",     "", OpRescan});
             rows.push_back({ItemKind::Action, "Invalidate cover cache", "A: refresh", "", OpInvalidateCovers});
             break;
-        case Category::Emulator:
-            rows.push_back({ItemKind::Static, "Cores listed below are declared in system_db; install the matching nro under /foyer/cores/.",
-                "", "", OpEmuList});
+        case Category::Emulator: {
+            // Catalog of cores from the foyer-cores release manifest. This
+            // is where the user *installs* cores — Updates is where they
+            // *upgrade* the ones already on disk.
+            rows.push_back({ItemKind::Action, "Refresh manifest", "A: fetch",
+                "Pulls the latest foyer-cores release listing from GitHub.",
+                OpUpdRefreshManifest});
+
+            auto size_of = [](const std::string& path) -> std::size_t {
+                struct stat st{};
+                return (::stat(path.c_str(), &st) == 0) ? (std::size_t)st.st_size : 0;
+            };
+
+            const auto& mc = manifest_cache();
+            if (mc.loaded && !mc.data.cores.empty()) {
+                rows.push_back({ItemKind::Static,
+                    std::string{"Available cores (manifest "} + mc.data.version + ")",
+                    "", "", 0});
+                for (const auto& c : mc.data.cores) {
+                    const auto local = size_of(std::string{"/foyer/cores/"} + c.nro);
+                    if (local == 0) {
+                        Item it{ItemKind::Action,
+                                std::string{"  "} + c.name,
+                                "install",
+                                "",
+                                OpUpdInstallSingleCore};
+                        it.data = c.name;
+                        rows.push_back(std::move(it));
+                    } else {
+                        rows.push_back({ItemKind::Static,
+                            std::string{"  "} + c.name, "installed", "", 0});
+                    }
+                }
+            } else {
+                rows.push_back({ItemKind::Static,
+                    "Press 'Refresh manifest' to load the catalog.",
+                    "", "", 0});
+            }
             break;
+        }
         case Category::Accounts: {
             const auto& a = scrapers::accounts();
             rows.push_back({ItemKind::Drill, "ScreenScraper dev ID",
@@ -1243,79 +1279,47 @@ std::vector<Item> build_items(Category cat, const State& s) {
             rows.push_back({ItemKind::Action, "Scrape all systems", "A: run",
                 "Walks every system using the preferred scraper.",   OpUpdScrapeAll});
             rows.push_back({ItemKind::Action, "Refresh manifest", "A: fetch",
-                "Pulls the latest foyer-cores release manifest so the "
-                "per-core actions below reflect what's available.",   OpUpdRefreshManifest});
-            rows.push_back({ItemKind::Action, "Install / update all cores", "A: run",
-                "Bulk install or refresh every core listed in the manifest.", OpUpdInstallCores});
+                "Pulls the latest foyer-cores release listing.",     OpUpdRefreshManifest});
 
-            // Helper to size a local nro for a given filename.
+            // Show only INSTALLED cores whose local size doesn't match the
+            // manifest — i.e. an actual update is pending. New cores live
+            // in Settings → Emulator (catalog/install). Up-to-date cores
+            // simply don't clutter this category at all.
             auto size_of = [](const std::string& path) -> std::size_t {
                 struct stat st{};
                 return (::stat(path.c_str(), &st) == 0) ? (std::size_t)st.st_size : 0;
             };
 
-            // Per-core action rows from the cached manifest. Each row's
-            // right-side value tells the user what pressing A will do.
             const auto& mc = manifest_cache();
+            int outdated_count = 0;
             if (mc.loaded && !mc.data.cores.empty()) {
-                rows.push_back({ItemKind::Static,
-                    std::string{"Manifest "} + mc.data.version, "", "", 0});
                 for (const auto& c : mc.data.cores) {
                     const auto local = size_of(std::string{"/foyer/cores/"} + c.nro);
-                    const char* state =
-                        (local == 0)                     ? "install" :
-                        (c.size > 0 && local == c.size)  ? "up to date" :
-                                                            "update";
+                    if (local == 0) continue;                       // not installed → Emulator
+                    if (c.size > 0 && local == c.size) continue;    // up to date
+                    if (outdated_count == 0) {
+                        rows.push_back({ItemKind::Static, "Pending core updates", "", "", 0});
+                        rows.push_back({ItemKind::Action,
+                            "Update all", "A: run",
+                            "", OpUpdInstallCores});
+                    }
                     Item it{ItemKind::Action,
                             std::string{"  "} + c.name,
-                            state,
+                            "update",
                             "",
                             OpUpdInstallSingleCore};
                     it.data = c.name;
                     rows.push_back(std::move(it));
+                    outdated_count++;
+                }
+                if (outdated_count == 0) {
+                    rows.push_back({ItemKind::Static,
+                        "All installed cores are up to date.", "", "", 0});
                 }
             } else {
                 rows.push_back({ItemKind::Static,
-                    "Press 'Refresh manifest' to list available cores.",
+                    "Press 'Refresh manifest' to check for core updates.",
                     "", "", 0});
-            }
-
-            // What's currently on the SD card, regardless of manifest.
-            // Useful for spotting cores installed by hand or left behind
-            // after a system_db change.
-            rows.push_back({ItemKind::Static, "Installed cores on SD", "", "", 0});
-            std::vector<std::string> seen;
-            if (auto* dir = ::opendir("/foyer/cores")) {
-                while (auto* e = ::readdir(dir)) {
-                    if (!e->d_name[0] || e->d_name[0] == '.') continue;
-                    std::string_view n{e->d_name};
-                    if (!n.starts_with("foyer-") || !n.ends_with(".nro")) continue;
-                    std::string core_name{n.substr(6, n.size() - 6 - 4)};
-                    char path[256];
-                    std::snprintf(path, sizeof(path), "/foyer/cores/%.*s",
-                        (int)n.size(), n.data());
-                    struct stat st{};
-                    char rhs[64] = "present";
-                    if (::stat(path, &st) == 0) {
-                        std::snprintf(rhs, sizeof(rhs), "%lld KB",
-                            (long long)(st.st_size / 1024));
-                    }
-                    rows.push_back({ItemKind::Static, std::string{"  "} + core_name, rhs, "", 0});
-                    seen.push_back(std::move(core_name));
-                }
-                ::closedir(dir);
-            }
-            // Flag the cores referenced in system_db that aren't on disk yet.
-            for (const auto& sys : library::all_systems()) {
-                for (const auto& c : sys.cores) {
-                    bool installed = false;
-                    for (const auto& n : seen) if (n == c.name) { installed = true; break; }
-                    if (!installed) {
-                        rows.push_back({ItemKind::Static,
-                            std::string{"  "} + std::string{c.name}, "missing", "", 0});
-                        seen.emplace_back(c.name);
-                    }
-                }
             }
             break;
         }
@@ -1777,6 +1781,14 @@ void update(State& s, const Library& lib,
             float w, float h) {
     s.frame_counter++;
     if (s.banner_ttl > 0) s.banner_ttl--;
+
+    // Snapshot the touch state into State so draw() can render markers
+    // even when no view-specific gesture handler is running.
+    s.last_touch_count = touch.count;
+    for (int i = 0; i < touch.count && i < 4; i++) {
+        s.last_touch_x[i] = touch.points[i].x;
+        s.last_touch_y[i] = touch.points[i].y;
+    }
 
     // Quit confirmation modal intercepts everything while open.
     if (s.quit_confirm_open) {
@@ -2378,6 +2390,37 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
     draw_popup(vg, w, h, s);
     draw_quit_confirm(vg, w, h, s);
     draw_update_confirm(vg, w, h, s);
+
+    // ---- TOUCH DEBUG OVERLAY -------------------------------------------
+    // Renders a magenta ring under every reported touch point + a corner
+    // HUD with the live finger count. If you can see the rings move with
+    // your finger, the panel is reporting touches — anything not working
+    // beyond that is a views-layer bug. If you see only the count
+    // ticking but no rings, something's mis-mapping coordinates. If the
+    // count never moves off zero, libnx isn't getting touch events
+    // (applet permission / docked mode / mis-init).
+    {
+        char hud[64];
+        std::snprintf(hud, sizeof(hud), "touch: %d", s.last_touch_count);
+        nvgFontSize(vg, 14.0f);
+        nvgFillColor(vg, nvgRGBA(0xC2, 0x86, 0xFF, 0xC0));
+        nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_TOP);
+        nvgText(vg, w - 12.0f, 4.0f, hud, nullptr);
+
+        for (int i = 0; i < s.last_touch_count && i < 4; i++) {
+            const float tx = s.last_touch_x[i];
+            const float ty = s.last_touch_y[i];
+            nvgBeginPath(vg);
+            nvgCircle(vg, tx, ty, 18.0f);
+            nvgStrokeColor(vg, nvgRGBA(0xFF, 0x3D, 0xC8, 0xE0));
+            nvgStrokeWidth(vg, 3.0f);
+            nvgStroke(vg);
+            nvgBeginPath(vg);
+            nvgCircle(vg, tx, ty, 4.0f);
+            nvgFillColor(vg, nvgRGBA(0xFF, 0x3D, 0xC8, 0xFF));
+            nvgFill(vg);
+        }
+    }
 
     // Banner (e.g., "Scraping NES…  3 / 24"). Drawn last so nothing covers it.
     if (s.banner_ttl > 0 && !s.banner_text.empty()) {

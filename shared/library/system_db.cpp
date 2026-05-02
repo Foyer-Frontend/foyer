@@ -18,7 +18,8 @@ constexpr CoreDef kCoresNes[]         = {
 };
 constexpr CoreDef kCoresSnes9x[]      = {
     { "snes9x",         "Snes9x"          },
-    { "bsnes_hd_beta",  "bsnes-hd (16:9)" },
+    // bsnes_hd_beta listed pending — recipe needs deeper nall toolkit
+    // integration before it builds.
 };
 constexpr CoreDef kCoresGambatte[]    = {
     { "gambatte", "Gambatte" },
