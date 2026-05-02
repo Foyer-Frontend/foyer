@@ -25,6 +25,7 @@ roms/
 !README.md
 !LICENSE*.md
 !*.cmake.md
+!docs/**/*.md
 *.gen
 *.iso
 *.cue
