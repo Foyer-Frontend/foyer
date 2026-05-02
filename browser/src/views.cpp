@@ -5,6 +5,7 @@
 #include "library/system_db.hpp"
 #include "library/config.hpp"
 #include "library/per_game.hpp"
+#include "library/game_meta.hpp"
 #include "platform/log.hpp"
 #include "scrapers/accounts.hpp"
 #include "scrapers/cache.hpp"
@@ -16,6 +17,7 @@
 #include <cerrno>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <ctime>
 #include <dirent.h>
 #include <fstream>
@@ -109,6 +111,28 @@ CoverCache& theme_bg_cache() {
 }
 CoverCache& system_splash_cache() {
     static CoverCache c;
+    return c;
+}
+
+// Per-game scraped metadata, keyed by "<system_folder>/<rom_stem>". Cleared
+// when the user rescans or runs a fresh scrape so the sidebar picks up the
+// newly-written sidecar files.
+struct MetaCache {
+    std::unordered_map<std::string, library::GameMeta> map;
+    const library::GameMeta& get(std::string_view sys, std::string_view stem) {
+        std::string key{sys};
+        key.push_back('/');
+        key.append(stem);
+        auto it = map.find(key);
+        if (it == map.end()) {
+            it = map.emplace(key, library::load_meta(sys, stem)).first;
+        }
+        return it->second;
+    }
+    void clear() { map.clear(); }
+};
+MetaCache& meta_cache() {
+    static MetaCache c;
     return c;
 }
 
@@ -355,9 +379,42 @@ void rrect_outline(NVGcontext* vg, float x, float y, float ww, float hh, float r
 
 // ---- HOME VIEW (system carousel) ------------------------------------------
 
-void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& lib) {
-    const auto& th = theme();
+// Tile metrics. Selected tile sits in the centre at full size; up to two
+// neighbours each side render smaller and fade out.
+// Portrait parallelogram tiles. Each tile is a slanted shape (top-right and
+// bottom-left corners shifted by kHomeSlant) so adjacent tiles interlock
+// exactly — kHomeGap = -kHomeSlant pulls them together along the slanted
+// edges matching the ES-DE Art Book Next layout.
+constexpr float kHomeTileW = 360.0f;
+constexpr float kHomeTileH = 840.0f;
+constexpr float kHomeSlant = 84.0f;
+constexpr float kHomeGap   = -kHomeSlant;
+constexpr float kHomePitch = kHomeTileW + kHomeGap; // 276 — centre-to-centre
 
+// Map a touch position to the system index of the visible tile underneath,
+// or -1 if no tile was tapped. Hit boxes use the centre-to-centre pitch so
+// adjacent tiles never overlap, which matters for tap disambiguation.
+int home_hit_test(float w, float h, std::size_t count,
+                  std::size_t idx_centre, float tx, float ty) {
+    if (count == 0) return -1;
+    const float cy  = h * 0.5f;
+    const float top = cy - kHomeTileH * 0.5f;
+    const float bot = cy + kHomeTileH * 0.5f;
+    if (ty < top || ty > bot) return -1;
+    const int n = (int)count;
+    for (int off = -2; off <= 2; off++) {
+        const float cx    = w * 0.5f + (float)off * kHomePitch;
+        const float left  = cx - kHomePitch * 0.5f;
+        const float right = cx + kHomePitch * 0.5f;
+        if (tx >= left && tx < right) {
+            int idx = (int)idx_centre + off;
+            return ((idx % n) + n) % n;
+        }
+    }
+    return -1;
+}
+
+void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& lib) {
     if (lib.systems.empty()) {
         draw_empty(vg, w, h,
             "No systems found",
@@ -365,16 +422,10 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
         return;
     }
 
-    // Tile metrics. Selected tile sits in the centre at full size; up to two
-    // neighbours each side render smaller and fade out.
-    // Portrait parallelogram tiles. Each tile is a slanted shape (top-right
-    // and bottom-left corners shifted by kSlant) so adjacent tiles interlock
-    // exactly — kGap = -kSlant pulls them together along the slanted edges
-    // matching the ES-DE Art Book Next layout.
-    constexpr float kTileW = 360.0f;
-    constexpr float kTileH = 840.0f;
-    constexpr float kSlant = 84.0f;
-    constexpr float kGap   = -kSlant;
+    constexpr float kTileW = kHomeTileW;
+    constexpr float kTileH = kHomeTileH;
+    constexpr float kSlant = kHomeSlant;
+    constexpr float kGap   = kHomeGap;
 
     const auto idx_centre = (int)s.system_index;
     const auto count      = (int)lib.systems.size();
@@ -429,6 +480,46 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
 
 // ---- SYSTEM VIEW (game list + sidebar) ------------------------------------
 
+constexpr float kSystemRowH = 52.0f;
+constexpr float kSystemRowFont = 24.0f;
+
+// How many rows fit inside the System view's left list panel for the given
+// framebuffer height. Used as the "page" size for shoulder-button paging.
+int system_visible_rows(float h) {
+    const float content_y = kTopBarH + 16.0f;
+    const float content_h = h - content_y - kBottomBarH - 16.0f;
+    const int   visible   = (int)((content_h - 16) / kSystemRowH);
+    return std::max(1, visible);
+}
+
+// Map a touch position inside the System view to a row index in
+// `sys.games`, or -1 if the tap missed the list. Mirrors the layout in
+// draw_system().
+int system_row_hit_test(float w, float h, const library::System& sys,
+                        std::size_t game_index, float tx, float ty) {
+    const float pad       = theme().pad;
+    const float content_y = kTopBarH + 16.0f;
+    const float content_h = h - content_y - kBottomBarH - 16.0f;
+    const float list_w    = (w - pad * 3.0f) * 0.60f;
+
+    if (tx < pad || tx >= pad + list_w)            return -1;
+    if (ty < content_y || ty >= content_y + content_h) return -1;
+
+    const int visible = system_visible_rows(h);
+    const int total   = (int)sys.games.size();
+    if (total == 0) return -1;
+
+    int first = (int)game_index - visible / 2;
+    if (first < 0) first = 0;
+    if (first + visible > total) first = std::max(0, total - visible);
+
+    const int row = (int)((ty - content_y - 8) / kSystemRowH);
+    if (row < 0 || row >= visible) return -1;
+    const int idx = first + row;
+    if (idx < 0 || idx >= total)   return -1;
+    return idx;
+}
+
 void draw_system(NVGcontext* vg, float w, float h, const State& s, const Library& lib) {
     const auto& th = theme();
     if (lib.systems.empty()) {
@@ -479,8 +570,8 @@ void draw_system(NVGcontext* vg, float w, float h, const State& s, const Library
     }
 
     // ---- list ----
-    constexpr float kRow = 44.0f;
-    const int visible = (int)((content_h - 16) / kRow);
+    constexpr float kRow = kSystemRowH;
+    const int visible = system_visible_rows(h);
     const int total   = (int)sys.games.size();
     int first = (int)s.game_index - visible / 2;
     if (first < 0) first = 0;
@@ -496,7 +587,7 @@ void draw_system(NVGcontext* vg, float w, float h, const State& s, const Library
             rrect(vg, th.pad + 6, ry, list_w - 12, kRow - 4, 6.0f, th.bg_panel_hi);
         }
 
-        nvgFontSize(vg, th.body_size);
+        nvgFontSize(vg, kSystemRowFont);
         nvgFillColor(vg, sel ? th.text_strong : th.text);
         nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
         nvgText(vg, th.pad + 18, ry + (kRow - 4) * 0.5f,
@@ -515,21 +606,27 @@ void draw_system(NVGcontext* vg, float w, float h, const State& s, const Library
     nvgSave(vg);
     nvgIntersectScissor(vg, side_x, content_y, side_w, content_h);
 
-    // Box art on top of sidebar (lazy-loaded from /foyer/assets/covers/).
+    // Box art at the top — given more vertical real estate so it carries
+    // the visual weight of the sidebar. Aspect-fit inside a soft frame so
+    // both portrait and landscape covers look intentional.
     const std::string cover = scrapers::cover_path(
         sys.def->folder_name, g.stem);
-    const float cover_h = 240.0f;
+    const float cover_h = 360.0f;
     const float cover_x = side_x + th.pad;
     const float cover_y = content_y + th.pad;
     const float cover_w = side_w - th.pad * 2.0f;
 
-    rrect(vg, cover_x, cover_y, cover_w, cover_h, 8.0f, th.bg_panel_hi);
+    // Frame: filled panel + 1.5px outline so the cover always reads as a
+    // distinct object even when the underlying image is dark or missing.
+    rrect(vg, cover_x, cover_y, cover_w, cover_h, 10.0f, th.bg_panel_hi);
+    rrect_outline(vg, cover_x, cover_y, cover_w, cover_h, 10.0f,
+        nvgRGBAf(th.text_strong.r, th.text_strong.g, th.text_strong.b, 0.18f), 1.5f);
 
     const int handle = library::config().show_covers
         ? cover_cache().get_or_load(vg, cover)
         : 0;
     if (handle > 0) {
-        // Aspect-fit centred inside cover_h slot.
+        // Aspect-fit centred inside the cover slot.
         int iw = 0, ih = 0;
         nvgImageSize(vg, handle, &iw, &ih);
         if (iw > 0 && ih > 0) {
@@ -542,7 +639,7 @@ void draw_system(NVGcontext* vg, float w, float h, const State& s, const Library
             const float dy = cover_y + (cover_h - dh) * 0.5f;
             auto pat = nvgImagePattern(vg, dx, dy, dw, dh, 0.f, handle, 1.0f);
             nvgBeginPath(vg);
-            nvgRoundedRect(vg, dx, dy, dw, dh, 6.0f);
+            nvgRoundedRect(vg, dx, dy, dw, dh, 8.0f);
             nvgFillPaint(vg, pat);
             nvgFill(vg);
         }
@@ -555,20 +652,97 @@ void draw_system(NVGcontext* vg, float w, float h, const State& s, const Library
                 "no cover (Y to scrape)", nullptr);
     }
 
-    // Title under cover.
-    nvgFontSize(vg, th.head_size);
+    // ---- info block under the cover ----
+    const auto& meta_info = meta_cache().get(sys.def->folder_name, g.stem);
+
+    const float info_x = side_x + th.pad;
+    const float info_w = side_w - th.pad * 2.0f;
+    float       info_y = cover_y + cover_h + 18.0f;
+
+    // Title — prefer the scraped name when we have one, fall back to the
+    // filename-derived display name. This is the largest text in the panel.
+    nvgFontSize(vg, th.head_size + 4.0f);
     nvgFillColor(vg, th.text_strong);
     nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_TOP);
-    nvgText(vg, side_x + th.pad, cover_y + cover_h + 16,
-        g.display.c_str(), nullptr);
+    const char* title_text = !meta_info.title.empty()
+        ? meta_info.title.c_str() : g.display.c_str();
+    {
+        // Manual wrap: nanovg's text-box measure handles this if we feed it
+        // a width. Bound the title to two lines to keep the layout stable.
+        nvgTextLineHeight(vg, 1.05f);
+        nvgTextBox(vg, info_x, info_y, info_w, title_text, nullptr);
+        float bounds[4]{};
+        nvgTextBoxBounds(vg, info_x, info_y, info_w, title_text, nullptr, bounds);
+        info_y = bounds[3] + 6.0f;
+    }
 
-    char meta[128];
-    std::snprintf(meta, sizeof(meta), "%.*s   .%s",
-        (int)sys.def->short_name.size(), sys.def->short_name.data(),
-        g.ext.c_str());
-    nvgFontSize(vg, th.label_size);
+    // Subtitle: SYSTEM • YEAR • GENRE — the at-a-glance line.
+    char sub[256];
+    auto append_sep = [&](char* dst, std::size_t n, const char* part) {
+        if (!part || !*part) return;
+        if (dst[0]) std::snprintf(dst + std::strlen(dst), n - std::strlen(dst), "  ·  %s", part);
+        else        std::snprintf(dst,                     n,                   "%s",     part);
+    };
+    sub[0] = 0;
+    {
+        char sys_short[32];
+        std::snprintf(sys_short, sizeof(sys_short), "%.*s",
+            (int)sys.def->short_name.size(), sys.def->short_name.data());
+        append_sep(sub, sizeof(sub), sys_short);
+        if (!meta_info.year.empty())  append_sep(sub, sizeof(sub), meta_info.year.c_str());
+        if (!meta_info.genre.empty()) append_sep(sub, sizeof(sub), meta_info.genre.c_str());
+    }
+    nvgFontSize(vg, th.body_size);
     nvgFillColor(vg, th.text_dim);
-    nvgText(vg, side_x + th.pad, cover_y + cover_h + 50, meta, nullptr);
+    nvgText(vg, info_x, info_y, sub, nullptr);
+    info_y += th.body_size + 12.0f;
+
+    // Stat rows: label + value pairs. Skipped when the field is empty so a
+    // sparse scrape doesn't leave gaps.
+    auto stat_row = [&](const char* label, const std::string& value) {
+        if (value.empty()) return;
+        nvgFontSize(vg, th.label_size);
+        nvgFillColor(vg, th.text_dim);
+        nvgText(vg, info_x, info_y, label, nullptr);
+
+        nvgFontSize(vg, th.label_size);
+        nvgFillColor(vg, th.text);
+        nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_TOP);
+        nvgText(vg, info_x + info_w, info_y, value.c_str(), nullptr);
+        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_TOP);
+        info_y += th.label_size + 8.0f;
+    };
+    stat_row("Publisher", meta_info.publisher);
+    stat_row("Developer", meta_info.developer);
+    stat_row("Players",   meta_info.players);
+    stat_row("Rating",    meta_info.rating);
+
+    // Achievements — pulled from the rcheevos-written sidecar. Only shows
+    // when the player has booted this rom at least once with valid creds.
+    if (meta_info.cheevos_total >= 0) {
+        char ach[64];
+        const int unlocked = meta_info.cheevos_unlocked < 0 ? 0 : meta_info.cheevos_unlocked;
+        std::snprintf(ach, sizeof(ach), "%d / %d achievements",
+            unlocked, meta_info.cheevos_total);
+        nvgFontSize(vg, th.label_size);
+        nvgFillColor(vg, (meta_info.cheevos_total > 0
+                          && unlocked == meta_info.cheevos_total)
+                         ? th.text_strong : th.text);
+        nvgText(vg, info_x, info_y, ach, nullptr);
+        info_y += th.label_size + 10.0f;
+    }
+
+    // Description — wraps to fill what's left of the sidebar. Clipped by
+    // the existing scissor; long synopses simply truncate.
+    if (!meta_info.description.empty()) {
+        info_y += 4.0f;
+        nvgFontSize(vg, th.label_size);
+        nvgFillColor(vg, th.text_dim);
+        nvgTextLineHeight(vg, 1.25f);
+        nvgTextBox(vg, info_x, info_y, info_w,
+            meta_info.description.c_str(), nullptr);
+    }
+    nvgTextLineHeight(vg, 1.0f);
 
     nvgRestore(vg);
 }
@@ -1422,13 +1596,62 @@ void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Li
 
 }
 
+// Shoulder-button bitmasks. We accept either the upper shoulder (L/R) or the
+// trigger (ZL/ZR) so users with grips that hide one or the other still hit
+// the carousel/page step.
+constexpr std::uint64_t kBtnLeftShoulder  = HidNpadButton_L | HidNpadButton_ZL;
+constexpr std::uint64_t kBtnRightShoulder = HidNpadButton_R | HidNpadButton_ZR;
+
+// Touch pixel thresholds. kDragPx promotes a touch from "potential tap" to
+// "swipe" (suppressing tap-to-open on release). kStepPx is one carousel
+// step's worth of finger travel.
+constexpr float kTouchDragPx = 16.0f;
+constexpr float kTouchStepPx = 80.0f;
+constexpr int   kTapMaxFrames = 30; // ~0.5s
+
+// Single-frame shoulder step: -1 for left, +1 for right, 0 for neither.
+// Updates the hold counters in `s`. Generates one step on initial press and
+// then auto-repeats after a 30-frame delay (~0.5s), accelerating past 90
+// frames (~1.5s) so a long press feels like spinning a wheel.
+int shoulder_step(State& s, std::uint64_t held, std::uint64_t down) {
+    const bool L = (held & kBtnLeftShoulder)  != 0;
+    const bool R = (held & kBtnRightShoulder) != 0;
+    s.hold_l_frames = L ? s.hold_l_frames + 1 : 0;
+    s.hold_r_frames = R ? s.hold_r_frames + 1 : 0;
+
+    if (down & kBtnLeftShoulder)  return -1;
+    if (down & kBtnRightShoulder) return +1;
+
+    auto repeat = [](int hold) -> bool {
+        if (hold <= 30) return false;
+        const int interval = (hold < 90) ? 8 : 3;
+        return ((hold - 30) % interval) == 0;
+    };
+    if (L && repeat(s.hold_l_frames)) return -1;
+    if (R && repeat(s.hold_r_frames)) return +1;
+    return 0;
+}
+
+void reset_input_state(State& s) {
+    s.hold_l_frames = 0;
+    s.hold_r_frames = 0;
+    s.touch_active  = false;
+    s.touch_was_swipe = false;
+    s.touch_swipe_acc = 0.0f;
+}
+
 } // namespace
 
-void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down) {
+void update(State& s, const Library& lib,
+            std::uint64_t held, std::uint64_t down,
+            const platform::App::Touch& touch,
+            float w, float h) {
+    s.frame_counter++;
     if (s.banner_ttl > 0) s.banner_ttl--;
 
     // Quit confirmation modal intercepts everything while open.
     if (s.quit_confirm_open) {
+        reset_input_state(s);
         if (down & (HidNpadButton_AnyLeft | HidNpadButton_AnyRight)) {
             s.quit_confirm_index = 1 - s.quit_confirm_index;
         }
@@ -1446,6 +1669,7 @@ void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down
 
     // Modal popup intercepts all input while open.
     if (s.popup_open) {
+        reset_input_state(s);
         const auto items = popup_items_for(s.view);
         const int n = (int)items.size();
         if (down & HidNpadButton_AnyDown) s.popup_index = (s.popup_index + 1) % n;
@@ -1483,10 +1707,79 @@ void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down
 
     if (s.view == View::Home) {
         const auto n = lib.systems.size();
-        if (down & HidNpadButton_AnyRight) {
-            s.system_index = (s.system_index + 1) % n;
-        } else if (down & HidNpadButton_AnyLeft) {
-            s.system_index = (s.system_index + n - 1) % n;
+        const int  ni = (int)n;
+        auto step = [&](int delta) {
+            if (ni <= 0) return;
+            int idx = (int)s.system_index + delta;
+            idx = ((idx % ni) + ni) % ni;
+            s.system_index = (std::size_t)idx;
+        };
+
+        // D-pad still steps the carousel one tile at a time without repeat.
+        if (down & HidNpadButton_AnyRight)     step(+1);
+        else if (down & HidNpadButton_AnyLeft) step(-1);
+
+        // Shoulders: initial press steps once; held > 0.5s auto-repeats and
+        // accelerates so a long press spins through systems quickly.
+        if (const int sh = shoulder_step(s, held, down)) step(sh);
+
+        // Touch: tap on a tile opens it; horizontal drag steps the carousel
+        // continuously; release with momentum adds bonus steps.
+        if (touch.tap_started && touch.count > 0) {
+            s.touch_active      = true;
+            s.touch_was_swipe   = false;
+            s.touch_start_x     = touch.points[0].x;
+            s.touch_start_y     = touch.points[0].y;
+            s.touch_last_x      = touch.points[0].x;
+            s.touch_start_frame = s.frame_counter;
+            s.touch_swipe_acc   = 0.0f;
+        }
+        if (s.touch_active && touch.count > 0) {
+            const float cx = touch.points[0].x;
+            const float dx = cx - s.touch_last_x;
+            s.touch_last_x = cx;
+            s.touch_swipe_acc += dx;
+
+            if (std::abs(cx - s.touch_start_x) > kTouchDragPx) {
+                s.touch_was_swipe = true;
+            }
+            // Drag-step: every kTouchStepPx of finger travel advances by one.
+            // Right-swipe (positive dx) reveals the previous tile, matching
+            // the natural "drag the strip" mental model.
+            while (s.touch_swipe_acc >= kTouchStepPx) {
+                step(-1);
+                s.touch_swipe_acc -= kTouchStepPx;
+            }
+            while (s.touch_swipe_acc <= -kTouchStepPx) {
+                step(+1);
+                s.touch_swipe_acc += kTouchStepPx;
+            }
+        }
+        if (s.touch_active && touch.count == 0) {
+            const int dur = (int)(s.frame_counter - s.touch_start_frame);
+            if (!s.touch_was_swipe && dur < kTapMaxFrames) {
+                const int hit = home_hit_test(w, h, n, s.system_index,
+                                              s.touch_start_x, s.touch_start_y);
+                if (hit >= 0) {
+                    s.system_index = (std::size_t)hit;
+                    s.view         = View::System;
+                    s.game_index   = 0;
+                }
+            } else if (s.touch_was_swipe && dur > 0) {
+                // Flick momentum: convert lift velocity into bonus steps so
+                // a fast swipe spins past several tiles without re-touching.
+                const float total_dx = s.touch_last_x - s.touch_start_x;
+                const float velocity = total_dx / (float)dur; // px/frame
+                if (std::abs(velocity) > 12.0f) {
+                    int extra = (int)(std::abs(velocity) / 6.0f);
+                    if (extra > 6) extra = 6;
+                    const int sign = (velocity > 0) ? -1 : +1;
+                    for (int i = 0; i < extra; i++) step(sign);
+                }
+            }
+            s.touch_active    = false;
+            s.touch_was_swipe = false;
+            s.touch_swipe_acc = 0.0f;
         }
 
         if (down & HidNpadButton_A) {
@@ -1512,14 +1805,62 @@ void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down
     } else if (s.view == View::System) {
         const auto& sys = lib.systems[s.system_index];
         if (!sys.games.empty()) {
+            const auto total = sys.games.size();
             if (down & HidNpadButton_AnyDown) {
-                if (s.game_index + 1 < sys.games.size()) s.game_index++;
+                if (s.game_index + 1 < total) s.game_index++;
             } else if (down & HidNpadButton_AnyUp) {
                 if (s.game_index > 0) s.game_index--;
             } else if (down & HidNpadButton_AnyRight) {
-                s.game_index = std::min(s.game_index + 10, sys.games.size() - 1);
+                s.game_index = std::min(s.game_index + 10, total - 1);
             } else if (down & HidNpadButton_AnyLeft) {
                 s.game_index = (s.game_index >= 10) ? s.game_index - 10 : 0;
+            }
+
+            // Shoulders page through the list a screenful at a time, with
+            // the same hold-to-spin curve as the carousel.
+            const int page = system_visible_rows(h);
+            if (const int sh = shoulder_step(s, held, down)) {
+                if (sh > 0) {
+                    s.game_index = std::min(s.game_index + (std::size_t)page,
+                                            total - 1);
+                } else {
+                    s.game_index = (s.game_index >= (std::size_t)page)
+                        ? s.game_index - (std::size_t)page : 0;
+                }
+            }
+
+            // Touch: a tap on a row launches that game directly. We track
+            // start position and treat any non-trivial drag as a non-tap so
+            // accidental drags don't fire a launch.
+            if (touch.tap_started && touch.count > 0) {
+                s.touch_active      = true;
+                s.touch_was_swipe   = false;
+                s.touch_start_x     = touch.points[0].x;
+                s.touch_start_y     = touch.points[0].y;
+                s.touch_last_x      = touch.points[0].x;
+                s.touch_start_frame = s.frame_counter;
+            }
+            if (s.touch_active && touch.count > 0) {
+                const float cx = touch.points[0].x;
+                const float cy = touch.points[0].y;
+                if (std::abs(cx - s.touch_start_x) > kTouchDragPx ||
+                    std::abs(cy - s.touch_start_y) > kTouchDragPx) {
+                    s.touch_was_swipe = true;
+                }
+            }
+            if (s.touch_active && touch.count == 0) {
+                const int dur = (int)(s.frame_counter - s.touch_start_frame);
+                if (!s.touch_was_swipe && dur < kTapMaxFrames) {
+                    const int row = system_row_hit_test(w, h, sys, s.game_index,
+                                                        s.touch_start_x,
+                                                        s.touch_start_y);
+                    if (row >= 0) {
+                        s.game_index     = (std::size_t)row;
+                        s.request_launch = true;
+                    }
+                }
+                s.touch_active    = false;
+                s.touch_was_swipe = false;
             }
         }
 
@@ -1569,6 +1910,7 @@ void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down
             }
         }
     } else if (s.view == View::GameDetail) {
+        reset_input_state(s);
         const auto& sys = lib.systems[s.system_index];
         if (sys.games.empty() || sys.def->cores.empty()) {
             s.view = View::System;
@@ -1617,6 +1959,7 @@ void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down
             s.banner_ttl  = 180;
         }
     } else if (s.view == View::Settings) {
+        reset_input_state(s);
         using settings::Category;
         const auto rows = settings::build_items((Category)s.settings_category);
         const int  row_count = (int)rows.size();
@@ -1738,6 +2081,7 @@ void invalidate_cover_cache(NVGcontext* vg) {
     backdrop_cache().clear(vg);
     theme_bg_cache().clear(vg);
     system_splash_cache().clear(vg);
+    meta_cache().clear();
 }
 
 void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) {

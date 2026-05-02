@@ -24,6 +24,34 @@ if (BUILD_PLAYER AND NOT FOYER_CORE AND NOT FOYER_CORES)
 endif()
 
 # ---------------------------------------------------------------------------
+# foyer-cores location
+#
+# Core build recipes (cmake/<core>.cmake) live in a sibling repo so they can
+# rebuild on their own cadence. Defaults to ../foyer-cores; override with
+# -DFOYER_CORES_DIR=... or env var.
+# ---------------------------------------------------------------------------
+if (NOT FOYER_CORES_DIR)
+    if (DEFINED ENV{FOYER_CORES_DIR})
+        set(FOYER_CORES_DIR "$ENV{FOYER_CORES_DIR}")
+    else()
+        set(FOYER_CORES_DIR "${CMAKE_SOURCE_DIR}/../foyer-cores")
+    endif()
+endif()
+get_filename_component(FOYER_CORES_DIR "${FOYER_CORES_DIR}" ABSOLUTE)
+set(FOYER_CORES_DIR "${FOYER_CORES_DIR}" CACHE PATH
+    "Path to the foyer-cores repo containing recipes/ and cmake/core_recipe.cmake.")
+
+if (BUILD_PLAYER)
+    if (NOT EXISTS "${FOYER_CORES_DIR}/recipes" OR
+        NOT EXISTS "${FOYER_CORES_DIR}/cmake/core_recipe.cmake")
+        message(FATAL_ERROR
+            "FOYER_CORES_DIR='${FOYER_CORES_DIR}' is missing recipes/ or "
+            "cmake/core_recipe.cmake. Clone foyer-cores next to foyer, or pass "
+            "-DFOYER_CORES_DIR=<path>.")
+    endif()
+endif()
+
+# ---------------------------------------------------------------------------
 # Compiler config (shared by all targets)
 # ---------------------------------------------------------------------------
 set(CMAKE_C_STANDARD            23)
@@ -104,7 +132,7 @@ if (BUILD_PLAYER)
 
     # rcheevos is shared by every player binary — declare it once so we don't
     # collide on target name when looping the player subdir.
-    include(${CMAKE_SOURCE_DIR}/cores/rcheevos.cmake)
+    include(${FOYER_CORES_DIR}/recipes/rcheevos.cmake)
 
     foreach(_foyer_core IN LISTS _foyer_player_cores)
         set(FOYER_CORE ${_foyer_core})
@@ -117,4 +145,5 @@ message(STATUS "  BUILD_BROWSER = ${BUILD_BROWSER}")
 message(STATUS "  BUILD_PLAYER  = ${BUILD_PLAYER}")
 if (BUILD_PLAYER)
     message(STATUS "  cores         = ${_foyer_player_cores}")
+    message(STATUS "  recipes from  = ${FOYER_CORES_DIR}")
 endif()

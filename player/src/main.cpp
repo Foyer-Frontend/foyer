@@ -244,6 +244,29 @@ int main(int argc, char** argv) {
     cheevos.init([&overlay](const std::string& title) {
         overlay.toast(title);
     });
+
+    // Tell the cheevos client where to write progress so the browser can
+    // surface "X/Y achievements" without making any network calls itself.
+    // rom_path looks like /foyer/roms/<system>/<stem>.<ext>; we derive the
+    // sidecar coordinates from that.
+    {
+        std::string_view p{rom_path};
+        const auto last_slash = p.rfind('/');
+        const std::string_view file =
+            (last_slash == std::string_view::npos) ? p : p.substr(last_slash + 1);
+        const auto dot  = file.rfind('.');
+        const std::string stem{(dot == std::string_view::npos) ? file : file.substr(0, dot)};
+
+        std::string sys_folder;
+        if (last_slash != std::string_view::npos) {
+            const auto parent = p.substr(0, last_slash);
+            const auto pslash = parent.rfind('/');
+            sys_folder = std::string{
+                (pslash == std::string_view::npos) ? parent : parent.substr(pslash + 1)};
+        }
+        cheevos.set_progress_sidecar(sys_folder, stem);
+    }
+
     cheevos.identify_game(rom_path);
 
     // Once a game is loaded, the per-frame draw is the core's framebuffer

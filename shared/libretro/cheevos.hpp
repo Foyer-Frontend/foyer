@@ -26,6 +26,10 @@ struct Cheevos {
     bool init(NotifyCb on_unlock);
     void shutdown();
 
+    // Identify which sidecar to write progress into. Optional — when empty,
+    // unlock counts stay in-memory and aren't persisted for the browser.
+    void set_progress_sidecar(std::string system_folder, std::string rom_stem);
+
     // Hash the rom + ask RA for the achievement set. Returns true if a set
     // was found and active.
     bool identify_game(const std::string& rom_path);
@@ -45,6 +49,11 @@ struct Cheevos {
     void mark_loaded(int total);
     void mark_failed();
 
+    // Persist current total/unlocked to the per-game metadata sidecar so
+    // the browser can render "X/Y achievements" without making a network
+    // call. No-op when the sidecar wasn't set.
+    void persist_progress() const;
+
 private:
     Cheevos() = default;
 
@@ -52,6 +61,9 @@ private:
     bool  m_active   = false;
     int   m_total    = 0;
     int   m_unlocked = 0;
+
+    std::string m_sidecar_sys;
+    std::string m_sidecar_stem;
 
     NotifyCb m_on_unlock;
 };

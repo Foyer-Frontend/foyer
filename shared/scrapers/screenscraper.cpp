@@ -1,6 +1,7 @@
 #include "screenscraper.hpp"
 #include "accounts.hpp"
 #include "cache.hpp"
+#include "library/game_meta.hpp"
 #include "net/http.hpp"
 #include "platform/log.hpp"
 
@@ -144,11 +145,101 @@ bool fetch_cover(std::string_view system_folder,
             }
         }
     }
+
+    // Extract sidecar metadata while we still hold the parsed doc. Each
+    // localized field uses a region/language preference list — wor (world)
+    // → us → eu → jp for regions, en → fr for languages — to match what an
+    // English-speaking user would expect to see.
+    foyer::library::GameMeta meta;
+
+    auto pick_localized = [&](yyjson_val* arr, const char* key, const char* val_key,
+                              std::initializer_list<const char*> prefs) -> std::string {
+        if (!arr || !yyjson_is_arr(arr)) return {};
+        for (auto* want : prefs) {
+            std::size_t i, max; yyjson_val* item;
+            yyjson_arr_foreach(arr, i, max, item) {
+                auto* k = yyjson_obj_get(item, key);
+                auto* v = yyjson_obj_get(item, val_key);
+                if (k && v && yyjson_is_str(k) && yyjson_is_str(v)
+                    && !std::strcmp(yyjson_get_str(k), want)) {
+                    return yyjson_get_str(v);
+                }
+            }
+        }
+        // Fall back to the first entry if none of the preferred regions matched.
+        if (yyjson_arr_size(arr) > 0) {
+            auto* item = yyjson_arr_get_first(arr);
+            auto* v = yyjson_obj_get(item, val_key);
+            if (v && yyjson_is_str(v)) return yyjson_get_str(v);
+        }
+        return {};
+    };
+
+    if (jeu) {
+        meta.title = pick_localized(yyjson_obj_get(jeu, "noms"),
+                                    "region", "text", {"wor","us","eu","jp"});
+
+        auto date = pick_localized(yyjson_obj_get(jeu, "dates"),
+                                   "region", "text", {"wor","us","eu","jp"});
+        // ScreenScraper returns "YYYY-MM-DD" or "YYYY". Take the year.
+        if (date.size() >= 4) meta.year = date.substr(0, 4);
+
+        if (auto* e = yyjson_obj_get(jeu, "editeur")) {
+            if (auto* t = yyjson_obj_get(e, "text"); t && yyjson_is_str(t))
+                meta.publisher = yyjson_get_str(t);
+        }
+        if (auto* d = yyjson_obj_get(jeu, "developpeur")) {
+            if (auto* t = yyjson_obj_get(d, "text"); t && yyjson_is_str(t))
+                meta.developer = yyjson_get_str(t);
+        }
+        if (auto* j = yyjson_obj_get(jeu, "joueurs")) {
+            if (auto* t = yyjson_obj_get(j, "text"); t && yyjson_is_str(t))
+                meta.players = yyjson_get_str(t);
+        }
+        // Genre: each entry has a `noms` array of {langue, text}.
+        if (auto* genres = yyjson_obj_get(jeu, "genres");
+            genres && yyjson_is_arr(genres) && yyjson_arr_size(genres) > 0) {
+            auto* g0 = yyjson_arr_get_first(genres);
+            meta.genre = pick_localized(yyjson_obj_get(g0, "noms"),
+                                        "langue", "text", {"en","fr"});
+        }
+        // Classification: prefer PEGI then ESRB.
+        if (auto* clas = yyjson_obj_get(jeu, "classifications");
+            clas && yyjson_is_arr(clas)) {
+            for (const char* want : {"PEGI", "ESRB"}) {
+                std::size_t i, max; yyjson_val* item;
+                yyjson_arr_foreach(clas, i, max, item) {
+                    auto* type = yyjson_obj_get(item, "type");
+                    auto* text = yyjson_obj_get(item, "text");
+                    if (type && text && yyjson_is_str(type) && yyjson_is_str(text)
+                        && !std::strcmp(yyjson_get_str(type), want)) {
+                        meta.rating = std::string{want} + " " + yyjson_get_str(text);
+                        break;
+                    }
+                }
+                if (!meta.rating.empty()) break;
+            }
+        }
+        meta.description = pick_localized(yyjson_obj_get(jeu, "synopsis"),
+                                          "langue", "text", {"en","fr"});
+    }
+
     yyjson_doc_free(doc);
+
+    // Persist metadata even when no image is present — the sidebar still
+    // has something useful to render in that case.
+    const bool any_meta =
+        !meta.title.empty()      || !meta.year.empty()    ||
+        !meta.publisher.empty()  || !meta.developer.empty() ||
+        !meta.genre.empty()      || !meta.players.empty() ||
+        !meta.rating.empty()     || !meta.description.empty();
+    if (any_meta) {
+        foyer::library::save_meta(system_folder, rom_stem, meta);
+    }
 
     if (image_url.empty()) {
         foyer::log::write("[ss] no media url in response (crc=%s)\n", crchex);
-        return false;
+        return any_meta; // metadata-only success still counts as a hit
     }
 
     foyer::scrapers::ensure_parent_dir(dest_png);

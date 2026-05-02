@@ -15,6 +15,7 @@ add_library(foyer_shared STATIC
     library/scanner.cpp
     library/config.cpp
     library/per_game.cpp
+    library/game_meta.cpp
     net/http.cpp
     scrapers/cache.cpp
     scrapers/accounts.cpp
@@ -38,13 +39,13 @@ target_link_libraries(foyer_shared PUBLIC
     nanovg
     stb_headers
     yyjson
-    ZLIB::ZLIB
     CURL::libcurl
     archive
     lzma
     bz2
     zstd
     lz4
+    ZLIB::ZLIB
 )
 
 # Compile flags shared with consumers

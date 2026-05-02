@@ -7,6 +7,7 @@
 #include <switch.h>
 
 #include "library/scanner.hpp"
+#include "platform/app.hpp"
 
 namespace foyer::browser {
 
@@ -71,6 +72,27 @@ struct State {
     // Cleared automatically by draw() when ttl reaches zero.
     std::string banner_text{};
     int         banner_ttl  = 0;
+
+    // Per-frame counter incremented at the top of update(). Used as a coarse
+    // "now" for hold/touch durations — seconds = frames / 60.
+    std::uint32_t frame_counter = 0;
+
+    // Shoulder-button hold counters. Reset to 0 the frame the button is
+    // released, otherwise increment. Auto-repeat fires once `hold > 30` and
+    // the cadence accelerates again past 90 (~1.5s) for the "spin" feel.
+    int hold_l_frames = 0;
+    int hold_r_frames = 0;
+
+    // Touch gesture tracking. A gesture begins on tap_started, evolves while
+    // a finger remains down, and resolves to either a tap or a swipe/flick
+    // when the finger lifts.
+    bool          touch_active      = false;
+    bool          touch_was_swipe   = false; // crossed drag threshold → no tap
+    float         touch_start_x     = 0.0f;
+    float         touch_start_y     = 0.0f;
+    float         touch_last_x      = 0.0f;
+    std::uint32_t touch_start_frame = 0;
+    float         touch_swipe_acc   = 0.0f;  // accumulated px since last step
 };
 
 // One full library snapshot — taken once at startup, refreshed when the user
@@ -80,8 +102,13 @@ struct Library {
 };
 
 // Per-frame update + draw. Called from the browser's tick loop. `held` and
-// `down` are the standard libnx pad bitmasks for this frame.
-void update(State& s, const Library& lib, std::uint64_t held, std::uint64_t down);
+// `down` are the standard libnx pad bitmasks for this frame. `touch` is the
+// per-frame touch snapshot from the platform layer; `w`/`h` are the
+// framebuffer dimensions used for hit testing.
+void update(State& s, const Library& lib,
+            std::uint64_t held, std::uint64_t down,
+            const platform::App::Touch& touch,
+            float w, float h);
 void draw  (NVGcontext* vg, float w, float h, const State& s, const Library& lib);
 
 // Vertical metrics for the persistent sphaira-style top + bottom bars.

@@ -12,10 +12,10 @@ if (NOT FOYER_CORE)
     message(FATAL_ERROR "player/ included without FOYER_CORE set")
 endif()
 
-include(${CMAKE_SOURCE_DIR}/cmake/core_recipe.cmake)
+include(${FOYER_CORES_DIR}/cmake/core_recipe.cmake)
 
 # Pull in the per-core recipe; it must define a static lib `core_${FOYER_CORE}`.
-set(_core_file ${CMAKE_SOURCE_DIR}/cores/${FOYER_CORE}.cmake)
+set(_core_file ${FOYER_CORES_DIR}/recipes/${FOYER_CORE}.cmake)
 if (NOT EXISTS ${_core_file})
     message(FATAL_ERROR "No core recipe at ${_core_file}")
 endif()

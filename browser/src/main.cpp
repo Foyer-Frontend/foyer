@@ -53,7 +53,8 @@ int main(int /*argc*/, char** /*argv*/) {
         const auto held = padGetButtons(&app.pad());
         const auto down = padGetButtonsDown(&app.pad());
 
-        foyer::browser::update(state, lib, held, down);
+        foyer::browser::update(state, lib, held, down,
+            app.touch(), (float)app.width(), (float)app.height());
 
         if (state.request_quit) {
             foyer::browser::mtp_stop();

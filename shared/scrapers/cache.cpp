@@ -17,6 +17,10 @@ std::string system_logo_path(std::string_view sys) {
     return std::string{"/foyer/assets/systems/"} + std::string{sys} + ".png";
 }
 
+std::string metadata_path(std::string_view sys, std::string_view stem) {
+    return std::string{"/foyer/assets/metadata/"} + std::string{sys} + "/" + std::string{stem} + ".json";
+}
+
 void ensure_parent_dir(std::string_view path) {
     auto* fs = fsdevGetDeviceFileSystem("sdmc:");
     if (!fs) return;

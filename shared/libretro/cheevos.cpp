@@ -1,5 +1,6 @@
 #include "cheevos.hpp"
 #include "frontend.hpp"
+#include "library/game_meta.hpp"
 #include "net/http.hpp"
 #include "platform/log.hpp"
 #include "scrapers/accounts.hpp"
@@ -174,15 +175,39 @@ void Cheevos::do_frame() {
     rc_client_do_frame(static_cast<rc_client_t*>(m_client));
 }
 
+void Cheevos::set_progress_sidecar(std::string system_folder, std::string rom_stem) {
+    m_sidecar_sys  = std::move(system_folder);
+    m_sidecar_stem = std::move(rom_stem);
+}
+
+void Cheevos::persist_progress() const {
+    if (m_sidecar_sys.empty() || m_sidecar_stem.empty()) return;
+    auto meta = library::load_meta(m_sidecar_sys, m_sidecar_stem);
+    meta.cheevos_total    = m_total;
+    meta.cheevos_unlocked = m_unlocked;
+    library::save_meta(m_sidecar_sys, m_sidecar_stem, meta);
+}
+
 void Cheevos::on_unlock(const std::string& title) {
     m_unlocked++;
     if (m_on_unlock) m_on_unlock(title);
+    persist_progress();
 }
 
 void Cheevos::mark_loaded(int total) {
     m_active   = true;
     m_total    = total;
-    m_unlocked = 0;
+    // Pull the actual already-unlocked count from rcheevos so the browser
+    // sees "5/25" instead of always "0/25" for revisited games. Falls back
+    // to 0 if the API isn't available on this client.
+    if (m_client) {
+        rc_client_user_game_summary_t sum{};
+        rc_client_get_user_game_summary(static_cast<rc_client_t*>(m_client), &sum);
+        m_unlocked = (int)sum.num_unlocked_achievements;
+    } else {
+        m_unlocked = 0;
+    }
+    persist_progress();
 }
 
 void Cheevos::mark_failed() {
