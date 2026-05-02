@@ -1489,8 +1489,21 @@ void draw_settings(NVGcontext* vg, float w, float h, const State& s, const Libra
     const float inner_x = card_x + kCardPad;
     const float inner_w = card_w - kCardPad * 2.0f;
 
+    // Scroll window: keep the focused row visible. Same first/visible
+    // pattern the System view uses for the game list.
+    const int  total   = (int)rows.size();
+    const int  visible = std::max(1,
+        (int)((card_h - kCardPad * 2.0f) / kRowH));
+    int first = s.settings_row - visible / 2;
+    if (first < 0) first = 0;
+    if (first + visible > total) first = std::max(0, total - visible);
+
+    nvgSave(vg);
+    nvgIntersectScissor(vg, card_x, card_y, card_w, card_h);
+
     float ry = card_y + kCardPad;
-    for (int i = 0; i < (int)rows.size(); i++) {
+    for (int row = 0; row < visible && first + row < total; row++) {
+        const int  i    = first + row;
         const auto& it  = rows[i];
         const bool sel  = s.settings_in_content && (i == s.settings_row);
 
@@ -1541,6 +1554,7 @@ void draw_settings(NVGcontext* vg, float w, float h, const State& s, const Libra
         }
         ry += kRowH;
     }
+    nvgRestore(vg);
 }
 
 } // namespace settings
