@@ -16,7 +16,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: devkitpro/devkita64:latest
+      # Pre-baked image with Switch portlibs already installed; built by
+      # foyer-cores's build-image.yml so we don't depend on
+      # pkg.devkitpro.org being responsive at runtime.
+      image: ghcr.io/foyer-frontend/foyer-cores-builder:latest
     steps:
       - name: Checkout foyer
         uses: actions/checkout@v4
@@ -26,20 +29,7 @@ jobs:
       - name: Trust the workspace inside container
         run: git config --global --add safe.directory '*'
 
-      - name: Install Switch portlibs
-        # pkg.devkitpro.org's CDN intermittently 403s on db sync; retry up
-        # to 5 times with a small backoff before giving up.
-        run: |
-          for attempt in 1 2 3 4 5; do
-              if dkp-pacman -Syu --needed --noconfirm \
-                  switch-portlibs switch-sdl2 switch-sdl2-libs; then
-                  exit 0
-              fi
-              echo "dkp-pacman attempt $attempt failed; sleeping 15s..."
-              sleep 15
-          done
-          echo "dkp-pacman failed after 5 attempts" >&2
-          exit 1
+      # (Switch portlibs are pre-installed in the builder image.)
 
       - name: Configure
         env:
