@@ -23,6 +23,7 @@ roms/
 *.smd
 *.md
 !README.md
+!LICENSE*.md
 !*.cmake.md
 *.gen
 *.iso
