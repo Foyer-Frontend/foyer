@@ -16,7 +16,10 @@ constexpr CoreDef kCoresNes[]         = {
     { "nestopia", "Nestopia UE" },
     // mesen pending — recipe needs HQX/xBRZ scalers + SevenZip wired in.
 };
-constexpr CoreDef kCoresSnes9x[]      = { { "snes9x",        "Snes9x"        } };
+constexpr CoreDef kCoresSnes9x[]      = {
+    { "snes9x",         "Snes9x"          },
+    { "bsnes_hd_beta",  "bsnes-hd (16:9)" },
+};
 constexpr CoreDef kCoresGambatte[]    = {
     { "gambatte", "Gambatte" },
     // sameboy pending — recipe needs bootrom .bin → .c generation.
