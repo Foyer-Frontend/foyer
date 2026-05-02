@@ -129,8 +129,10 @@ int main(int /*argc*/, char** /*argv*/) {
             const auto m = foyer::library::fetch_foyer_manifest(
                 foyer::library::config().foyer_manifest_url);
             if (m.version.empty()) {
-                state.banner_text = "Foyer manifest fetch failed";
-                state.banner_ttl  = 240;
+                state.banner_text =
+                    "Manifest fetch failed — enable Settings → Experimental → "
+                    "Verbose log and check /foyer/data/log.txt";
+                state.banner_ttl  = 360;
             } else if (foyer::library::is_newer_version(FOYER_VERSION, m.version)) {
                 state.foyer_update_available = true;
                 state.foyer_update_version   = m.version;

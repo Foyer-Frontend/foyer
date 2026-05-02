@@ -1815,6 +1815,32 @@ void update(State& s, const Library& lib,
     // Quit confirmation modal intercepts everything while open.
     if (s.quit_confirm_open) {
         reset_input_state(s);
+        // Tap-to-press on the Yes/No buttons. Layout matches
+        // draw_quit_confirm — keep them in sync.
+        if (touch.tap_started && touch.count > 0) {
+            constexpr float kCardW = 460.0f;
+            constexpr float kCardH = 200.0f;
+            constexpr float kBtnW  = 140.0f;
+            constexpr float kBtnH  = 56.0f;
+            const float cx = (w - kCardW) * 0.5f;
+            const float cy = (h - kCardH) * 0.5f;
+            const float by = cy + kCardH - 28 - kBtnH;
+            const float yes_x = cx + kCardW * 0.25f - kBtnW * 0.5f;
+            const float no_x  = cx + kCardW * 0.75f - kBtnW * 0.5f;
+            const float tx = touch.points[0].x;
+            const float ty = touch.points[0].y;
+            auto in_btn = [&](float bx) {
+                return tx >= bx && tx < bx + kBtnW &&
+                       ty >= by && ty < by + kBtnH;
+            };
+            if (in_btn(yes_x)) {
+                s.quit_confirm_index = 0;
+                down |= HidNpadButton_A;
+            } else if (in_btn(no_x)) {
+                s.quit_confirm_index = 1;
+                down |= HidNpadButton_A;
+            }
+        }
         if (down & (HidNpadButton_AnyLeft | HidNpadButton_AnyRight)) {
             s.quit_confirm_index = 1 - s.quit_confirm_index;
         }
@@ -1835,6 +1861,30 @@ void update(State& s, const Library& lib,
     // blow away whatever the user was about to do.
     if (s.update_confirm_open) {
         reset_input_state(s);
+        if (touch.tap_started && touch.count > 0) {
+            constexpr float kCardW = 540.0f;
+            constexpr float kCardH = 240.0f;
+            constexpr float kBtnW  = 140.0f;
+            constexpr float kBtnH  = 56.0f;
+            const float cx = (w - kCardW) * 0.5f;
+            const float cy = (h - kCardH) * 0.5f;
+            const float by = cy + kCardH - 28 - kBtnH;
+            const float yes_x = cx + kCardW * 0.25f - kBtnW * 0.5f;
+            const float no_x  = cx + kCardW * 0.75f - kBtnW * 0.5f;
+            const float tx = touch.points[0].x;
+            const float ty = touch.points[0].y;
+            auto in_btn = [&](float bx) {
+                return tx >= bx && tx < bx + kBtnW &&
+                       ty >= by && ty < by + kBtnH;
+            };
+            if (in_btn(yes_x)) {
+                s.update_confirm_index = 0;
+                down |= HidNpadButton_A;
+            } else if (in_btn(no_x)) {
+                s.update_confirm_index = 1;
+                down |= HidNpadButton_A;
+            }
+        }
         if (down & (HidNpadButton_AnyLeft | HidNpadButton_AnyRight)) {
             s.update_confirm_index = 1 - s.update_confirm_index;
         }
@@ -1859,6 +1909,27 @@ void update(State& s, const Library& lib,
         reset_input_state(s);
         const auto items = popup_items_for(s.view);
         const int n = (int)items.size();
+
+        // Tap on a popup row focuses + activates it. Layout matches
+        // draw_popup — keep these constants in sync.
+        if (touch.tap_started && touch.count > 0 && n > 0) {
+            constexpr float kCardW = 460.0f;
+            constexpr float kRow   = 64.0f;
+            const float cx = (w - kCardW) * 0.5f;
+            const float kCardH = 18.0f * 2 + n * kRow;
+            const float cy = (h - kCardH) * 0.5f;
+            const float tx = touch.points[0].x;
+            const float ty = touch.points[0].y;
+            if (tx >= cx && tx < cx + kCardW &&
+                ty >= cy + 18 && ty < cy + 18 + n * kRow) {
+                const int idx = (int)((ty - (cy + 18)) / kRow);
+                if (idx >= 0 && idx < n) {
+                    s.popup_index = idx;
+                    down |= HidNpadButton_A;
+                }
+            }
+        }
+
         if (down & HidNpadButton_AnyDown) s.popup_index = (s.popup_index + 1) % n;
         if (down & HidNpadButton_AnyUp)   s.popup_index = (s.popup_index - 1 + n) % n;
         if (down & HidNpadButton_B)    { s.popup_open = false; return; }
@@ -2146,10 +2217,67 @@ void update(State& s, const Library& lib,
             s.banner_ttl  = 180;
         }
     } else if (s.view == View::Settings) {
-        reset_input_state(s);
+        // (Don't reset_input_state here — Settings consumes touch taps.)
         using settings::Category;
         const auto rows = settings::build_items((Category)s.settings_category, s);
         const int  row_count = (int)rows.size();
+
+        // Touch handling: tap on a sidebar category switches to it,
+        // tap on a content row focuses it and synthesizes A so the
+        // existing keyboard dispatch fires the action. Layout constants
+        // mirror draw_settings — keep them in sync if either changes.
+        if (touch.tap_started && touch.count > 0) {
+            constexpr float kSidebarW   = 280.0f;
+            constexpr float kSidebarPad = 16.0f;
+            constexpr float kSideRowH   = 56.0f;
+            constexpr float kCardPad    = 18.0f;
+            constexpr float kRowH       = 60.0f;
+
+            const float content_y = kTopBarH + 12.0f;
+            const float content_h = h - content_y - kBottomBarH - 12.0f;
+            const float tx = touch.points[0].x;
+            const float ty = touch.points[0].y;
+
+            // Sidebar zone.
+            if (tx >= kSidebarPad && tx < kSidebarPad + kSidebarW) {
+                const float side_list_y = content_y + 96;
+                const int idx = (int)((ty - side_list_y) / kSideRowH);
+                if (idx >= 0 && idx < (int)Category::Count_) {
+                    s.settings_category   = idx;
+                    s.settings_in_content = false;
+                    s.settings_row        = 0;
+                }
+            }
+            // Content card zone.
+            else {
+                const float card_x = kSidebarPad + kSidebarW + kSidebarPad;
+                const float card_y = content_y + 56;
+                const float card_w = w - card_x - kSidebarPad;
+                const float card_h = content_h - 56;
+
+                if (tx >= card_x && tx < card_x + card_w &&
+                    ty >= card_y && ty < card_y + card_h && row_count > 0) {
+                    const int visible = std::max(1,
+                        (int)((card_h - kCardPad * 2.0f) / kRowH));
+                    int first = s.settings_row - visible / 2;
+                    if (first < 0) first = 0;
+                    if (first + visible > row_count) first = std::max(0, row_count - visible);
+
+                    const int row_in_view = (int)((ty - card_y - kCardPad) / kRowH);
+                    if (row_in_view >= 0 && row_in_view < visible &&
+                        first + row_in_view < row_count) {
+                        const int new_row = first + row_in_view;
+                        s.settings_in_content = true;
+                        if (new_row == s.settings_row) {
+                            // Re-tap on the focused row: act on it.
+                            down |= HidNpadButton_A;
+                        } else {
+                            s.settings_row = new_row;
+                        }
+                    }
+                }
+            }
+        }
 
         if (!s.settings_in_content) {
             // Sidebar focus.
