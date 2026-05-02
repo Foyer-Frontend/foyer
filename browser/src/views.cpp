@@ -1125,6 +1125,7 @@ enum : int {
     OpUpdScrapeAll, OpUpdInstalledCores, OpUpdInstallCores,
     OpUpdRefreshManifest, OpUpdInstallSingleCore,
     OpUpdCheckFoyer, OpUpdInstallFoyer,
+    OpEmuSysCore,    // Cycle through available cores for one system.
     OpExpMtp, OpExpMtpAutostart, OpExpDebugLog,
     // Account fields opened via on-screen keyboard.
     OpAccSsDevId, OpAccSsDevPw, OpAccSsUser, OpAccSsPw,
@@ -1237,6 +1238,27 @@ std::vector<Item> build_items(Category cat, const State& s) {
                 rows.push_back({ItemKind::Static,
                     "Press 'Refresh manifest' to load the catalog.",
                     "", "", 0});
+            }
+
+            // Per-system default core picker. Listed for every system in
+            // system_db (even those that currently have only one core)
+            // so it stays a stable place to pick once more land.
+            rows.push_back({ItemKind::Static, "Default core per system", "", "", 0});
+            for (const auto& sys : library::all_systems()) {
+                if (sys.cores.empty()) continue;
+                // Resolve the current default: explicit per-system override
+                // wins, else the system's first declared core.
+                std::string current = std::string{sys.cores.front().name};
+                if (auto* over = library::config().default_core_for(sys.folder_name)) {
+                    current = over;
+                }
+                Item it{ItemKind::Cycle,
+                        std::string{"  "} + std::string{sys.short_name},
+                        current,
+                        "",
+                        OpEmuSysCore};
+                it.data = sys.folder_name;
+                rows.push_back(std::move(it));
             }
             break;
         }
@@ -2169,6 +2191,25 @@ void update(State& s, const Library& lib,
                 if (it.payload == settings::OpScraper) {
                     int n = ((int)library::config().preferred_scraper + delta + 3) % 3;
                     library::set_preferred_scraper((library::Config::Scraper)n);
+                } else if (it.payload == settings::OpEmuSysCore) {
+                    // Cycle through the system's cores[] list and persist
+                    // the choice. The Cycle item's `data` field carries
+                    // the system folder name.
+                    if (const auto* sys = library::find_system_by_folder(it.data);
+                        sys && !sys->cores.empty()) {
+                        const auto count = (int)sys->cores.size();
+                        std::string current = std::string{sys->cores.front().name};
+                        if (auto* over = library::config().default_core_for(sys->folder_name)) {
+                            current = over;
+                        }
+                        int cur = 0;
+                        for (int i = 0; i < count; i++) {
+                            if (sys->cores[i].name == current) { cur = i; break; }
+                        }
+                        const int next = ((cur + delta) % count + count) % count;
+                        library::set_default_core_for(sys->folder_name,
+                                                      sys->cores[next].name);
+                    }
                 } else if (it.payload == settings::OpTheme) {
                     const auto themes = list_themes();
                     if (!themes.empty()) {
