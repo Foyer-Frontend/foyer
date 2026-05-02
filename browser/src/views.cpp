@@ -1044,7 +1044,20 @@ struct Item {
     std::string  value;       // displayed right side
     std::string  hint;        // optional dim sub-label below the row
     int          payload = 0; // category-specific opcode
+    std::string  data;        // opcode-specific payload (e.g. core name for OpUpdInstallSingleCore)
 };
+
+// Lazily-populated copy of the foyer-cores manifest for the per-core
+// install rows. Populated by main.cpp after the user triggers
+// OpUpdRefreshManifest.
+struct ManifestCache {
+    library::CoreManifest data;
+    bool loaded = false;
+};
+ManifestCache& manifest_cache() {
+    static ManifestCache c;
+    return c;
+}
 
 const char* scraper_label(library::Config::Scraper sc) {
     switch (sc) {
@@ -1063,6 +1076,7 @@ enum : int {
     OpEmuList,
     OpAccCreds,
     OpUpdScrapeAll, OpUpdInstalledCores, OpUpdInstallCores,
+    OpUpdRefreshManifest, OpUpdInstallSingleCore,
     OpExpMtp, OpExpMtpAutostart, OpExpDebugLog,
     // Account fields opened via on-screen keyboard.
     OpAccSsDevId, OpAccSsDevPw, OpAccSsUser, OpAccSsPw,
@@ -1164,14 +1178,48 @@ std::vector<Item> build_items(Category cat) {
         case Category::Updates: {
             rows.push_back({ItemKind::Action, "Scrape all systems", "A: run",
                 "Walks every system using the preferred scraper.",   OpUpdScrapeAll});
-            rows.push_back({ItemKind::Action, "Install / update cores", "A: run",
-                "Fetches the foyer-cores manifest and downloads any "
-                "missing or out-of-date nros to /foyer/cores/.",     OpUpdInstallCores});
-            // Inline list of cores actually present on the SD. Each row is
-            // labeled with the core name + nro size; missing cores from the
-            // system_db core list are flagged so the user knows what's
-            // pending install.
-            rows.push_back({ItemKind::Static, "Installed cores", "", "", 0});
+            rows.push_back({ItemKind::Action, "Refresh manifest", "A: fetch",
+                "Pulls the latest foyer-cores release manifest so the "
+                "per-core actions below reflect what's available.",   OpUpdRefreshManifest});
+            rows.push_back({ItemKind::Action, "Install / update all cores", "A: run",
+                "Bulk install or refresh every core listed in the manifest.", OpUpdInstallCores});
+
+            // Helper to size a local nro for a given filename.
+            auto size_of = [](const std::string& path) -> std::size_t {
+                struct stat st{};
+                return (::stat(path.c_str(), &st) == 0) ? (std::size_t)st.st_size : 0;
+            };
+
+            // Per-core action rows from the cached manifest. Each row's
+            // right-side value tells the user what pressing A will do.
+            const auto& mc = manifest_cache();
+            if (mc.loaded && !mc.data.cores.empty()) {
+                rows.push_back({ItemKind::Static,
+                    std::string{"Manifest "} + mc.data.version, "", "", 0});
+                for (const auto& c : mc.data.cores) {
+                    const auto local = size_of(std::string{"/foyer/cores/"} + c.nro);
+                    const char* state =
+                        (local == 0)                     ? "install" :
+                        (c.size > 0 && local == c.size)  ? "up to date" :
+                                                            "update";
+                    Item it{ItemKind::Action,
+                            std::string{"  "} + c.name,
+                            state,
+                            "",
+                            OpUpdInstallSingleCore};
+                    it.data = c.name;
+                    rows.push_back(std::move(it));
+                }
+            } else {
+                rows.push_back({ItemKind::Static,
+                    "Press 'Refresh manifest' to list available cores.",
+                    "", "", 0});
+            }
+
+            // What's currently on the SD card, regardless of manifest.
+            // Useful for spotting cores installed by hand or left behind
+            // after a system_db change.
+            rows.push_back({ItemKind::Static, "Installed cores on SD", "", "", 0});
             std::vector<std::string> seen;
             if (auto* dir = ::opendir("/foyer/cores")) {
                 while (auto* e = ::readdir(dir)) {
@@ -2046,7 +2094,17 @@ void update(State& s, const Library& lib,
                             s.banner_ttl  = 240;
                         } else if (it.payload == settings::OpUpdInstallCores) {
                             s.request_install_cores = true;
+                            s.install_only_core.clear();
                             s.banner_text = "Fetching cores manifest...";
+                            s.banner_ttl  = 180;
+                        } else if (it.payload == settings::OpUpdRefreshManifest) {
+                            s.request_refresh_manifest = true;
+                            s.banner_text = "Fetching cores manifest...";
+                            s.banner_ttl  = 180;
+                        } else if (it.payload == settings::OpUpdInstallSingleCore) {
+                            s.request_install_cores = true;
+                            s.install_only_core    = it.data;
+                            s.banner_text = std::string{"Installing "} + it.data + "...";
                             s.banner_ttl  = 180;
                         }
                         break;
@@ -2089,6 +2147,12 @@ void invalidate_cover_cache(NVGcontext* vg) {
     theme_bg_cache().clear(vg);
     system_splash_cache().clear(vg);
     meta_cache().clear();
+}
+
+void set_manifest_cache(library::CoreManifest manifest) {
+    auto& mc = settings::manifest_cache();
+    mc.data   = std::move(manifest);
+    mc.loaded = true;
 }
 
 void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) {

@@ -81,44 +81,69 @@ int main(int /*argc*/, char** /*argv*/) {
             foyer::browser::invalidate_cover_cache(app.vg());
         }
 
+        if (state.request_refresh_manifest) {
+            state.request_refresh_manifest = false;
+            auto m = foyer::library::fetch_manifest(
+                foyer::library::config().cores_manifest_url);
+            if (m.cores.empty()) {
+                state.banner_text = "Manifest fetch failed — check log";
+                state.banner_ttl  = 240;
+            } else {
+                char b[160];
+                std::snprintf(b, sizeof(b),
+                    "Manifest %s — %zu cores available",
+                    m.version.c_str(), m.cores.size());
+                state.banner_text = b;
+                state.banner_ttl  = 240;
+                foyer::browser::set_manifest_cache(std::move(m));
+            }
+        }
+
         if (state.request_install_cores) {
             state.request_install_cores = false;
-            const auto manifest = foyer::library::fetch_manifest(
+            const std::string only = std::move(state.install_only_core);
+            state.install_only_core.clear();
+
+            auto manifest = foyer::library::fetch_manifest(
                 foyer::library::config().cores_manifest_url);
             if (manifest.cores.empty()) {
                 state.banner_text = "Manifest fetch failed — check log";
                 state.banner_ttl  = 240;
             } else {
-                char banner[160];
-                std::snprintf(banner, sizeof(banner),
-                    "Manifest %s — installing %zu cores...",
-                    manifest.version.c_str(), manifest.cores.size());
-                state.banner_text = banner;
-                state.banner_ttl  = 60;
-
-                // Pump the UI between cores so the banner advances and the
-                // user sees progress instead of a frozen screen.
-                const auto totals = foyer::library::install_cores(manifest,
-                    [&](const foyer::library::InstallProgress& p) {
-                        const char* verb =
-                            p.action == foyer::library::InstallAction::Skipped   ? "skipped" :
-                            p.action == foyer::library::InstallAction::Updated   ? "updated" :
-                            p.action == foyer::library::InstallAction::Installed ? "installed"
-                                                                                  : "FAILED";
-                        char b[160];
-                        std::snprintf(b, sizeof(b), "[%d/%d] %s — %s",
-                            p.index, p.total, p.name.c_str(), verb);
-                        state.banner_text = b;
-                        state.banner_ttl  = 60;
-                        app.tick();
-                    });
-
-                char done[200];
-                std::snprintf(done, sizeof(done),
-                    "Cores: %d installed, %d updated, %d skipped, %d failed",
-                    totals.installed, totals.updated, totals.skipped, totals.failed);
-                state.banner_text = done;
-                state.banner_ttl  = 360;
+                if (!only.empty()) {
+                    std::erase_if(manifest.cores,
+                        [&](const auto& c) { return c.name != only; });
+                }
+                if (manifest.cores.empty()) {
+                    state.banner_text = "Core not in manifest: " + only;
+                    state.banner_ttl  = 240;
+                } else {
+                    const auto totals = foyer::library::install_cores(manifest,
+                        [&](const foyer::library::InstallProgress& p) {
+                            const char* verb =
+                                p.action == foyer::library::InstallAction::Skipped   ? "skipped" :
+                                p.action == foyer::library::InstallAction::Updated   ? "updated" :
+                                p.action == foyer::library::InstallAction::Installed ? "installed"
+                                                                                      : "FAILED";
+                            char b[160];
+                            std::snprintf(b, sizeof(b), "[%d/%d] %s — %s",
+                                p.index, p.total, p.name.c_str(), verb);
+                            state.banner_text = b;
+                            state.banner_ttl  = 60;
+                            app.tick();
+                        });
+                    char done[200];
+                    std::snprintf(done, sizeof(done),
+                        "Cores: %d installed, %d updated, %d skipped, %d failed",
+                        totals.installed, totals.updated, totals.skipped, totals.failed);
+                    state.banner_text = done;
+                    state.banner_ttl  = 360;
+                    // Refresh the cached manifest so the per-core rows
+                    // immediately reflect the new "up to date" state.
+                    foyer::browser::set_manifest_cache(
+                        foyer::library::fetch_manifest(
+                            foyer::library::config().cores_manifest_url));
+                }
             }
         }
 

@@ -7,6 +7,7 @@
 #include <switch.h>
 
 #include "library/scanner.hpp"
+#include "library/core_installer.hpp"
 #include "platform/app.hpp"
 
 namespace foyer::browser {
@@ -63,6 +64,10 @@ struct State {
     bool        request_rescan           = false;
     bool        request_invalidate_covers = false;
     bool        request_install_cores     = false;
+    bool        request_refresh_manifest  = false;
+    // When non-empty, request_install_cores acts on just this one core.
+    // Cleared by main.cpp after the install runs.
+    std::string install_only_core;
 
     // Set by Update; read by the main loop to trigger a one-shot scrape of
     // every rom in the focused system. The "kind" picks which scraper to use.
@@ -120,5 +125,10 @@ constexpr float kBottomBarH = 56.0f;
 // files from disk. Call this after a scrape completes so newly-downloaded
 // covers show without restarting the browser.
 void invalidate_cover_cache(NVGcontext* vg);
+
+// Replace the cached foyer-cores manifest used by Settings → Updates to
+// render per-core install rows. main.cpp calls this after the user
+// triggers the "Refresh manifest" action.
+void set_manifest_cache(library::CoreManifest manifest);
 
 } // namespace foyer::browser
