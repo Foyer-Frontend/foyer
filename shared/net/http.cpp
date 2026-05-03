@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cstring>
 #include <cstdio>
+#include <mutex>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -13,6 +14,7 @@ namespace foyer::net {
 namespace {
 
 std::atomic<bool> g_inited{false};
+std::mutex        g_init_mu;
 
 std::size_t mem_writer(void* ptr, std::size_t sz, std::size_t n, void* userdata) {
     auto* out = static_cast<std::vector<char>*>(userdata);
@@ -74,13 +76,23 @@ void apply_common(CURL* curl, const std::string& url, curl_slist* hdrs,
 } // namespace
 
 void init() {
-    if (g_inited.exchange(true)) return;
+    // Double-checked under a mutex so a second thread can't race past
+    // an in-flight curl_global_init. The atomic alone (exchange) was
+    // wrong: it returns true the moment thread A flips the flag,
+    // letting thread B fall through and start using curl while A
+    // hasn't finished initialising it.
+    if (g_inited.load(std::memory_order_acquire)) return;
+    std::lock_guard lk{g_init_mu};
+    if (g_inited.load(std::memory_order_relaxed)) return;
     curl_global_init(CURL_GLOBAL_DEFAULT);
+    g_inited.store(true, std::memory_order_release);
 }
 
 void exit() {
-    if (!g_inited.exchange(false)) return;
+    std::lock_guard lk{g_init_mu};
+    if (!g_inited.load(std::memory_order_relaxed)) return;
     curl_global_cleanup();
+    g_inited.store(false, std::memory_order_release);
 }
 
 Response get(const std::string& url, const std::vector<std::string>& headers,

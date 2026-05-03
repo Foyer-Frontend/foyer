@@ -14,6 +14,7 @@
 #include "library/per_game.hpp"
 #include "library/core_installer.hpp"
 #include "library/foyer_updater.hpp"
+#include "net/http.hpp"
 #include "scrapers/cache.hpp"
 #include "scrapers/libretro_thumbnails.hpp"
 #include "scrapers/screenscraper.hpp"
@@ -54,6 +55,14 @@ int main(int /*argc*/, char** /*argv*/) {
     apply_staged_update_if_present();
 
     foyer::platform::App app;
+
+    // Initialise curl on the main thread BEFORE any worker spawns
+    // one. curl_global_init must run single-threaded; if a worker
+    // racing in start_check() does it first, Switch's socket layer
+    // can leave curl in a state where every subsequent perform
+    // hangs at "Fetching manifest...". Boot-time foyer manifest
+    // check is the trigger.
+    foyer::net::init();
 
     foyer::browser::load_theme(foyer::library::config().theme_name);
 
