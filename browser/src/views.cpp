@@ -1239,14 +1239,15 @@ std::vector<Item> build_items(Category cat, const State& s) {
                             // Already at the manifest's version -> Re-install
                             // (forces a redownload, useful if the user
                             // suspects a corrupt nro).
-                            it.value   = std::string{"v"} + local_v + " - reinstall";
+                            it.value   = "installed - reinstall";
                             it.payload = OpUpdReinstallSingleCore;
                         } else {
-                            // Installed but a newer release exists. Same
-                            // action also surfaces in Settings -> Updates.
-                            it.value = local_v.empty()
-                                ? std::string{"unknown -> v"} + c.version + " (update)"
-                                : std::string{"v"} + local_v + " -> v" + c.version + " (update)";
+                            // Installed but the manifest's nro hash differs
+                            // from what's on disk. Same action also surfaces
+                            // in Settings -> Updates. Versions are sha256
+                            // prefixes, not meaningful to users — show the
+                            // verb only.
+                            it.value   = "update available";
                             it.payload = OpUpdInstallSingleCore;
                         }
                     }
@@ -1364,12 +1365,9 @@ std::vector<Item> build_items(Category cat, const State& s) {
                             "Update all", "A: run",
                             "", OpUpdInstallCores});
                     }
-                    std::string subtitle = local_v.empty()
-                        ? std::string{"unknown -> v"} + c.version
-                        : std::string{"v"} + local_v + " -> v" + c.version;
                     Item it{ItemKind::Action,
                             std::string{"  "} + c.name,
-                            std::move(subtitle),
+                            "update",
                             "",
                             OpUpdInstallSingleCore};
                     it.data = c.name;

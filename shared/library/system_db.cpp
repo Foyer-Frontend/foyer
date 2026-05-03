@@ -47,8 +47,9 @@ constexpr CoreDef kCoresGenesisGx[]   = {
 constexpr CoreDef kCoresYabaSan[]     = { { "yabasanshiro",  "YabaSanshiro"  } };
 constexpr CoreDef kCoresFlycast[]     = { { "flycast",       "Flycast"       } };
 constexpr CoreDef kCoresPsx[]         = {
-    { "pcsx_rearmed", "PCSX ReARMed" },
-    { "swanstation",  "Swanstation"  },
+    { "pcsx_rearmed",     "PCSX ReARMed" },
+    { "swanstation",      "Swanstation"  },
+    { "mednafen_psx_hw",  "Beetle PSX HW (16:9)" },
 };
 constexpr CoreDef kCoresPpsspp[]      = { { "ppsspp",        "PPSSPP"        } };
 constexpr CoreDef kCoresRace[]        = {
