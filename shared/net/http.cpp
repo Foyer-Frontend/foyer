@@ -2,6 +2,7 @@
 #include "platform/log.hpp"
 
 #include <atomic>
+#include <cerrno>
 #include <cstring>
 #include <cstdio>
 #include <mutex>
@@ -136,19 +137,26 @@ bool get_to_file(const std::string& url,
                  const std::vector<std::string>& headers,
                  CancelHook cancel) {
     init();
-    auto* fp = std::fopen(dest_path.c_str(), "wb");
+    // Stage to a sibling .tmp file. Only rename onto dest_path on a
+    // fully successful transfer — this protects an existing copy of
+    // the core (or other downloaded asset) from being clobbered if
+    // the download fails partway through. Previous behaviour opened
+    // dest_path with "wb" which truncates the existing file at open
+    // time, so any failure left the user with no core at all.
+    const std::string tmp_path = dest_path + ".tmp";
+    auto* fp = std::fopen(tmp_path.c_str(), "wb");
     if (!fp) {
-        foyer::log::write("[http] open(%s) failed\n", dest_path.c_str());
+        foyer::log::write("[http] open(%s) failed\n", tmp_path.c_str());
         return false;
     }
     auto* curl = curl_easy_init();
-    if (!curl) { std::fclose(fp); ::unlink(dest_path.c_str()); return false; }
+    if (!curl) { std::fclose(fp); ::unlink(tmp_path.c_str()); return false; }
     auto* hdrs = build_headers(headers);
     apply_common(curl, url, hdrs, &cancel, /*streaming=*/true);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, file_writer);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA,     fp);
 
-    foyer::log::write("[http] STREAM %s -> %s start\n", url.c_str(), dest_path.c_str());
+    foyer::log::write("[http] STREAM %s -> %s start\n", url.c_str(), tmp_path.c_str());
     const auto rc = curl_easy_perform(curl);
     long code = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
@@ -159,20 +167,41 @@ bool get_to_file(const std::string& url,
     if (hdrs) curl_slist_free_all(hdrs);
     curl_easy_cleanup(curl);
 
+    // Failure: drop the partial .tmp, leave the existing dest_path
+    // (if any) alone. The previous install of this asset survives.
     if (rc != CURLE_OK || code < 200 || code >= 300) {
         if (rc != CURLE_ABORTED_BY_CALLBACK) {
             foyer::log::write("[http] GET %s -> %ld (curl rc=%d)\n",
                 url.c_str(), code, (int)rc);
         }
-        ::unlink(dest_path.c_str());
+        ::unlink(tmp_path.c_str());
         return false;
     }
     // Reject zero-byte responses (CDN sometimes returns 200 + empty body).
     struct stat st{};
-    if (::stat(dest_path.c_str(), &st) != 0 || st.st_size == 0) {
-        ::unlink(dest_path.c_str());
+    if (::stat(tmp_path.c_str(), &st) != 0 || st.st_size == 0) {
+        foyer::log::write("[http] STREAM %s -> empty body, discarded\n", url.c_str());
+        ::unlink(tmp_path.c_str());
         return false;
     }
+    // Atomic-ish swap. POSIX rename(2) replaces an existing dest in
+    // one step on the same filesystem, but devkitA64's FAT/exFAT
+    // backing of the SD doesn't always honour that — some libc
+    // builds return EEXIST when the destination exists. Try direct
+    // rename first; on failure, fall back to unlink-then-rename
+    // (brief window where dest doesn't exist, but the .tmp is
+    // already fully written so we won't lose data on a power-cut).
+    if (::rename(tmp_path.c_str(), dest_path.c_str()) != 0) {
+        ::unlink(dest_path.c_str());
+        if (::rename(tmp_path.c_str(), dest_path.c_str()) != 0) {
+            foyer::log::write("[http] STREAM rename(%s -> %s) failed errno=%d\n",
+                tmp_path.c_str(), dest_path.c_str(), errno);
+            ::unlink(tmp_path.c_str());
+            return false;
+        }
+    }
+    foyer::log::write("[http] STREAM %s -> %s ok (%lld bytes)\n",
+        url.c_str(), dest_path.c_str(), (long long)st.st_size);
     return true;
 }
 
