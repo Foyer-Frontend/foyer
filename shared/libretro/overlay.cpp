@@ -94,7 +94,9 @@ void Overlay::refresh_slots() {
     m_slots_dirty = false;
 }
 
-Overlay::Action Overlay::update(std::uint64_t held, std::uint64_t down) {
+Overlay::Action Overlay::update(std::uint64_t held, std::uint64_t down,
+                                const OverlayTouch& touch,
+                                float screen_w, float screen_h) {
     if (m_toast_ttl > 0) m_toast_ttl--;
 
     const bool combo_held = (held & kCombo) == kCombo;
@@ -112,6 +114,55 @@ Overlay::Action Overlay::update(std::uint64_t held, std::uint64_t down) {
     }
 
     if (m_state == State::Hidden) return Action::None;
+
+    // Touch hit-testing. Layout MUST mirror draw() — if you change
+    // pw/ph/list_y/row_h there, mirror them here. Tap on a row that's
+    // already focused acts (synthesises A); tap on a different row
+    // moves focus first. Tap on the dim outside dismisses.
+    if (touch.tap_started && screen_w > 0.0f && screen_h > 0.0f) {
+        const float pw = 560.0f;
+        const float ph = 460.0f;
+        const float px = (screen_w - pw) * 0.5f;
+        const float py = (screen_h - ph) * 0.5f;
+        const float list_x = px + 24;
+        const float list_y = py + 84;
+        const float list_w = pw - 48;
+        const float row_h  = 38.0f;
+
+        const bool inside_panel =
+            touch.x >= px && touch.x < px + pw &&
+            touch.y >= py && touch.y < py + ph;
+        if (!inside_panel) {
+            // Tap outside the panel = dismiss to Main / Hidden.
+            if (m_state == State::Main) m_state = State::Hidden;
+            else                        m_state = State::Main;
+            return Action::None;
+        }
+        if (touch.x >= list_x && touch.x < list_x + list_w &&
+            touch.y >= list_y) {
+            const int row_idx = (int)((touch.y - list_y) / row_h);
+            if (row_idx >= 0) {
+                int* focus = nullptr;
+                int  count = 0;
+                switch (m_state) {
+                    case State::Main:        focus = &m_main_index;     count = kMainCount;     break;
+                    case State::SaveSlots:
+                    case State::LoadSlots:   focus = &m_slot_index;     count = kStateSlotCount; break;
+                    case State::Settings:    focus = &m_settings_index; count = kAspectCount;   break;
+                    case State::CoreOptions: focus = &m_core_opt_index; count = 0; break; // dynamic; A still works after focus
+                    default: break;
+                }
+                if (focus && row_idx < count) {
+                    if (*focus == row_idx) {
+                        // Re-tap on focused row -> synthesise A.
+                        down |= HidNpadButton_A;
+                    } else {
+                        *focus = row_idx;
+                    }
+                }
+            }
+        }
+    }
 
     auto pressed = [&](std::uint64_t b) { return (down & b) != 0; };
 

@@ -72,22 +72,10 @@ int main(int /*argc*/, char** /*argv*/) {
 
     foyer::browser::State state;
 
-    // One-shot self-update check on boot. Sets a passive banner if a newer
-    // release is on GitHub; the user still has to explicitly approve the
-    // download from Settings → Updates.
-    {
-        const auto m = foyer::library::fetch_foyer_manifest(
-            foyer::library::config().foyer_manifest_url);
-        if (!m.version.empty() &&
-            foyer::library::is_newer_version(FOYER_VERSION, m.version)) {
-            state.foyer_update_available = true;
-            state.foyer_update_version   = m.version;
-            std::string msg = "Foyer update available: v" + m.version
-                + " — Settings → Updates → Update foyer";
-            state.banner_text = std::move(msg);
-            state.banner_ttl  = 360;
-        }
-    }
+    // One-shot self-update check on boot. Off-thread so the UI is up
+    // immediately even on a slow CDN; the result is processed by the
+    // foyer_job poll block in the main loop below.
+    state.foyer_job.start_check(foyer::library::config().foyer_manifest_url);
 
     app.set_draw_fn([&](NVGcontext* vg, float w, float h) {
         foyer::browser::draw(vg, w, h, state, lib);
@@ -124,115 +112,149 @@ int main(int /*argc*/, char** /*argv*/) {
             foyer::browser::invalidate_cover_cache(app.vg());
         }
 
-        if (state.request_check_foyer_update) {
+        // Settings -> Updates -> Check: spawn a fresh check job (only
+        // if no foyer job is currently running).
+        if (state.request_check_foyer_update && !state.foyer_job.active()) {
             state.request_check_foyer_update = false;
-            const auto m = foyer::library::fetch_foyer_manifest(
+            state.foyer_job.start_check(
                 foyer::library::config().foyer_manifest_url);
-            if (m.version.empty()) {
-                state.banner_text =
-                    "Manifest fetch failed — enable Settings → Experimental → "
-                    "Verbose log and check /foyer/data/log.txt";
-                state.banner_ttl  = 360;
-            } else if (foyer::library::is_newer_version(FOYER_VERSION, m.version)) {
-                state.foyer_update_available = true;
-                state.foyer_update_version   = m.version;
-                state.banner_text = std::string{"Update available: v"} + m.version;
-                state.banner_ttl  = 240;
-            } else {
-                state.foyer_update_available = false;
-                state.foyer_update_version.clear();
-                state.banner_text = "Foyer is up to date";
-                state.banner_ttl  = 180;
-            }
+        } else if (state.request_check_foyer_update) {
+            state.request_check_foyer_update = false; // drop, busy
         }
 
-        if (state.request_install_foyer_update) {
+        // Settings -> Updates -> Update foyer (Yes confirmed). Same
+        // job: it does the manifest check + download in one pass.
+        if (state.request_install_foyer_update && !state.foyer_job.active()) {
             state.request_install_foyer_update = false;
-            const auto m = foyer::library::fetch_foyer_manifest(
-                foyer::library::config().foyer_manifest_url);
-            if (m.version.empty() || m.url.empty()) {
-                state.banner_text = "Update fetch failed — try again";
-                state.banner_ttl  = 240;
-            } else if (!foyer::library::download_foyer_update(m,
-                           "/switch/foyer/foyer.nro")) {
-                state.banner_text = "Update download failed";
-                state.banner_ttl  = 240;
-            } else {
-                state.banner_text =
-                    "Update v" + m.version +
-                    " downloaded — restart foyer to apply";
-                state.banner_ttl  = 600;
-                // Keep foyer_update_available true so the Settings row
-                // still reads "Update foyer to vX.Y.Z" until the next boot
-                // applies it.
+            state.foyer_job.start_check_and_download(
+                foyer::library::config().foyer_manifest_url,
+                FOYER_VERSION,
+                "/switch/foyer/foyer.nro");
+        } else if (state.request_install_foyer_update) {
+            state.request_install_foyer_update = false;
+        }
+
+        // Mirror foyer_job progress + finalise.
+        if (state.foyer_job.active()) {
+            const auto status = state.foyer_job.status_snapshot();
+            if (!status.empty()) {
+                state.banner_text = status;
+                state.banner_ttl  = 60;
+            }
+            if (state.foyer_job.done()) {
+                const auto& m = state.foyer_job.manifest();
+                const auto downloaded = state.foyer_job.downloaded_version();
+                state.foyer_job.finish();
+                if (!m.version.empty() &&
+                    foyer::library::is_newer_version(FOYER_VERSION, m.version)) {
+                    state.foyer_update_available = true;
+                    state.foyer_update_version   = m.version;
+                    if (!downloaded.empty()) {
+                        state.banner_text =
+                            "Update v" + downloaded +
+                            " downloaded - restart foyer to apply";
+                        state.banner_ttl = 600;
+                    } else {
+                        state.banner_text =
+                            "Foyer update available: v" + m.version
+                            + " - Settings -> Updates -> Update foyer";
+                        state.banner_ttl = 360;
+                    }
+                } else if (!m.version.empty()) {
+                    state.foyer_update_available = false;
+                    state.foyer_update_version.clear();
+                    // Don't clobber a more interesting banner with
+                    // "up to date" on the silent boot check.
+                }
             }
         }
 
-        if (state.request_refresh_manifest) {
+        if (state.request_refresh_manifest && !state.refresh_job.active()) {
             state.request_refresh_manifest = false;
-            auto m = foyer::library::fetch_manifest(
-                foyer::library::config().cores_manifest_url);
-            if (m.cores.empty()) {
-                state.banner_text = "Manifest fetch failed — check log";
-                state.banner_ttl  = 240;
-            } else {
-                char b[160];
-                std::snprintf(b, sizeof(b),
-                    "Manifest %s — %zu cores available",
-                    m.version.c_str(), m.cores.size());
-                state.banner_text = b;
-                state.banner_ttl  = 240;
-                foyer::browser::set_manifest_cache(std::move(m));
+            const std::string url = foyer::library::config().cores_manifest_url;
+            state.refresh_job.start([&state, url](foyer::library::Worker& w) {
+                w.set_status("Fetching cores manifest...");
+                state.refresh_result = foyer::library::fetch_manifest(url);
+            });
+        } else if (state.request_refresh_manifest) {
+            state.request_refresh_manifest = false;
+        }
+        if (state.refresh_job.active()) {
+            const auto status = state.refresh_job.status_snapshot();
+            if (!status.empty()) {
+                state.banner_text = status;
+                state.banner_ttl  = 60;
+            }
+            if (state.refresh_job.done()) {
+                state.refresh_job.finish();
+                if (state.refresh_result.cores.empty()) {
+                    state.banner_text = "Manifest fetch failed - check log";
+                    state.banner_ttl  = 240;
+                } else {
+                    char b[160];
+                    std::snprintf(b, sizeof(b),
+                        "Manifest %s - %zu cores available",
+                        state.refresh_result.version.c_str(),
+                        state.refresh_result.cores.size());
+                    state.banner_text = b;
+                    state.banner_ttl  = 240;
+                    foyer::browser::set_manifest_cache(
+                        std::move(state.refresh_result));
+                    state.refresh_result = {};
+                }
             }
         }
 
-        if (state.request_install_cores) {
+        // Spawn a background install worker. The worker now fetches
+        // the manifest itself, so the UI is responsive even during
+        // the (small) JSON pull as well as the (large) nro download.
+        if (state.request_install_cores && !state.install_job.active()) {
             state.request_install_cores = false;
-            const std::string only = std::move(state.install_only_core);
+            std::string only = std::move(state.install_only_core);
             state.install_only_core.clear();
             const bool force = state.install_force;
             state.install_force = false;
 
-            auto manifest = foyer::library::fetch_manifest(
-                foyer::library::config().cores_manifest_url);
-            if (manifest.cores.empty()) {
-                state.banner_text = "Manifest fetch failed — check log";
+            const bool started = state.install_job.start(
+                foyer::library::config().cores_manifest_url,
+                std::move(only), force);
+            if (!started) {
+                state.banner_text = "Install worker failed to start";
                 state.banner_ttl  = 240;
             } else {
-                if (!only.empty()) {
-                    std::erase_if(manifest.cores,
-                        [&](const auto& c) { return c.name != only; });
-                }
-                if (manifest.cores.empty()) {
-                    state.banner_text = "Core not in manifest: " + only;
-                    state.banner_ttl  = 240;
-                } else {
-                    const auto totals = foyer::library::install_cores(manifest,
-                        [&](const foyer::library::InstallProgress& p) {
-                            const char* verb =
-                                p.action == foyer::library::InstallAction::Skipped   ? "skipped" :
-                                p.action == foyer::library::InstallAction::Updated   ? "updated" :
-                                p.action == foyer::library::InstallAction::Installed ? "installed"
-                                                                                      : "FAILED";
-                            char b[160];
-                            std::snprintf(b, sizeof(b), "[%d/%d] %s — %s",
-                                p.index, p.total, p.name.c_str(), verb);
-                            state.banner_text = b;
-                            state.banner_ttl  = 60;
-                            app.tick();
-                        }, force);
-                    char done[200];
-                    std::snprintf(done, sizeof(done),
-                        "Cores: %d installed, %d updated, %d skipped, %d failed",
-                        totals.installed, totals.updated, totals.skipped, totals.failed);
-                    state.banner_text = done;
-                    state.banner_ttl  = 360;
-                    // Refresh the cached manifest so the per-core rows
-                    // immediately reflect the new "up to date" state.
-                    foyer::browser::set_manifest_cache(
-                        foyer::library::fetch_manifest(
-                            foyer::library::config().cores_manifest_url));
-                }
+                state.banner_text = "Starting...";
+                state.banner_ttl  = 60;
+            }
+        } else if (state.request_install_cores) {
+            state.request_install_cores = false;
+            state.install_only_core.clear();
+            state.install_force = false;
+            state.banner_text = "Download already in progress";
+            state.banner_ttl  = 180;
+        }
+
+        // Mirror live progress + finalise when worker exits.
+        if (state.install_job.active()) {
+            // Refresh banner from the worker's mutex-protected status
+            // string. Cheap copy under lock.
+            const auto status = state.install_job.status_snapshot();
+            if (!status.empty()) {
+                state.banner_text = status;
+                state.banner_ttl  = 60;
+            }
+            if (state.install_job.done()) {
+                const auto totals = state.install_job.finish();
+                char doneb[200];
+                std::snprintf(doneb, sizeof(doneb),
+                    "Cores: %d installed, %d updated, %d skipped, %d failed",
+                    totals.installed, totals.updated, totals.skipped, totals.failed);
+                state.banner_text = doneb;
+                state.banner_ttl  = 360;
+                // Refresh the cached manifest so the per-core rows
+                // immediately reflect the new "up to date" state.
+                foyer::browser::set_manifest_cache(
+                    foyer::library::fetch_manifest(
+                        foyer::library::config().cores_manifest_url));
             }
         }
 
@@ -253,59 +275,45 @@ int main(int /*argc*/, char** /*argv*/) {
             }
         }
 
-        if (state.request_scrape_kind != foyer::browser::State::ScrapeKind::None) {
+        if (state.request_scrape_kind != foyer::browser::State::ScrapeKind::None
+            && !state.scrape_job.active()) {
             const auto kind = state.request_scrape_kind;
             state.request_scrape_kind = foyer::browser::State::ScrapeKind::None;
             const auto& sys = lib.systems[state.system_index];
-            const char* kind_label =
-                (kind == foyer::browser::State::ScrapeKind::ScreenScraper) ? "ScreenScraper" :
-                (kind == foyer::browser::State::ScrapeKind::SteamGridDB)   ? "SteamGridDB"   :
-                                                                              "libretro";
-            int total = (int)sys.games.size();
-            int done  = 0;
-            int hits  = 0;
-            for (const auto& g : sys.games) {
-                done++;
-                char banner[160];
-                std::snprintf(banner, sizeof(banner),
-                    "Scraping %.*s [%s]  %d / %d",
-                    (int)sys.def->short_name.size(), sys.def->short_name.data(),
-                    kind_label, done, total);
-                state.banner_text = banner;
-                state.banner_ttl  = 30;
-                if (!app.tick()) break;
-
-                const auto dest = foyer::scrapers::cover_path(
-                    sys.def->folder_name, g.stem);
-                struct stat st{};
-                if (::stat(dest.c_str(), &st) == 0) continue;
-
-                bool ok = false;
-                switch (kind) {
-                    case foyer::browser::State::ScrapeKind::Libretro:
-                        ok = foyer::scrapers::libretro_thumb::fetch_cover(
-                            sys.def->thumbnails_db, g.stem, dest);
-                        break;
-                    case foyer::browser::State::ScrapeKind::ScreenScraper:
-                        ok = foyer::scrapers::screenscraper::fetch_cover(
-                            sys.def->folder_name, g.path, g.stem, dest);
-                        break;
-                    case foyer::browser::State::ScrapeKind::SteamGridDB:
-                        ok = foyer::scrapers::steamgriddb::fetch_cover(
-                            sys.def->folder_name, g.stem, dest);
-                        break;
-                    default: break;
-                }
-                if (ok) hits++;
+            const auto src =
+                (kind == foyer::browser::State::ScrapeKind::ScreenScraper)
+                    ? foyer::library::ScrapeJob::Source::ScreenScraper :
+                (kind == foyer::browser::State::ScrapeKind::SteamGridDB)
+                    ? foyer::library::ScrapeJob::Source::SteamGridDB :
+                      foyer::library::ScrapeJob::Source::Libretro;
+            if (!state.scrape_job.start(sys, src)) {
+                state.banner_text = "Scrape worker failed to start";
+                state.banner_ttl  = 240;
             }
-            // Drop cached nanovg handles so newly-downloaded files show up.
-            foyer::browser::invalidate_cover_cache(app.vg());
-
-            char done_msg[200];
-            std::snprintf(done_msg, sizeof(done_msg),
-                "Scrape done [%s] — %d / %d covers", kind_label, hits, total);
-            state.banner_text = done_msg;
-            state.banner_ttl  = 240;
+        } else if (state.request_scrape_kind != foyer::browser::State::ScrapeKind::None) {
+            state.request_scrape_kind = foyer::browser::State::ScrapeKind::None;
+            state.banner_text = "Scrape already in progress";
+            state.banner_ttl  = 180;
+        }
+        if (state.scrape_job.active()) {
+            const auto status = state.scrape_job.status_snapshot();
+            if (!status.empty()) {
+                state.banner_text = status;
+                state.banner_ttl  = 60;
+            }
+            if (state.scrape_job.done()) {
+                const int hits  = state.scrape_job.hits();
+                const int total = state.scrape_job.total();
+                state.scrape_job.finish();
+                // Drop cached nanovg handles so newly-downloaded files
+                // show up immediately.
+                foyer::browser::invalidate_cover_cache(app.vg());
+                char done_msg[200];
+                std::snprintf(done_msg, sizeof(done_msg),
+                    "Scrape done - %d / %d covers", hits, total);
+                state.banner_text = done_msg;
+                state.banner_ttl  = 240;
+            }
         }
     }
     foyer::browser::mtp_stop();

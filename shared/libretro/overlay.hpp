@@ -12,6 +12,16 @@
 
 namespace foyer::libretro {
 
+// Lightweight touch event used by the overlay. Carries one finger
+// (the overlay's lists are simple — multi-touch isn't useful here).
+// Pass tap_started=true exactly on the frame a new finger lands;
+// otherwise the overlay treats it as a passive touch.
+struct OverlayTouch {
+    bool  tap_started = false;
+    float x = 0.0f;
+    float y = 0.0f;
+};
+
 // In-game pause overlay. Toggles on Minus + Plus held together. While the
 // overlay is open the player should NOT call retro_run() and should NOT
 // forward Switch input to the libretro core.
@@ -37,8 +47,18 @@ struct Overlay {
 
     bool is_open() const { return m_state != State::Hidden; }
 
-    // Per-frame update. `held`/`down` are libnx pad bitmasks for this frame.
-    Action update(std::uint64_t held, std::uint64_t down);
+    // Per-frame update. `held`/`down` are libnx pad bitmasks for this
+    // frame; `touch` carries the latest finger position (or tap_started
+    // = false if no finger this frame). `screen_w/h` are the
+    // framebuffer dimensions used to mirror draw_panel's layout.
+    Action update(std::uint64_t held, std::uint64_t down,
+                  const OverlayTouch& touch,
+                  float screen_w, float screen_h);
+
+    // Backward-compat overload — no touch.
+    Action update(std::uint64_t held, std::uint64_t down) {
+        return update(held, down, {}, 0.0f, 0.0f);
+    }
 
     // After update() returns SaveStateSlot/LoadStateSlot, this holds the
     // chosen slot index 0..9.

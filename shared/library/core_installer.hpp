@@ -1,5 +1,7 @@
 #pragma once
 
+#include "net/http.hpp"
+
 #include <cstddef>
 #include <functional>
 #include <string>
@@ -58,13 +60,16 @@ struct InstallTotals {
 // files at the manifest's version are skipped unless `force` is true
 // (re-install path: redownload regardless of recorded version).
 // `progress` (if set) is invoked once per core after each one resolves.
+// `cancel`, if set, is polled by curl during each download — return true
+// to abort the in-flight transfer; the loop also bails out between
+// cores. The returned totals reflect what completed before the abort.
 //
-// Network IO is synchronous; expect this to take many seconds per core.
-// Caller is responsible for pumping the UI loop between callbacks if it
-// wants live progress.
+// Network IO is synchronous; this is intended to be invoked from a
+// background worker (see CoreInstallJob).
 InstallTotals install_cores(
     const CoreManifest& manifest,
     std::function<void(const InstallProgress&)> progress = {},
-    bool force = false);
+    bool force = false,
+    foyer::net::CancelHook cancel = {});
 
 } // namespace foyer::library

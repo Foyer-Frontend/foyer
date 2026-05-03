@@ -8,6 +8,9 @@
 
 #include "library/scanner.hpp"
 #include "library/core_installer.hpp"
+#include "library/core_install_job.hpp"
+#include "library/foyer_update_job.hpp"
+#include "library/scrape_job.hpp"
 #include "platform/app.hpp"
 
 namespace foyer::browser {
@@ -78,6 +81,17 @@ struct State {
     // the version-match skip. Used by the explicit "Re-install" path.
     // Cleared after the install runs.
     bool        install_force            = false;
+    // Background workers. main.cpp polls each frame so the UI keeps
+    // responding while curl blocks on socket I/O. cancel() can be
+    // raised from the UI to abort the current transfer.
+    library::CoreInstallJob install_job;
+    library::FoyerUpdateJob foyer_job;
+    library::ScrapeJob      scrape_job;
+    // Cores manifest pull (Settings -> Updates -> Refresh manifest).
+    // Plain Worker — the result is a CoreManifest written to
+    // refresh_result before m_done flips.
+    library::Worker         refresh_job;
+    library::CoreManifest   refresh_result;
 
     // Self-update flow. Boot-time check populates `foyer_update_*` once
     // and a banner shows if a newer release is on GitHub.

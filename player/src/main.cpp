@@ -284,7 +284,18 @@ int main(int argc, char** argv) {
         const auto held = padGetButtons(&app.pad());
         const auto down = padGetButtonsDown(&app.pad());
 
-        const auto act = overlay.update(held, down);
+        // Forward touch into the overlay so the in-game pause menu
+        // is finger-tappable on handheld. No-op when the overlay is
+        // hidden; the core itself doesn't see touches when paused.
+        const auto& t = app.touch();
+        foyer::libretro::OverlayTouch ot{};
+        if (t.count > 0) {
+            ot.tap_started = t.tap_started;
+            ot.x = t.points[0].x;
+            ot.y = t.points[0].y;
+        }
+        const auto act = overlay.update(held, down, ot,
+                                        (float)app.width(), (float)app.height());
         switch (act) {
             case foyer::libretro::Overlay::Action::SaveStateSlot: {
                 const auto slot = overlay.last_slot();

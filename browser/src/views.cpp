@@ -1124,6 +1124,7 @@ enum : int {
     OpAccCreds,
     OpUpdScrapeAll, OpUpdInstalledCores, OpUpdInstallCores,
     OpUpdRefreshManifest, OpUpdInstallSingleCore, OpUpdReinstallSingleCore,
+    OpUpdCancelJob,
     OpUpdCheckFoyer, OpUpdInstallFoyer,
     OpEmuSysCore,    // Cycle through available cores for one system.
     OpExpMtp, OpExpMtpAutostart, OpExpDebugLog,
@@ -1299,6 +1300,20 @@ std::vector<Item> build_items(Category cat, const State& s) {
             break;
         }
         case Category::Updates: {
+            // Surface in-flight background work at the top, with a
+            // single Cancel action that aborts the running job.
+            const bool any_job_active = s.install_job.active()
+                                     || s.foyer_job.active()
+                                     || s.scrape_job.active()
+                                     || s.refresh_job.active();
+            if (any_job_active) {
+                rows.push_back({ItemKind::Static,
+                    "Background job running", "", "", 0});
+                rows.push_back({ItemKind::Action, "Cancel", "A: stop",
+                    "Aborts the in-flight transfer at the next callback.",
+                    OpUpdCancelJob});
+            }
+
             // Foyer self-update entry — prominent at the top so a returning
             // user sees the alert before hunting through the rest. When a
             // new version is detected, show the install action instead.
@@ -2456,6 +2471,15 @@ void update(State& s, const Library& lib,
                         } else if (it.payload == settings::OpUpdInstallFoyer) {
                             s.update_confirm_open  = true;
                             s.update_confirm_index = 1; // safer default
+                        } else if (it.payload == settings::OpUpdCancelJob) {
+                            // Hit every job — only the active one
+                            // observes the cancel.
+                            s.install_job.cancel();
+                            s.foyer_job.cancel();
+                            s.scrape_job.cancel();
+                            s.refresh_job.cancel();
+                            s.banner_text = "Cancelling...";
+                            s.banner_ttl  = 180;
                         }
                         break;
                     case settings::ItemKind::Drill: {

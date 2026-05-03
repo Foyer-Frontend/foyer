@@ -32,7 +32,15 @@ curl_slist* build_headers(const std::vector<std::string>& hdrs) {
     return sl;
 }
 
-void apply_common(CURL* curl, const std::string& url, curl_slist* hdrs) {
+// Curl invokes this every ~200ms (and after each socket write). Returning
+// non-zero aborts the transfer with CURLE_ABORTED_BY_CALLBACK.
+int xferinfo_cancel(void* userdata, curl_off_t, curl_off_t, curl_off_t, curl_off_t) {
+    auto* hook = static_cast<CancelHook*>(userdata);
+    return (hook && *hook && (*hook)()) ? 1 : 0;
+}
+
+void apply_common(CURL* curl, const std::string& url, curl_slist* hdrs,
+                  CancelHook* cancel_ptr) {
     curl_easy_setopt(curl, CURLOPT_URL,            url.c_str());
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL,       1L);
@@ -42,6 +50,11 @@ void apply_common(CURL* curl, const std::string& url, curl_slist* hdrs) {
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L); // Switch CA bundle drama
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
     if (hdrs) curl_easy_setopt(curl, CURLOPT_HTTPHEADER, hdrs);
+    if (cancel_ptr && *cancel_ptr) {
+        curl_easy_setopt(curl, CURLOPT_NOPROGRESS,       0L);
+        curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, xferinfo_cancel);
+        curl_easy_setopt(curl, CURLOPT_XFERINFODATA,     cancel_ptr);
+    }
 }
 
 } // namespace
@@ -56,29 +69,32 @@ void exit() {
     curl_global_cleanup();
 }
 
-Response get(const std::string& url, const std::vector<std::string>& headers) {
+Response get(const std::string& url, const std::vector<std::string>& headers,
+             CancelHook cancel) {
     init();
     Response r;
     auto* curl = curl_easy_init();
     if (!curl) return r;
     auto* hdrs = build_headers(headers);
-    apply_common(curl, url, hdrs);
+    apply_common(curl, url, hdrs, &cancel);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, mem_writer);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA,     &r.body);
 
     const auto rc = curl_easy_perform(curl);
-    if (rc != CURLE_OK) {
+    if (rc != CURLE_OK && rc != CURLE_ABORTED_BY_CALLBACK) {
         foyer::log::write("[http] GET %s failed: %s\n", url.c_str(), curl_easy_strerror(rc));
     }
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &r.code);
     curl_easy_cleanup(curl);
     if (hdrs) curl_slist_free_all(hdrs);
+    if (rc == CURLE_ABORTED_BY_CALLBACK) { r.body.clear(); r.code = 0; }
     return r;
 }
 
 bool get_to_file(const std::string& url,
                  const std::string& dest_path,
-                 const std::vector<std::string>& headers) {
+                 const std::vector<std::string>& headers,
+                 CancelHook cancel) {
     init();
     auto* fp = std::fopen(dest_path.c_str(), "wb");
     if (!fp) {
@@ -88,7 +104,7 @@ bool get_to_file(const std::string& url,
     auto* curl = curl_easy_init();
     if (!curl) { std::fclose(fp); ::unlink(dest_path.c_str()); return false; }
     auto* hdrs = build_headers(headers);
-    apply_common(curl, url, hdrs);
+    apply_common(curl, url, hdrs, &cancel);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, file_writer);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA,     fp);
 
@@ -101,8 +117,10 @@ bool get_to_file(const std::string& url,
     curl_easy_cleanup(curl);
 
     if (rc != CURLE_OK || code < 200 || code >= 300) {
-        foyer::log::write("[http] GET %s -> %ld (curl rc=%d)\n",
-            url.c_str(), code, (int)rc);
+        if (rc != CURLE_ABORTED_BY_CALLBACK) {
+            foyer::log::write("[http] GET %s -> %ld (curl rc=%d)\n",
+                url.c_str(), code, (int)rc);
+        }
         ::unlink(dest_path.c_str());
         return false;
     }
@@ -125,7 +143,7 @@ Response post_form(const std::string& url,
     std::vector<std::string> all = headers;
     all.emplace_back("Content-Type: application/x-www-form-urlencoded");
     auto* hdrs = build_headers(all);
-    apply_common(curl, url, hdrs);
+    apply_common(curl, url, hdrs, nullptr);
     curl_easy_setopt(curl, CURLOPT_POST,         1L);
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS,   body.c_str());
     curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE,(long)body.size());

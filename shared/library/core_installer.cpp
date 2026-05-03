@@ -93,12 +93,14 @@ CoreManifest fetch_manifest(const std::string& url) {
 
 InstallTotals install_cores(const CoreManifest& manifest,
                             std::function<void(const InstallProgress&)> progress,
-                            bool force) {
+                            bool force,
+                            foyer::net::CancelHook cancel) {
     InstallTotals out;
     foyer::scrapers::ensure_parent_dir(std::string{kCoresDir} + "/.placeholder");
 
     int idx = 0;
     for (const auto& c : manifest.cores) {
+        if (cancel && cancel()) break;
         idx++;
         InstallProgress p;
         p.index = idx;
@@ -124,7 +126,7 @@ InstallTotals install_cores(const CoreManifest& manifest,
             }
         }
 
-        const bool ok = foyer::net::get_to_file(c.url, dest);
+        const bool ok = foyer::net::get_to_file(c.url, dest, {}, cancel);
         if (!ok) {
             p.action = InstallAction::Failed;
             out.failed++;

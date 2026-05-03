@@ -1,5 +1,7 @@
 #pragma once
 
+#include "net/http.hpp"
+
 #include <cstddef>
 #include <string>
 #include <string_view>
@@ -25,7 +27,10 @@ bool is_newer_version(std::string_view current, std::string_view candidate);
 
 // Streams the new nro to <nro_path>.new (atomic via foyer::net::get_to_file).
 // Caller is responsible for prompting the user to relaunch foyer afterwards;
-// the boot-time check in main() does the actual rename.
-bool download_foyer_update(const FoyerManifest& m, const std::string& nro_path);
+// the boot-time check in main() does the actual rename. `cancel`, if set,
+// aborts the in-flight curl transfer cleanly and removes the partial
+// .new file.
+bool download_foyer_update(const FoyerManifest& m, const std::string& nro_path,
+                           foyer::net::CancelHook cancel = {});
 
 } // namespace foyer::library

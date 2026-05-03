@@ -64,10 +64,11 @@ bool is_newer_version(std::string_view current, std::string_view candidate) {
     return std::tie(b[0], b[1], b[2]) > std::tie(a[0], a[1], a[2]);
 }
 
-bool download_foyer_update(const FoyerManifest& m, const std::string& nro_path) {
+bool download_foyer_update(const FoyerManifest& m, const std::string& nro_path,
+                           foyer::net::CancelHook cancel) {
     if (m.url.empty()) return false;
     const std::string staged = nro_path + ".new";
-    if (!foyer::net::get_to_file(m.url, staged)) {
+    if (!foyer::net::get_to_file(m.url, staged, {}, cancel)) {
         foyer::log::write("[foyer_update] download failed: %s -> %s\n",
             m.url.c_str(), staged.c_str());
         return false;
