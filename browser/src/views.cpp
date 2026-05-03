@@ -467,6 +467,27 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
             blit_cover_parallelogram(vg, strip_h,
                 x, y, tw, thh, kSlant,
                 centre ? 1.0f : 0.55f);
+        } else {
+            // Fallback: virtual systems (Recent / Favorites) and any
+            // real system whose splash png isn't on disk get a solid
+            // accent-coloured parallelogram so the slot still reads
+            // as a tile rather than a hole.
+            const auto& th = theme();
+            const auto fill = centre
+                ? nvgRGBA((uint8_t)(th.accent.r * 255),
+                          (uint8_t)(th.accent.g * 255),
+                          (uint8_t)(th.accent.b * 255), 0xE0)
+                : nvgRGBA((uint8_t)(th.bg_panel_hi.r * 255),
+                          (uint8_t)(th.bg_panel_hi.g * 255),
+                          (uint8_t)(th.bg_panel_hi.b * 255), 0xC0);
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, x + kSlant,     y);
+            nvgLineTo(vg, x + tw,         y);
+            nvgLineTo(vg, x + tw - kSlant, y + thh);
+            nvgLineTo(vg, x,              y + thh);
+            nvgClosePath(vg);
+            nvgFillColor(vg, fill);
+            nvgFill(vg);
         }
         nvgRestore(vg);
     }
@@ -487,6 +508,19 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
                 x, y + thh * 0.20f,
                 tw, thh * 0.60f,
                 0.0f, 1.0f);
+        } else {
+            // No logo art on disk — render the system's display name
+            // (or short_name fallback) centered in the tile. Same
+            // typography as the topbar so it reads as a deliberate
+            // label and not a placeholder.
+            const auto& th = theme();
+            nvgFontSize(vg, 64.0f);
+            nvgFillColor(vg, th.bg);
+            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+            const std::string label{sys.def->display_name};
+            nvgText(vg, x + tw * 0.5f,
+                    y + thh * 0.5f,
+                    label.c_str(), nullptr);
         }
         nvgRestore(vg);
     }
@@ -614,11 +648,20 @@ void draw_system(NVGcontext* vg, float w, float h, const State& s, const Library
         nvgText(vg, th.pad + 18, ry + (kRow - 4) * 0.5f,
             label.c_str(), nullptr);
 
+        // Right-side label: file extension on real systems; the
+        // origin system's short_name on virtual systems so the user
+        // can tell what each row belongs to.
         nvgFontSize(vg, th.label_size);
         nvgFillColor(vg, th.text_dim);
         nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+        std::string rhs = gr.ext;
+        if (library::is_virtual_system(*sys.def)) {
+            if (auto* od = library::origin_system_for_rom(gr.path)) {
+                rhs = std::string{od->short_name};
+            }
+        }
         nvgText(vg, th.pad + list_w - 18, ry + (kRow - 4) * 0.5f,
-            gr.ext.c_str(), nullptr);
+            rhs.c_str(), nullptr);
     }
     nvgRestore(vg);
 
@@ -1763,11 +1806,20 @@ void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Li
     const auto& sys = lib.systems[s.system_index];
     if (sys.games.empty())  { draw_empty(vg, w, h, "No games", "");   return; }
     const auto& g = sys.games[s.game_index];
+    // When the user opens a game from a virtual carousel tile (Recent /
+    // Favorites), `sys.def` is the synthetic SystemDef with no cores.
+    // For the core-picker / asset-path / state-slot logic we want the
+    // ROM's real origin system. Fall back to sys.def for normal calls
+    // so this stays a no-op when the user is in a real system.
+    const auto* def = library::is_virtual_system(*sys.def)
+        ? library::origin_system_for_rom(g.path)
+        : sys.def;
+    if (!def) def = sys.def;   // last-resort safety
 
     // Backdrop behind the detail panels for visual context.
     if (library::config().show_backgrounds) {
         const int handle = backdrop_cache().get_or_load(vg,
-            backdrop_path(sys.def->folder_name, g.stem));
+            backdrop_path(def->folder_name, g.stem));
         if (handle > 0) {
             blit_cover(vg, handle, 0, 0, w, h, 0.35f);
             nvgBeginPath(vg);
@@ -1789,7 +1841,7 @@ void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Li
     rrect(vg, right_x, content_y, right_w, content_h, th.radius, th.bg_panel);
 
     // Cover.
-    const std::string cover = scrapers::cover_path(sys.def->folder_name, g.stem);
+    const std::string cover = scrapers::cover_path(def->folder_name, g.stem);
     const float cx = th.pad + th.pad;
     const float cy = content_y + th.pad;
     const float cw = left_w - th.pad * 2.0f;
@@ -1830,9 +1882,9 @@ void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Li
     nvgText(vg, cx, cy + ch + 36, meta, nullptr);
 
     // Core picker.
-    const auto* resolved   = library::resolve_core(*sys.def, g.path);
+    const auto* resolved   = library::resolve_core(*def, g.path);
     const auto  per_game   = library::per_game_core_for(g.path);
-    const char* per_sys    = library::config().default_core_for(sys.def->folder_name);
+    const char* per_sys    = library::config().default_core_for(def->folder_name);
     const int   resume_slot = latest_state_slot(sys, g);
     const bool  has_resume  = (resume_slot >= 0);
 
@@ -1876,7 +1928,7 @@ void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Li
         row++;
     }
 
-    for (const auto& c : sys.def->cores) {
+    for (const auto& c : def->cores) {
         const bool sel = (row == (int)s.detail_core_index);
         if (sel) {
             rrect(vg, right_x + th.pad * 0.5f, ry, right_w - th.pad,
@@ -2343,18 +2395,24 @@ void update(State& s, const Library& lib,
         }
         if ((down & HidNpadButton_X) && !sys.games.empty()) {
             s.view = View::GameDetail;
-            // Seed cursor: prefer Continue when a save state exists, else
-            // land on the currently resolved core.
+            // Seed cursor: prefer Continue when a save state exists,
+            // else land on the currently resolved core. For a virtual
+            // system (Recent / Favorites) the rom's origin SystemDef
+            // owns the core list.
             const auto& g = sys.games[s.game_index];
+            const auto* eff_def = library::is_virtual_system(*sys.def)
+                ? library::origin_system_for_rom(g.path)
+                : sys.def;
+            if (!eff_def) eff_def = sys.def;
             const bool has_resume = (latest_state_slot(sys, g) >= 0);
             if (has_resume) {
                 s.detail_core_index = 0;
             } else {
-                const auto* resolved = library::resolve_core(*sys.def, g.path);
+                const auto* resolved = library::resolve_core(*eff_def, g.path);
                 s.detail_core_index = 0;
                 if (resolved) {
                     std::size_t i = 0;
-                    for (const auto& c : sys.def->cores) {
+                    for (const auto& c : eff_def->cores) {
                         if (c.name == resolved->name) { s.detail_core_index = i; break; }
                         i++;
                     }
@@ -2378,14 +2436,24 @@ void update(State& s, const Library& lib,
     } else if (s.view == View::GameDetail) {
         reset_input_state(s);
         const auto& sys = lib.systems[s.system_index];
-        if (sys.games.empty() || sys.def->cores.empty()) {
+        if (sys.games.empty()) {
             s.view = View::System;
             return;
         }
         const auto& g = sys.games[s.game_index];
+        // Effective SystemDef: real one for normal systems; the rom's
+        // origin SystemDef when the user opened the game from a
+        // virtual carousel tile.
+        const auto* def = library::is_virtual_system(*sys.def)
+            ? library::origin_system_for_rom(g.path)
+            : sys.def;
+        if (!def || def->cores.empty()) {
+            s.view = View::System;
+            return;
+        }
         const int  resume_slot = latest_state_slot(sys, g);
         const bool has_resume  = (resume_slot >= 0);
-        const auto core_count  = sys.def->cores.size();
+        const auto core_count  = def->cores.size();
         const auto row_count   = core_count + (has_resume ? 1 : 0);
         const bool on_resume   = has_resume && s.detail_core_index == 0;
         const auto core_idx    = has_resume
@@ -2415,15 +2483,15 @@ void update(State& s, const Library& lib,
                 s.request_resume_slot = resume_slot;
                 s.request_launch      = true;
             } else {
-                const auto& chosen = sys.def->cores[core_idx];
+                const auto& chosen = def->cores[core_idx];
                 library::set_per_game_core(g.path, chosen.name);
                 s.banner_text = std::string{"Per-game core set: "} + std::string{chosen.name};
                 s.banner_ttl  = 180;
             }
         }
         if (!on_resume && (down & HidNpadButton_Y)) {
-            const auto& chosen = sys.def->cores[core_idx];
-            library::set_default_core_for(sys.def->folder_name, chosen.name);
+            const auto& chosen = def->cores[core_idx];
+            library::set_default_core_for(def->folder_name, chosen.name);
             s.banner_text = std::string{"System default core set: "} + std::string{chosen.name};
             s.banner_ttl  = 180;
         }

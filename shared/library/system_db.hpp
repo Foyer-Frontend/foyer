@@ -43,4 +43,15 @@ const CoreDef* default_core(const SystemDef& sys);
 // requested core isn't valid for that system.
 const CoreDef* find_core_in_system(const SystemDef& sys, std::string_view core_name);
 
+// Synthetic "virtual" systems that show up alongside real ones in the home
+// carousel. They have no real folder on the SD; their game lists are
+// computed in scan_library by filtering across every real system. The
+// folder_name starts with "__" so callers can detect them and route core
+// resolution / launch through the rom's origin system instead of these
+// sentinels (which have an empty cores span).
+extern const SystemDef kVirtualRecentDef;     // "__recent"
+extern const SystemDef kVirtualFavoritesDef;  // "__favorites"
+
+bool is_virtual_system(const SystemDef& sys);
+
 } // namespace foyer::library

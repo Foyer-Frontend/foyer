@@ -203,4 +203,15 @@ const CoreDef* find_core_in_system(const SystemDef& sys, std::string_view name) 
     return nullptr;
 }
 
+const SystemDef kVirtualRecentDef = {
+    "__recent", "Recently Played", "RECENT", "", "", {},
+};
+const SystemDef kVirtualFavoritesDef = {
+    "__favorites", "Favorites", "FAVS", "", "", {},
+};
+
+bool is_virtual_system(const SystemDef& sys) {
+    return !sys.folder_name.empty() && sys.folder_name.starts_with("__");
+}
+
 } // namespace foyer::library

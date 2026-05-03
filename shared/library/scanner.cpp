@@ -173,6 +173,43 @@ std::vector<System> scan_library(const ScanOptions& opts) {
     }
     ::closedir(root);
 
+    // Synthesise the virtual "Recent" + "Favorites" carousel tiles by
+    // pooling games across every real system. Inserted in reverse order
+    // so Recent ends up at index 0 and Favorites at index 1 (when both
+    // have content). Empty virtuals are simply skipped — no point in
+    // showing a Favorites tile if the user hasn't favorited anything.
+    auto add_virtual = [&](const SystemDef& def, auto&& filter, auto&& sort_fn,
+                           std::size_t cap) {
+        System v;
+        v.def       = &def;
+        v.root_path = "(virtual)";
+        for (auto& real : out) {
+            for (auto& g : real.games) {
+                if (filter(g)) v.games.push_back(g);
+            }
+        }
+        if (v.games.empty()) return;
+        sort_fn(v.games);
+        if (cap > 0 && v.games.size() > cap) v.games.resize(cap);
+        out.insert(out.begin(), std::move(v));
+    };
+    add_virtual(kVirtualFavoritesDef,
+        [](const Game& g) { return g.favorite; },
+        [](std::vector<Game>& v) {
+            std::sort(v.begin(), v.end(),
+                [](const Game& a, const Game& b) { return a.stem < b.stem; });
+        },
+        /*cap=*/0);
+    add_virtual(kVirtualRecentDef,
+        [](const Game& g) { return g.last_played > 0; },
+        [](std::vector<Game>& v) {
+            std::sort(v.begin(), v.end(),
+                [](const Game& a, const Game& b) {
+                    return a.last_played > b.last_played;
+                });
+        },
+        /*cap=*/100);
+
     foyer::log::write("[scan] %zu system(s) populated\n", out.size());
     for (const auto& s : out) {
         foyer::log::write("[scan]   %-13.*s  %3zu games\n",

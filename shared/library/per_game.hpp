@@ -50,8 +50,16 @@ void          add_per_game_playtime(std::string_view rom_path, std::uint64_t sec
 // Resolve which core to use for a rom: per-game override > general
 // default_core_per_system > system_db default. Always returns a non-null
 // CoreDef when the system has at least one configured core; nullptr only
-// for unsupported systems.
+// for unsupported systems. If `sys` is a virtual system (Recent /
+// Favorites tile), recovers the rom's origin system from its path and
+// recurses into that.
 const CoreDef* resolve_core(const SystemDef& sys, std::string_view rom_path);
+
+// Recover the rom's origin SystemDef purely from its path. Used by code
+// paths that need the real system when the caller has only a virtual
+// one (carousel-Recent / -Favorites tiles share Game objects but the
+// surrounding System points at the virtual SystemDef).
+const SystemDef* origin_system_for_rom(std::string_view rom_path);
 
 // Hydrate a freshly-scanned Game struct with the favorite / last_played
 // / playtime fields from the per_game store. Call once per game in

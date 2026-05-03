@@ -223,7 +223,34 @@ void apply_per_game_state(Game& g) {
     g.last_played = e->last_played;
 }
 
+const SystemDef* origin_system_for_rom(std::string_view rom_path) {
+    constexpr std::string_view kPrefix = "/foyer/roms/";
+    std::string_view p = rom_path;
+    if (!p.starts_with(kPrefix)) return nullptr;
+    p.remove_prefix(kPrefix.size());
+    const auto slash = p.find('/');
+    if (slash == std::string_view::npos) return nullptr;
+    return find_system_by_folder(p.substr(0, slash));
+}
+
 const CoreDef* resolve_core(const SystemDef& sys, std::string_view rom_path) {
+    // When called for a virtual system (Recent / Favorites tile), the
+    // sys here has no cores of its own. Recover the rom's origin
+    // system from its path and recurse.
+    if (is_virtual_system(sys)) {
+        // path layout: /foyer/roms/<folder>/...
+        std::string_view p = rom_path;
+        constexpr std::string_view kPrefix = "/foyer/roms/";
+        if (p.starts_with(kPrefix)) p.remove_prefix(kPrefix.size());
+        const auto slash = p.find('/');
+        if (slash == std::string_view::npos) return nullptr;
+        const auto folder = p.substr(0, slash);
+        if (auto* real = find_system_by_folder(folder)) {
+            return resolve_core(*real, rom_path);
+        }
+        return nullptr;
+    }
+
     if (sys.cores.empty()) return nullptr;
 
     // 1. per-rom override.

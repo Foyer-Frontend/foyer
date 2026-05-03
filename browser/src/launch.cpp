@@ -99,13 +99,23 @@ bool launch_game(const library::System& sys, const library::Game& game,
 int latest_state_slot(const library::System& sys, const library::Game& game) {
     if (!sys.def) return -1;
 
+    // States are written under the rom's REAL system folder, never
+    // under a virtual carousel tile. Recover the real folder from the
+    // rom path when needed so Resume Last + GameDetail's Continue
+    // affordance work correctly when the user opens a game from
+    // Recent or Favorites.
+    const auto* def = library::is_virtual_system(*sys.def)
+        ? library::origin_system_for_rom(game.path)
+        : sys.def;
+    if (!def) return -1;
+
     int best_slot = -1;
     std::time_t best_mtime = 0;
     for (int slot = 0; slot < 10; slot++) {
         char path[256];
         std::snprintf(path, sizeof(path),
             "/foyer/states/%.*s/%s.%d.state",
-            (int)sys.def->folder_name.size(), sys.def->folder_name.data(),
+            (int)def->folder_name.size(), def->folder_name.data(),
             game.stem.c_str(), slot);
         struct stat st{};
         if (::stat(path, &st) != 0) continue;
