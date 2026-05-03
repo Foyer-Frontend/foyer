@@ -265,6 +265,10 @@ bool Frontend::load_game(const std::string& rom_path) {
     if (!m_initialised) return false;
     if (m_game_loaded) unload_game();
 
+    // Stamp the rom path BEFORE retro_load_game so any SET_VARIABLES
+    // ingested during load already see the per-rom override layer.
+    CoreOptions::instance().set_rom_path(rom_path);
+
     retro_game_info gi{};
     gi.path = rom_path.c_str();
 

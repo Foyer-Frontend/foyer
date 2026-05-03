@@ -20,15 +20,30 @@ struct CoreOption {
 };
 
 // Stores the option list a core registered via SET_VARIABLES /
-// SET_CORE_OPTIONS / SET_CORE_OPTIONS_V2 and persists user overrides to
-// /foyer/config/cores/<core>.jsonc. Hot-state lives in a singleton so the
-// libretro env_cb can reach it without threading an instance pointer.
+// SET_CORE_OPTIONS / SET_CORE_OPTIONS_V2 and persists user overrides.
+//
+// Two layers, applied bottom-up at load time:
+//   1. /foyer/config/cores/<core>.jsonc  — per-core defaults shared by
+//      every rom this core runs (think "tweaks I always want for
+//      snes9x").
+//   2. /foyer/config/cores/per_game/<rom_basename>__<core>.jsonc —
+//      per-rom overrides written when the user changes a value while
+//      this rom is loaded. Only applied when set_rom_path() was
+//      called before ingest.
+//
+// Hot-state lives in a singleton so the libretro env_cb can reach it
+// without threading an instance pointer.
 class CoreOptions {
 public:
     static CoreOptions& instance();
 
     // Tell us which core's option file to read/write. Call before ingesting.
     void set_core_name(std::string_view name);
+
+    // Tell us which rom is loaded so per-rom overrides can layer on
+    // top of per-core defaults. Pass an empty path to revert to
+    // per-core-only mode (useful for system-level browsing).
+    void set_rom_path(std::string_view rom_path);
 
     // Legacy SET_VARIABLES (retro_variable[]). The "value" field is a
     // "Description; choice|choice|choice" string with the first choice as
@@ -57,9 +72,14 @@ public:
 
 private:
     void load_overrides_from_disk();
+    void load_overrides_from_file(const std::string& path);
     void save_to_disk() const;
 
+    std::string per_core_path() const;
+    std::string per_game_path() const;
+
     std::string             m_core_name;
+    std::string             m_rom_path;     // empty = no per-rom layer
     std::vector<CoreOption> m_opts;
     bool                    m_dirty = false;
 };

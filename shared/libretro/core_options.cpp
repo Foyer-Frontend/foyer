@@ -5,6 +5,7 @@
 #include <cstring>
 #include <fstream>
 #include <sstream>
+#include <sys/stat.h>
 
 #include <yyjson.h>
 
@@ -62,14 +63,44 @@ void parse_legacy_value(const char* v, CoreOption& out) {
     }
 }
 
-std::string config_path_for(const std::string& core_name) {
-    char buf[256];
-    std::snprintf(buf, sizeof(buf), "/foyer/config/cores/%s.jsonc",
-        core_name.empty() ? "unknown" : core_name.c_str());
-    return std::string{buf};
+std::string basename_no_ext(const std::string& path) {
+    auto slash = path.find_last_of('/');
+    auto start = (slash == std::string::npos) ? 0 : slash + 1;
+    auto dot   = path.find_last_of('.');
+    auto end   = (dot != std::string::npos && dot > start) ? dot : path.size();
+    return path.substr(start, end - start);
+}
+
+// Replace characters that confuse the FAT filename layer or shell
+// completion; the per-game file just needs to be a stable, writable
+// name derived from the rom path.
+std::string sanitize_for_filename(std::string s) {
+    for (auto& c : s) {
+        if (c == ' ' || c == '/' || c == '\\' || c == ':' ||
+            c == '*' || c == '?' || c == '"' || c == '<' || c == '>')
+            c = '_';
+    }
+    return s;
 }
 
 } // namespace
+
+std::string CoreOptions::per_core_path() const {
+    char buf[256];
+    std::snprintf(buf, sizeof(buf), "/foyer/config/cores/%s.jsonc",
+        m_core_name.empty() ? "unknown" : m_core_name.c_str());
+    return std::string{buf};
+}
+
+std::string CoreOptions::per_game_path() const {
+    if (m_rom_path.empty() || m_core_name.empty()) return {};
+    char buf[512];
+    const auto stem = sanitize_for_filename(basename_no_ext(m_rom_path));
+    std::snprintf(buf, sizeof(buf),
+        "/foyer/config/cores/per_game/%s__%s.jsonc",
+        stem.c_str(), m_core_name.c_str());
+    return std::string{buf};
+}
 
 CoreOptions& CoreOptions::instance() {
     static CoreOptions s;
@@ -78,6 +109,10 @@ CoreOptions& CoreOptions::instance() {
 
 void CoreOptions::set_core_name(std::string_view name) {
     m_core_name.assign(name);
+}
+
+void CoreOptions::set_rom_path(std::string_view rom_path) {
+    m_rom_path.assign(rom_path);
 }
 
 void CoreOptions::ingest_legacy(const retro_variable* vars) {
@@ -157,7 +192,15 @@ void CoreOptions::set(std::string_view key, std::string_view value) {
 }
 
 void CoreOptions::load_overrides_from_disk() {
-    const auto path = config_path_for(m_core_name);
+    // Apply per-core defaults first, then the per-rom layer on top.
+    // Either file is optional; missing files are silently skipped.
+    load_overrides_from_file(per_core_path());
+    if (const auto pg = per_game_path(); !pg.empty()) {
+        load_overrides_from_file(pg);
+    }
+}
+
+void CoreOptions::load_overrides_from_file(const std::string& path) {
     std::ifstream in{path};
     if (!in) return;
 
@@ -190,18 +233,33 @@ void CoreOptions::load_overrides_from_disk() {
         }
     }
     yyjson_doc_free(doc);
-    foyer::log::write("[core_opts] loaded overrides from %s (%zu opts)\n",
+    foyer::log::write("[core_opts] loaded %s (%zu opts)\n",
         path.c_str(), m_opts.size());
 }
 
 void CoreOptions::save_to_disk() const {
-    const auto path = config_path_for(m_core_name);
+    // If a rom is loaded, write to the per-game file. The per-core
+    // file stays untouched — it remains the user's "settings I always
+    // want for this core" baseline. With no rom loaded we fall back
+    // to writing the per-core file (browser-side editing path).
+    std::string path = per_game_path();
+    bool per_game = !path.empty();
+    if (path.empty()) path = per_core_path();
+
+    // Make sure the parent dir exists for first-time per_game writes.
+    if (per_game) {
+        ::mkdir("/foyer/config/cores", 0755);
+        ::mkdir("/foyer/config/cores/per_game", 0755);
+    }
+
     std::ofstream out{path, std::ios::trunc};
     if (!out) {
         foyer::log::write("[core_opts] could not write %s\n", path.c_str());
         return;
     }
-    out << "// foyer per-core libretro variables. Edited by the pause overlay.\n";
+    out << (per_game
+        ? "// foyer per-game libretro variables. Edited by the pause overlay.\n"
+        : "// foyer per-core libretro variables. Edited by the pause overlay.\n");
     out << "{\n";
     bool first = true;
     for (const auto& o : m_opts) {
