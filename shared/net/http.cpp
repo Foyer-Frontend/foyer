@@ -40,12 +40,26 @@ int xferinfo_cancel(void* userdata, curl_off_t, curl_off_t, curl_off_t, curl_off
 }
 
 void apply_common(CURL* curl, const std::string& url, curl_slist* hdrs,
-                  CancelHook* cancel_ptr) {
+                  CancelHook* cancel_ptr, bool streaming) {
     curl_easy_setopt(curl, CURLOPT_URL,            url.c_str());
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL,       1L);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT,        45L);
+    if (streaming) {
+        // Multi-MB downloads: no overall wall-clock timeout
+        // (a 30 MB nro on a 2 Mbps connection takes ~120s and is
+        // still working). Instead require a minimum throughput so a
+        // genuinely stuck transfer fails promptly: < 4 KB/s for 30s
+        // aborts. The cancel hook (set below) gives the UI an extra
+        // override.
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT,         0L);
+        curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 4L * 1024L);
+        curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME,  30L);
+    } else {
+        // Small one-shot GET (JSON manifest, scraper API): 45s is
+        // plenty and we want quick failure on a hung server.
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 45L);
+    }
     curl_easy_setopt(curl, CURLOPT_USERAGENT,      "foyer/0.1");
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L); // Switch CA bundle drama
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
@@ -76,7 +90,7 @@ Response get(const std::string& url, const std::vector<std::string>& headers,
     auto* curl = curl_easy_init();
     if (!curl) return r;
     auto* hdrs = build_headers(headers);
-    apply_common(curl, url, hdrs, &cancel);
+    apply_common(curl, url, hdrs, &cancel, /*streaming=*/false);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, mem_writer);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA,     &r.body);
 
@@ -104,7 +118,7 @@ bool get_to_file(const std::string& url,
     auto* curl = curl_easy_init();
     if (!curl) { std::fclose(fp); ::unlink(dest_path.c_str()); return false; }
     auto* hdrs = build_headers(headers);
-    apply_common(curl, url, hdrs, &cancel);
+    apply_common(curl, url, hdrs, &cancel, /*streaming=*/true);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, file_writer);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA,     fp);
 
@@ -143,7 +157,7 @@ Response post_form(const std::string& url,
     std::vector<std::string> all = headers;
     all.emplace_back("Content-Type: application/x-www-form-urlencoded");
     auto* hdrs = build_headers(all);
-    apply_common(curl, url, hdrs, nullptr);
+    apply_common(curl, url, hdrs, nullptr, /*streaming=*/false);
     curl_easy_setopt(curl, CURLOPT_POST,         1L);
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS,   body.c_str());
     curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE,(long)body.size());

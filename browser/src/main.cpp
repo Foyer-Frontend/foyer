@@ -244,12 +244,17 @@ int main(int /*argc*/, char** /*argv*/) {
             }
             if (state.install_job.done()) {
                 const auto totals = state.install_job.finish();
-                char doneb[200];
-                std::snprintf(doneb, sizeof(doneb),
-                    "Cores: %d installed, %d updated, %d skipped, %d failed",
-                    totals.installed, totals.updated, totals.skipped, totals.failed);
-                state.banner_text = doneb;
-                state.banner_ttl  = 360;
+                // Silent on success — the worker's last per-core status
+                // line ("[N/M] foo - installed") fades naturally. Only
+                // surface a banner when something actually failed.
+                if (totals.failed > 0) {
+                    char doneb[120];
+                    std::snprintf(doneb, sizeof(doneb),
+                        "%d core%s failed - check log",
+                        totals.failed, totals.failed == 1 ? "" : "s");
+                    state.banner_text = doneb;
+                    state.banner_ttl  = 360;
+                }
                 // Refresh the cached manifest so the per-core rows
                 // immediately reflect the new "up to date" state.
                 foyer::browser::set_manifest_cache(
@@ -303,16 +308,18 @@ int main(int /*argc*/, char** /*argv*/) {
             }
             if (state.scrape_job.done()) {
                 const int hits  = state.scrape_job.hits();
-                const int total = state.scrape_job.total();
                 state.scrape_job.finish();
                 // Drop cached nanovg handles so newly-downloaded files
                 // show up immediately.
                 foyer::browser::invalidate_cover_cache(app.vg());
-                char done_msg[200];
-                std::snprintf(done_msg, sizeof(done_msg),
-                    "Scrape done - %d / %d covers", hits, total);
-                state.banner_text = done_msg;
-                state.banner_ttl  = 240;
+                // Silent on success — the worker's per-game status line
+                // fades naturally. Only banner-flag a no-hit run, which
+                // usually means the chosen scraper has no data for this
+                // system / wrong account credentials.
+                if (hits == 0) {
+                    state.banner_text = "Scrape found no covers - check log";
+                    state.banner_ttl  = 240;
+                }
             }
         }
     }
