@@ -61,6 +61,24 @@ Config::Scraper str_to_scraper(const char* s) {
     return Config::Scraper::Libretro;
 }
 
+const char* sort_to_str(Config::SortMode m) {
+    switch (m) {
+        case Config::SortMode::Recent:    return "recent";
+        case Config::SortMode::Playtime:  return "playtime";
+        case Config::SortMode::Favorites: return "favorites";
+        case Config::SortMode::Name:      return "name";
+    }
+    return "name";
+}
+
+Config::SortMode str_to_sort(const char* s) {
+    if (!s) return Config::SortMode::Name;
+    if (!std::strcmp(s, "recent"))    return Config::SortMode::Recent;
+    if (!std::strcmp(s, "playtime"))  return Config::SortMode::Playtime;
+    if (!std::strcmp(s, "favorites")) return Config::SortMode::Favorites;
+    return Config::SortMode::Name;
+}
+
 void write_locked() {
     std::ofstream out{kPath, std::ios::trunc};
     if (!out) {
@@ -74,6 +92,7 @@ void write_locked() {
         << scraper_to_str(g_config.preferred_scraper) << "\",\n";
     out << "    \"rom_root\":          \"" << g_config.rom_root << "\",\n";
     out << "    \"theme\":             \"" << g_config.theme_name << "\",\n";
+    out << "    \"sort_mode\":         \"" << sort_to_str(g_config.sort_mode) << "\",\n";
     out << "    \"scan_subfolders\":   " << bstr(g_config.scan_subfolders) << ",\n";
     out << "    \"show_clock\":        " << bstr(g_config.show_clock) << ",\n";
     out << "    \"show_backgrounds\":  " << bstr(g_config.show_backgrounds) << ",\n";
@@ -123,6 +142,10 @@ void load_locked() {
     if (auto* v = yyjson_obj_get(root, "theme");
         v && yyjson_is_str(v)) {
         g_config.theme_name = yyjson_get_str(v);
+    }
+    if (auto* v = yyjson_obj_get(root, "sort_mode");
+        v && yyjson_is_str(v)) {
+        g_config.sort_mode = str_to_sort(yyjson_get_str(v));
     }
     auto load_bool = [&](const char* key, bool& out) {
         if (auto* v = yyjson_obj_get(root, key); v && yyjson_is_bool(v)) {
@@ -194,6 +217,12 @@ void set_preferred_scraper(Config::Scraper s) {
 void set_theme_name(std::string_view name) {
     std::scoped_lock lk{g_mutex};
     g_config.theme_name = std::string{name};
+    write_locked();
+}
+
+void set_sort_mode(Config::SortMode mode) {
+    std::scoped_lock lk{g_mutex};
+    g_config.sort_mode = mode;
     write_locked();
 }
 

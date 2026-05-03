@@ -11,9 +11,20 @@ namespace foyer::library {
 struct Config {
     enum class Scraper { Libretro, ScreenScraper, SteamGridDB };
 
+    // Game-list ordering inside a System view. Applied in scanner.cpp
+    // post-scan + on the synthesised Recent / Favorites / Search
+    // index views.
+    enum class SortMode {
+        Name,        // alphabetical by display name (default)
+        Recent,      // last_played descending; never-played at the bottom
+        Playtime,    // playtime descending; never-played at the bottom
+        Favorites,   // favorites first, then alphabetical
+    };
+
     Scraper      preferred_scraper = Scraper::Libretro;
     std::string  rom_root          = "/foyer/roms";
     std::string  theme_name        = "default";
+    SortMode     sort_mode         = SortMode::Name;
 
     // Library + UI toggles (mirror the Tico-style Settings categories).
     bool         scan_subfolders   = true;
@@ -55,6 +66,7 @@ void          set_preferred_scraper(Config::Scraper s);
 void          set_default_core_for(std::string_view folder,
                                    std::string_view core_name);
 void          set_theme_name(std::string_view name);
+void          set_sort_mode(Config::SortMode mode);
 void          set_bool(std::string_view key, bool value);  // accepts the field names below
 
 } // namespace foyer::library

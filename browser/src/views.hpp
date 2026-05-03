@@ -2,6 +2,8 @@
 
 #include <cstddef>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <nanovg.h>
 #include <switch.h>
@@ -20,6 +22,7 @@ enum class View {
     System,      // game list for the focused system
     GameDetail,  // per-rom screen — cover, metadata, core picker
     Settings,    // browser-wide preferences
+    Search,      // global text search across every system
 };
 
 // Browser navigation state. Owned by main.cpp.
@@ -87,6 +90,16 @@ struct State {
     library::CoreInstallJob install_job;
     library::FoyerUpdateJob foyer_job;
     library::ScrapeJob      scrape_job;
+
+    // Search view state. `search_query` is the active filter text
+    // (lower-cased for matching), `search_results` are pairs of
+    // (system_index, game_index) into Library that match. `search_dirty`
+    // is set whenever the query changes so views.cpp re-runs the
+    // filter; cleared after recompute.
+    std::string                          search_query;
+    std::vector<std::pair<std::size_t, std::size_t>> search_results;
+    int                                  search_index   = 0;
+    bool                                 search_dirty   = false;
     // Cores manifest pull (Settings -> Updates -> Refresh manifest).
     // Plain Worker — the result is a CoreManifest written to
     // refresh_result before m_done flips.

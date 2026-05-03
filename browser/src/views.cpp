@@ -604,14 +604,21 @@ void draw_system(NVGcontext* vg, float w, float h, const State& s, const Library
         nvgFontSize(vg, kSystemRowFont);
         nvgFillColor(vg, sel ? th.text_strong : th.text);
         nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+        const auto& gr = sys.games[idx];
+        // Star prefix for favorites — left-padded so the title text
+        // still aligns vertically across favorite and non-favorite
+        // rows (the star + space is fixed width).
+        const std::string label = gr.favorite
+            ? std::string{"\xe2\x98\x85 "} + gr.display   // ★
+            : std::string{"   "} + gr.display;
         nvgText(vg, th.pad + 18, ry + (kRow - 4) * 0.5f,
-            sys.games[idx].display.c_str(), nullptr);
+            label.c_str(), nullptr);
 
         nvgFontSize(vg, th.label_size);
         nvgFillColor(vg, th.text_dim);
         nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
         nvgText(vg, th.pad + list_w - 18, ry + (kRow - 4) * 0.5f,
-            sys.games[idx].ext.c_str(), nullptr);
+            gr.ext.c_str(), nullptr);
     }
     nvgRestore(vg);
 
@@ -770,22 +777,30 @@ enum PopupOp {
     PopSettings,
     PopExit,
     PopBack,
+    PopToggleFavorite,   // System view: flips favorite on the focused game
+    PopResume,           // Home: jumps to + launches the most-recently-played
+    PopSearch,           // Any: opens the Search view
 };
 
 std::vector<PopupItem> popup_items_for(View v) {
     switch (v) {
         case View::Home:
-            return { {"Rescan Games", PopRescan},
-                     {"Settings",     PopSettings},
-                     {"Exit",         PopExit} };
+            return { {"Search",        PopSearch},
+                     {"Resume Last",   PopResume},
+                     {"Rescan Games",  PopRescan},
+                     {"Settings",      PopSettings},
+                     {"Exit",          PopExit} };
         case View::System:
-            return { {"Rescan Games", PopRescan},
-                     {"Settings",     PopSettings},
-                     {"Back",         PopBack} };
+            return { {"Toggle Favorite", PopToggleFavorite},
+                     {"Search",          PopSearch},
+                     {"Rescan Games",    PopRescan},
+                     {"Settings",        PopSettings},
+                     {"Back",            PopBack} };
         default:
-            return { {"Rescan Games", PopRescan},
-                     {"Settings",     PopSettings},
-                     {"Back",         PopBack} };
+            return { {"Search",        PopSearch},
+                     {"Rescan Games",  PopRescan},
+                     {"Settings",      PopSettings},
+                     {"Back",          PopBack} };
     }
 }
 
@@ -1139,6 +1154,7 @@ enum : int {
     OpUpdScrapeAll, OpUpdInstalledCores, OpUpdInstallCores,
     OpUpdRefreshManifest, OpUpdInstallSingleCore, OpUpdReinstallSingleCore,
     OpUpdCancelJob,
+    OpSortMode,
     OpUpdCheckFoyer, OpUpdInstallFoyer,
     OpEmuSysCore,    // Cycle through available cores for one system.
     OpExpMtp, OpExpMtpAutostart, OpExpDebugLog,
@@ -1212,10 +1228,23 @@ std::vector<Item> build_items(Category cat, const State& s) {
             rows.push_back({ItemKind::Static, "System volume controls live in the Switch home menu",
                 "", "Per-core audio settings are exposed in the in-game pause overlay.", 0});
             break;
-        case Category::Library:
+        case Category::Library: {
             rows.push_back({ItemKind::Action, "Rescan library",         "A: run",     "", OpRescan});
             rows.push_back({ItemKind::Action, "Invalidate cover cache", "A: refresh", "", OpInvalidateCovers});
+            // Sort cycle. Cycling triggers a rescan so the new order
+            // takes effect immediately.
+            const char* sort_label = "Name";
+            switch (library::config().sort_mode) {
+                case library::Config::SortMode::Recent:    sort_label = "Recently played"; break;
+                case library::Config::SortMode::Playtime:  sort_label = "Playtime";        break;
+                case library::Config::SortMode::Favorites: sort_label = "Favorites first"; break;
+                case library::Config::SortMode::Name:      sort_label = "Name";            break;
+            }
+            rows.push_back({ItemKind::Cycle, "Sort games by", sort_label,
+                "Left/Right cycles. Re-sort applies on next library rescan.",
+                OpSortMode});
             break;
+        }
         case Category::Emulator: {
             // Catalog of cores from the foyer-cores release manifest. This
             // is where the user *installs* cores — Updates is where they
@@ -1643,6 +1672,89 @@ void draw_settings(NVGcontext* vg, float w, float h, const State& s, const Libra
     settings::draw_settings(vg, w, h, s, lib);
 }
 
+// ---- SEARCH VIEW ----------------------------------------------------------
+// Global text-search across every System's games. The query is captured via
+// libnx swkbd (handled in the input update path); this function only paints
+// the result list. Rows are "<system short_name>  <game display>".
+
+void draw_search(NVGcontext* vg, float w, float h, const State& s, const Library& lib) {
+    const auto& th = theme();
+    constexpr float kRow = 48.0f;
+    const float content_y = kTopBarH + 16.0f;
+    const float content_h = h - content_y - kBottomBarH - 16.0f;
+
+    // Header — query echo + match count.
+    nvgFontSize(vg, th.head_size);
+    nvgFillColor(vg, th.text_strong);
+    nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_TOP);
+    const std::string head = s.search_query.empty()
+        ? std::string{"Search"}
+        : std::string{"Search: \""} + s.search_query + "\"";
+    nvgText(vg, th.pad, content_y, head.c_str(), nullptr);
+
+    nvgFontSize(vg, th.label_size);
+    nvgFillColor(vg, th.text_dim);
+    char count[64];
+    std::snprintf(count, sizeof(count), "%zu match%s",
+        s.search_results.size(), s.search_results.size() == 1 ? "" : "es");
+    nvgText(vg, th.pad, content_y + th.head_size + 6, count, nullptr);
+
+    if (s.search_results.empty()) {
+        if (s.search_query.empty()) {
+            draw_empty(vg, w, h,
+                "Type to search",
+                "Press Y to enter a query");
+        } else {
+            draw_empty(vg, w, h,
+                "No matches",
+                "Press Y to refine the query");
+        }
+        return;
+    }
+
+    // Result list.
+    const float list_y     = content_y + 64.0f;
+    const float list_h     = content_h - 64.0f;
+    const int   visible    = std::max(1, (int)((list_h - 16) / kRow));
+    const int   total      = (int)s.search_results.size();
+    int         first_row  = std::max(0, s.search_index - visible / 2);
+    if (first_row + visible > total) first_row = std::max(0, total - visible);
+
+    nvgSave(vg);
+    nvgIntersectScissor(vg, th.pad, list_y, w - th.pad * 2.0f, list_h);
+    for (int row = 0; row < visible && first_row + row < total; row++) {
+        const int idx = first_row + row;
+        const float ry = list_y + 8 + row * kRow;
+        const bool sel = (idx == s.search_index);
+        if (sel) {
+            rrect(vg, th.pad + 6, ry, w - th.pad * 2.0f - 12,
+                  kRow - 4, 6.0f, th.bg_panel_hi);
+        }
+        const auto [si, gi] = s.search_results[idx];
+        if (si >= lib.systems.size()) continue;
+        const auto& sysr = lib.systems[si];
+        if (gi >= sysr.games.size()) continue;
+        const auto& gr = sysr.games[gi];
+
+        nvgFontSize(vg, th.body_size);
+        nvgFillColor(vg, sel ? th.text_strong : th.text);
+        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+        const std::string label = (gr.favorite ? std::string{"\xe2\x98\x85 "}
+                                               : std::string{"   "})
+                                + gr.display;
+        nvgText(vg, th.pad + 18, ry + (kRow - 4) * 0.5f,
+            label.c_str(), nullptr);
+
+        nvgFontSize(vg, th.label_size);
+        nvgFillColor(vg, th.text_dim);
+        nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+        const std::string sn{sysr.def->short_name};
+        nvgText(vg, w - th.pad - 18, ry + (kRow - 4) * 0.5f,
+            sn.c_str(), nullptr);
+    }
+    nvgRestore(vg);
+}
+
 // ---- GAME DETAIL VIEW -----------------------------------------------------
 
 void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Library& lib) {
@@ -2009,6 +2121,48 @@ void update(State& s, const Library& lib,
                 case PopBack:
                     if (s.view == View::System || s.view == View::GameDetail)
                         s.view = (s.view == View::GameDetail) ? View::System : View::Home;
+                    break;
+                case PopToggleFavorite: {
+                    if (s.view != View::System) break;
+                    if (s.system_index >= lib.systems.size()) break;
+                    auto& sys2 = const_cast<library::System&>(lib.systems[s.system_index]);
+                    if (s.game_index >= sys2.games.size()) break;
+                    auto& g2 = sys2.games[s.game_index];
+                    g2.favorite = !g2.favorite;
+                    library::set_per_game_favorite(g2.path, g2.favorite);
+                    s.banner_text = g2.favorite ? "Added to favorites"
+                                                : "Removed from favorites";
+                    s.banner_ttl  = 120;
+                    break;
+                }
+                case PopResume: {
+                    // Find the most-recently-played game across all
+                    // systems and launch it directly.
+                    std::size_t best_sys = 0, best_game = 0;
+                    std::uint64_t best_t = 0;
+                    for (std::size_t si = 0; si < lib.systems.size(); si++) {
+                        const auto& sysr = lib.systems[si];
+                        for (std::size_t gi = 0; gi < sysr.games.size(); gi++) {
+                            const auto t = sysr.games[gi].last_played;
+                            if (t > best_t) {
+                                best_t = t; best_sys = si; best_game = gi;
+                            }
+                        }
+                    }
+                    if (best_t == 0) {
+                        s.banner_text = "No recently played games";
+                        s.banner_ttl  = 180;
+                    } else {
+                        s.system_index = best_sys;
+                        s.game_index   = best_game;
+                        s.request_resume_slot = -1;
+                        s.request_launch = true;
+                    }
+                    break;
+                }
+                case PopSearch:
+                    s.view = View::Search;
+                    s.search_dirty = true;
                     break;
             }
         }
@@ -2434,6 +2588,15 @@ void update(State& s, const Library& lib,
                         s.banner_text = std::string{"Theme: "} + themes[cur];
                         s.banner_ttl  = 120;
                     }
+                } else if (it.payload == settings::OpSortMode) {
+                    constexpr int kSortCount = 4;
+                    int n = ((int)library::config().sort_mode + delta + kSortCount)
+                          % kSortCount;
+                    library::set_sort_mode((library::Config::SortMode)n);
+                    // Trigger a rescan so the new order takes effect.
+                    s.request_rescan = true;
+                    s.banner_text = "Sort changed - rescanning...";
+                    s.banner_ttl  = 180;
                 }
             }
 
@@ -2521,6 +2684,94 @@ void update(State& s, const Library& lib,
                 }
             }
         }
+    } else if (s.view == View::Search) {
+        // First entry into the view (or after the user requests a new
+        // query): block on swkbd, recompute the result list, store
+        // results into State for draw() to render.
+        if (s.search_dirty) {
+            s.search_dirty = false;
+            const auto entered = settings::swkbd_prompt(
+                "Search games by name", s.search_query);
+            s.search_query = entered;
+            s.search_results.clear();
+            s.search_index = 0;
+            // Lower-case the query once for case-insensitive substring
+            // matching against game.display.
+            std::string q = entered;
+            for (auto& c : q) {
+                if (c >= 'A' && c <= 'Z') c = (char)(c + 32);
+            }
+            if (!q.empty()) {
+                for (std::size_t si = 0; si < lib.systems.size(); si++) {
+                    const auto& sysr = lib.systems[si];
+                    for (std::size_t gi = 0; gi < sysr.games.size(); gi++) {
+                        const auto& gr = sysr.games[gi];
+                        std::string disp = gr.display;
+                        for (auto& c : disp) {
+                            if (c >= 'A' && c <= 'Z') c = (char)(c + 32);
+                        }
+                        if (disp.find(q) != std::string::npos) {
+                            s.search_results.emplace_back(si, gi);
+                        }
+                    }
+                }
+            }
+        }
+
+        if (down & HidNpadButton_B) {
+            s.view = View::Home;
+            return;
+        }
+        if (down & HidNpadButton_Y) {
+            // Re-prompt for a new query.
+            s.search_dirty = true;
+            return;
+        }
+        const int n = (int)s.search_results.size();
+        if (n > 0) {
+            if (down & HidNpadButton_AnyDown && s.search_index + 1 < n)
+                s.search_index++;
+            if (down & HidNpadButton_AnyUp   && s.search_index > 0)
+                s.search_index--;
+            if (const int sh = shoulder_step(s, held, down)) {
+                const int page = std::max(1, (int)((h - kTopBarH - kBottomBarH - 96) / 48));
+                int next = s.search_index + sh * page;
+                if (next < 0)  next = 0;
+                if (next >= n) next = n - 1;
+                s.search_index = next;
+            }
+            // Tap on a result row maps to a click on that row, mirroring
+            // the System view's tap-to-launch behavior.
+            if (touch.tap_started && touch.count > 0) {
+                const float content_y = kTopBarH + 16.0f;
+                const float list_y    = content_y + 64.0f;
+                const float list_h    = h - content_y - kBottomBarH - 16.0f - 64.0f;
+                constexpr float kRow  = 48.0f;
+                const int visible = std::max(1, (int)((list_h - 16) / kRow));
+                int first_row     = std::max(0, s.search_index - visible / 2);
+                if (first_row + visible > n) first_row = std::max(0, n - visible);
+                const float ty = touch.points[0].y;
+                const int row_in_view = (int)((ty - list_y - 8) / kRow);
+                if (row_in_view >= 0 && row_in_view < visible &&
+                    first_row + row_in_view < n) {
+                    const int new_idx = first_row + row_in_view;
+                    if (new_idx == s.search_index) {
+                        down |= HidNpadButton_A;
+                    } else {
+                        s.search_index = new_idx;
+                    }
+                }
+            }
+            if (down & HidNpadButton_A) {
+                const auto [si, gi] = s.search_results[s.search_index];
+                if (si < lib.systems.size() &&
+                    gi < lib.systems[si].games.size()) {
+                    s.system_index = si;
+                    s.game_index   = gi;
+                    s.view         = View::System;
+                }
+            }
+        }
     }
 
     (void)held;
@@ -2560,6 +2811,7 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
         case View::System:     draw_system     (vg, w, h, s, lib); break;
         case View::GameDetail: draw_game_detail(vg, w, h, s, lib); break;
         case View::Settings:   draw_settings   (vg, w, h, s, lib); break;
+        case View::Search:     draw_search     (vg, w, h, s, lib); break;
     }
 
     // Sphaira-style persistent top + bottom bars, drawn after the view so
@@ -2644,6 +2896,12 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
             hint  = std::string{DPad} + " navigate   "
                   + Left + Right + " adjust   "
                   + A + " select   " + B + " back";
+            break;
+        }
+        case View::Search: {
+            title = "foyer  >  Search";
+            hint  = std::string{DPad} + " navigate   "
+                  + A + " open   " + Y + " new query   " + B + " back";
             break;
         }
     }

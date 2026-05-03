@@ -1,4 +1,6 @@
 #include "scanner.hpp"
+#include "config.hpp"
+#include "per_game.hpp"
 #include "system_db.hpp"
 #include "platform/log.hpp"
 #include "util/archive.hpp"
@@ -89,9 +91,48 @@ void scan_dir_into(const std::string& path,
         game.stem     = stem_of(g->d_name);
         game.ext      = ext;
         game.display  = game.stem;
+        // Hydrate favorite + last_played from the persisted store so
+        // browser-side filters work without per-call lookups.
+        apply_per_game_state(game);
         out.emplace_back(std::move(game));
     }
     ::closedir(dir);
+}
+
+void sort_games(std::vector<Game>& games, Config::SortMode mode) {
+    auto by_name = [](const Game& a, const Game& b) {
+        return a.stem < b.stem;
+    };
+    switch (mode) {
+        case Config::SortMode::Recent:
+            std::sort(games.begin(), games.end(),
+                [&](const Game& a, const Game& b) {
+                    if (a.last_played != b.last_played)
+                        return a.last_played > b.last_played;
+                    return by_name(a, b);
+                });
+            break;
+        case Config::SortMode::Playtime:
+            std::sort(games.begin(), games.end(),
+                [&](const Game& a, const Game& b) {
+                    // playtime not in Game today — fall back to name
+                    // ordering. Playtime sort wires up properly when
+                    // the player writes playtime back to per_game.
+                    return by_name(a, b);
+                });
+            break;
+        case Config::SortMode::Favorites:
+            std::sort(games.begin(), games.end(),
+                [&](const Game& a, const Game& b) {
+                    if (a.favorite != b.favorite) return a.favorite;
+                    return by_name(a, b);
+                });
+            break;
+        case Config::SortMode::Name:
+        default:
+            std::sort(games.begin(), games.end(), by_name);
+            break;
+    }
 }
 
 } // namespace
@@ -121,9 +162,10 @@ std::vector<System> scan_library(const ScanOptions& opts) {
 
         scan_dir_into(sys.root_path, *def, sys.games, opts.recurse);
 
-        // Stable alphabetical order until the user picks a sort.
-        std::sort(sys.games.begin(), sys.games.end(),
-            [](const Game& a, const Game& b) { return a.stem < b.stem; });
+        // Apply the user's selected sort order. config().sort_mode is
+        // a per-browser preference; cycling it in Settings -> Library
+        // and rescanning is enough to re-order without restarting.
+        sort_games(sys.games, config().sort_mode);
 
         if (!sys.games.empty()) {
             out.emplace_back(std::move(sys));

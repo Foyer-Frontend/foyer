@@ -1,9 +1,11 @@
 #include "per_game.hpp"
+#include "scanner.hpp"
 #include "system_db.hpp"
 #include "config.hpp"
 #include "platform/log.hpp"
 
 #include <atomic>
+#include <ctime>
 #include <fstream>
 #include <mutex>
 #include <sstream>
@@ -16,9 +18,20 @@ namespace {
 
 constexpr const char* kPath = "/foyer/config/per_game.jsonc";
 
-std::mutex                                      g_mutex;
-std::unordered_map<std::string, std::string>    g_overrides;
-std::atomic<bool>                               g_loaded{false};
+struct Entry {
+    std::string   core;
+    bool          favorite    = false;
+    std::uint64_t last_played = 0;
+    std::uint64_t playtime    = 0;
+};
+
+std::mutex                                 g_mutex;
+std::unordered_map<std::string, Entry>     g_entries;
+std::atomic<bool>                          g_loaded{false};
+
+bool entry_is_default(const Entry& e) {
+    return e.core.empty() && !e.favorite && e.last_played == 0 && e.playtime == 0;
+}
 
 std::string strip_comments(const std::string& in) {
     std::string out;
@@ -45,7 +58,7 @@ std::string strip_comments(const std::string& in) {
 }
 
 void load_locked() {
-    g_overrides.clear();
+    g_entries.clear();
 
     std::ifstream in{kPath};
     if (!in) return;
@@ -64,9 +77,21 @@ void load_locked() {
         std::size_t i, max; yyjson_val *k, *v;
         yyjson_obj_foreach(root, i, max, k, v) {
             if (!yyjson_is_str(k) || !yyjson_is_obj(v)) continue;
-            auto* core = yyjson_obj_get(v, "core");
-            if (core && yyjson_is_str(core)) {
-                g_overrides.emplace(yyjson_get_str(k), yyjson_get_str(core));
+            Entry e;
+            if (auto* x = yyjson_obj_get(v, "core");
+                x && yyjson_is_str(x))
+                e.core = yyjson_get_str(x);
+            if (auto* x = yyjson_obj_get(v, "favorite");
+                x && yyjson_is_bool(x))
+                e.favorite = yyjson_get_bool(x);
+            if (auto* x = yyjson_obj_get(v, "last_played");
+                x && (yyjson_is_uint(x) || yyjson_is_int(x)))
+                e.last_played = (std::uint64_t)yyjson_get_uint(x);
+            if (auto* x = yyjson_obj_get(v, "playtime");
+                x && (yyjson_is_uint(x) || yyjson_is_int(x)))
+                e.playtime = (std::uint64_t)yyjson_get_uint(x);
+            if (!entry_is_default(e)) {
+                g_entries.emplace(yyjson_get_str(k), std::move(e));
             }
         }
     }
@@ -79,13 +104,35 @@ void save_locked() {
         foyer::log::write("[per_game] could not write %s\n", kPath);
         return;
     }
-    out << "// foyer per-rom overrides. Keys are absolute SD paths.\n";
+    out << "// foyer per-rom state. Keys are absolute SD paths.\n";
     out << "{\n";
     bool first = true;
-    for (const auto& [path, core] : g_overrides) {
+    for (const auto& [path, e] : g_entries) {
+        if (entry_is_default(e)) continue;
         if (!first) out << ",\n";
         first = false;
-        out << "    \"" << path << "\": { \"core\": \"" << core << "\" }";
+        out << "    \"" << path << "\": {";
+        bool need_comma = false;
+        if (!e.core.empty()) {
+            out << " \"core\": \"" << e.core << "\"";
+            need_comma = true;
+        }
+        if (e.favorite) {
+            if (need_comma) out << ",";
+            out << " \"favorite\": true";
+            need_comma = true;
+        }
+        if (e.last_played) {
+            if (need_comma) out << ",";
+            out << " \"last_played\": " << e.last_played;
+            need_comma = true;
+        }
+        if (e.playtime) {
+            if (need_comma) out << ",";
+            out << " \"playtime\": " << e.playtime;
+            need_comma = true;
+        }
+        out << " }";
     }
     out << "\n}\n";
 }
@@ -98,24 +145,82 @@ void ensure_loaded() {
     g_loaded = true;
 }
 
+// Lookup (read-only) under the global lock. Caller must call
+// ensure_loaded() FIRST, before taking the lock — ensure_loaded
+// takes its own lock briefly and std::mutex isn't recursive.
+const Entry* find_entry_locked(std::string_view rom_path) {
+    auto it = g_entries.find(std::string{rom_path});
+    return (it == g_entries.end()) ? nullptr : &it->second;
+}
+
+// Mutate one field of an entry, then persist. Lock is taken inside
+// (caller must NOT hold it).
+template <typename Mutator>
+void mutate(std::string_view rom_path, Mutator&& mut) {
+    ensure_loaded();
+    std::scoped_lock lk{g_mutex};
+    auto& e = g_entries[std::string{rom_path}];
+    mut(e);
+    if (entry_is_default(e)) {
+        g_entries.erase(std::string{rom_path});
+    }
+    save_locked();
+}
+
 } // namespace
 
 std::string per_game_core_for(std::string_view rom_path) {
     ensure_loaded();
     std::scoped_lock lk{g_mutex};
-    auto it = g_overrides.find(std::string{rom_path});
-    return (it == g_overrides.end()) ? std::string{} : it->second;
+    auto* e = find_entry_locked(rom_path);
+    return e ? e->core : std::string{};
 }
 
 void set_per_game_core(std::string_view rom_path, std::string_view core_name) {
+    mutate(rom_path, [&](Entry& e) { e.core = std::string{core_name}; });
+}
+
+bool per_game_favorite(std::string_view rom_path) {
     ensure_loaded();
     std::scoped_lock lk{g_mutex};
-    if (core_name.empty()) {
-        g_overrides.erase(std::string{rom_path});
-    } else {
-        g_overrides[std::string{rom_path}] = std::string{core_name};
-    }
-    save_locked();
+    auto* e = find_entry_locked(rom_path);
+    return e ? e->favorite : false;
+}
+
+void set_per_game_favorite(std::string_view rom_path, bool favorite) {
+    mutate(rom_path, [&](Entry& e) { e.favorite = favorite; });
+}
+
+std::uint64_t per_game_last_played(std::string_view rom_path) {
+    ensure_loaded();
+    std::scoped_lock lk{g_mutex};
+    auto* e = find_entry_locked(rom_path);
+    return e ? e->last_played : 0;
+}
+
+void mark_per_game_played(std::string_view rom_path) {
+    const auto now = (std::uint64_t)std::time(nullptr);
+    mutate(rom_path, [&](Entry& e) { e.last_played = now; });
+}
+
+std::uint64_t per_game_playtime(std::string_view rom_path) {
+    ensure_loaded();
+    std::scoped_lock lk{g_mutex};
+    auto* e = find_entry_locked(rom_path);
+    return e ? e->playtime : 0;
+}
+
+void add_per_game_playtime(std::string_view rom_path, std::uint64_t seconds) {
+    mutate(rom_path, [&](Entry& e) { e.playtime += seconds; });
+}
+
+void apply_per_game_state(Game& g) {
+    ensure_loaded();
+    std::scoped_lock lk{g_mutex};
+    auto* e = find_entry_locked(g.path);
+    if (!e) return;
+    g.favorite    = e->favorite;
+    g.last_played = e->last_played;
 }
 
 const CoreDef* resolve_core(const SystemDef& sys, std::string_view rom_path) {

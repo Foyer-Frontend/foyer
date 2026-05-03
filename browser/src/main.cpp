@@ -289,6 +289,10 @@ int main(int /*argc*/, char** /*argv*/) {
             const auto& game = sys.games[state.game_index];
             const int   resume = state.request_resume_slot;
             state.request_resume_slot = -1;
+            // Stamp last_played BEFORE launch_game (which usually
+            // app.quit()s on success and doesn't return). Powers the
+            // home view's Recent virtual system + the Resume action.
+            foyer::library::mark_per_game_played(game.path);
             if (foyer::browser::launch_game(sys, game, resume)) {
                 foyer::browser::mtp_stop();
                 app.quit();
