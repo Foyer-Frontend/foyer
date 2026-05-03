@@ -1,6 +1,7 @@
 #include "frontend.hpp"
 #include "core_options.hpp"
 #include "platform/log.hpp"
+#include "video_hw.hpp"
 
 #include <cstdarg>
 #include <cstdio>
@@ -124,6 +125,19 @@ bool env_cb(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_GEOMETRY:
         case RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO:
             return true;
+        case RETRO_ENVIRONMENT_SET_HW_RENDER: {
+            // Core wants a GL/Vulkan context. HwContext::request rejects
+            // anything other than GLES2/3 (the only thing Switch's
+            // EGL/Mesa portlibs give us). On rejection the core typically
+            // falls back to its software renderer.
+            auto* cb = static_cast<retro_hw_render_callback*>(data);
+            return HwContext::instance().request(cb);
+        }
+        case RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER: {
+            // Tell the core we'd prefer GLES3 if it has a choice.
+            *static_cast<unsigned*>(data) = RETRO_HW_CONTEXT_OPENGLES3;
+            return true;
+        }
         default:
             return false;
     }
@@ -289,12 +303,30 @@ bool Frontend::load_game(const std::string& rom_path) {
         m_av_info.timing.sample_rate,
         m_av_info.timing.fps);
 
+    // If the core asked for a HW context during retro_set_environment,
+    // create it now (av_info gives us the framebuffer size we need)
+    // and fire context_reset so the core can upload shaders / textures.
+    if (HwContext::instance().active()) {
+        const unsigned w = m_av_info.geometry.max_width
+                         ? m_av_info.geometry.max_width
+                         : m_av_info.geometry.base_width;
+        const unsigned h = m_av_info.geometry.max_height
+                         ? m_av_info.geometry.max_height
+                         : m_av_info.geometry.base_height;
+        if (!HwContext::instance().ensure_context(w, h)) {
+            foyer::log::write("[hw_render] context init failed — core may fall back to software\n");
+        }
+    }
+
     m_game_loaded = true;
     return true;
 }
 
 void Frontend::unload_game() {
     if (!m_game_loaded) return;
+    if (HwContext::instance().active()) {
+        HwContext::instance().shutdown();
+    }
     retro_unload_game();
     m_rom_buffer.clear();
     m_rom_buffer.shrink_to_fit();
@@ -303,7 +335,14 @@ void Frontend::unload_game() {
 
 void Frontend::run_frame() {
     if (!m_game_loaded) return;
-    retro_run();
+    auto& hw = HwContext::instance();
+    if (hw.active()) {
+        hw.begin_frame();
+        retro_run();
+        hw.end_frame();
+    } else {
+        retro_run();
+    }
 }
 
 } // namespace foyer::libretro

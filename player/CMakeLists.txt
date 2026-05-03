@@ -31,6 +31,7 @@ set(_romfs    foyer_player_romfs_${FOYER_CORE})
 add_library(${_frontend} STATIC
     ${CMAKE_SOURCE_DIR}/shared/libretro/frontend.cpp
     ${CMAKE_SOURCE_DIR}/shared/libretro/video.cpp
+    ${CMAKE_SOURCE_DIR}/shared/libretro/video_hw.cpp
     ${CMAKE_SOURCE_DIR}/shared/libretro/audio.cpp
     ${CMAKE_SOURCE_DIR}/shared/libretro/input.cpp
     ${CMAKE_SOURCE_DIR}/shared/libretro/savestate.cpp
@@ -46,6 +47,15 @@ target_link_libraries(${_frontend} PUBLIC
     foyer_shared
     core_${FOYER_CORE}
     rcheevos
+    # EGL + GLES3 + Mesa stack for the HW render callback path. Even
+    # pure-software cores link these (the HwContext singleton is part
+    # of the frontend lib); the libs sit cold until a core actually
+    # requests SET_HW_RENDER. Order matters: EGL calls glapi which
+    # calls into the nouveau driver which uses drm_nouveau.
+    EGL
+    GLESv2
+    glapi
+    drm_nouveau
 )
 set_target_properties(${_frontend} PROPERTIES
     CXX_STANDARD 26)

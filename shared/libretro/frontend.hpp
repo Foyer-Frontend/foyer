@@ -84,6 +84,13 @@ struct Frontend {
     using VideoSink = void(*)(const VideoFrame&);
     void set_video_sink(VideoSink sink) { m_video_sink = sink; }
 
+    // Inject a video frame from outside the normal core video_refresh
+    // path — used by HwContext to deliver glReadPixels output through
+    // the same sink the software path uses.
+    void push_video_frame(const VideoFrame& f) {
+        if (m_video_sink) m_video_sink(f);
+    }
+
     // Audio callback target — owned by platform/audio.cpp.
     using AudioSink = void(*)(const AudioFrame&);
     void set_audio_sink(AudioSink sink) { m_audio_sink = sink; }
