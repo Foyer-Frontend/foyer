@@ -431,6 +431,19 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
     const auto count      = (int)lib.systems.size();
     const float cy        = h * 0.5f;
 
+    // Two passes so the centre tile's logo overlay isn't clipped by the
+    // adjacent (offset +1 / +2) tiles. Adjacent parallelograms interlock
+    // with an 84 px slant overlap; in a single-pass left-to-right draw
+    // the right-hand neighbours paint over the bottom-right wedge of the
+    // centre logo. Pass 1: every tile's splash. Pass 2: only the centre
+    // tile's logo, on top of all of them.
+    auto centre_xy = [&](float& out_x, float& out_y, float& out_tw, float& out_thh) {
+        out_tw  = kTileW;
+        out_thh = kTileH;
+        out_x   = w * 0.5f - out_tw * 0.5f;
+        out_y   = cy - out_thh * 0.5f;
+    };
+
     for (int offset = -2; offset <= 2; offset++) {
         if (count <= 0) break;
         // Circular wrap: NES → ... ← saturn so the user always sees two
@@ -439,8 +452,6 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
         idx = ((idx % count) + count) % count;
         const auto& sys = lib.systems[idx];
 
-        // All tiles share the same size; selection is communicated via the
-        // logo overlay (only on the focused tile) and an alpha boost.
         const float tw    = kTileW;
         const float thh   = kTileH;
         const float cx    = w * 0.5f + offset * (kTileW + kGap);
@@ -457,25 +468,28 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
                 x, y, tw, thh, kSlant,
                 centre ? 1.0f : 0.55f);
         }
-
-        // Console logo overlay only on the focused tile, ES-DE style.
-        // Box doubled in area: full tile width and ~60% tile height so
-        // wide wordmarks (e.g. "PlayStation Portable") render large
-        // instead of tiny. Aspect-fit still keeps the logo proportional.
-        if (centre) {
-            const auto logo_path = system_logo_path(sys.def->folder_name);
-            const int  logo_h    = system_logo_cache().get_or_load(vg, logo_path);
-            if (logo_h > 0) {
-                blit_aspect_fit(vg, logo_h,
-                    x, y + thh * 0.20f,
-                    tw, thh * 0.60f,
-                    0.0f, 1.0f);
-            }
-        }
-
         nvgRestore(vg);
     }
 
+    // Pass 2: centre logo (ES-DE-style overlay). Drawn after every
+    // splash so neighbour tiles can't clip it. Box is full tile width
+    // and ~60% tile height so wide wordmarks (e.g. "PlayStation
+    // Portable") render large; aspect-fit keeps the logo proportional.
+    if (count > 0) {
+        const auto& sys = lib.systems[idx_centre % count];
+        float x, y, tw, thh;
+        centre_xy(x, y, tw, thh);
+        nvgSave(vg);
+        const auto logo_path = system_logo_path(sys.def->folder_name);
+        const int  logo_h    = system_logo_cache().get_or_load(vg, logo_path);
+        if (logo_h > 0) {
+            blit_aspect_fit(vg, logo_h,
+                x, y + thh * 0.20f,
+                tw, thh * 0.60f,
+                0.0f, 1.0f);
+        }
+        nvgRestore(vg);
+    }
 }
 
 // ---- SYSTEM VIEW (game list + sidebar) ------------------------------------

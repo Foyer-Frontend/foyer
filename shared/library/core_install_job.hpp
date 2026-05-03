@@ -19,12 +19,15 @@ public:
     bool done()      const { return m_worker.done();      }
     bool cancelled() const { return m_worker.cancelled(); }
 
-    // Spawn the worker. `manifest_url` is fetched on the worker
-    // thread (no UI freeze on the manifest pull either). If
-    // `only_core` is non-empty, the manifest is narrowed to that
-    // single entry. `force` re-downloads even when the version
-    // sidecar matches the manifest's version (Re-install path).
-    bool start(std::string manifest_url, std::string only_core, bool force);
+    // Spawn the worker. The caller hands in a pre-fetched manifest
+    // (do the manifest fetch on the main thread — a 7 KB JSON pull
+    // takes ~1 s and worker-side fetches hit a libcurl-on-Switch
+    // quirk where the 3rd consecutive worker's curl_easy_perform
+    // can hang for ~90 s). If `only_core` is non-empty, the
+    // manifest is narrowed to that single entry. `force`
+    // re-downloads even when the version sidecar matches the
+    // manifest's version (Re-install path).
+    bool start(CoreManifest manifest, std::string only_core, bool force);
 
     // UI cancel signal. Curl aborts at the next progress callback
     // (~200ms granularity).

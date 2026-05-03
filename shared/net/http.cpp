@@ -140,9 +140,12 @@ bool get_to_file(const std::string& url,
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, file_writer);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA,     fp);
 
+    foyer::log::write("[http] STREAM %s -> %s start\n", url.c_str(), dest_path.c_str());
     const auto rc = curl_easy_perform(curl);
     long code = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
+    foyer::log::write("[http] STREAM %s rc=%d code=%ld\n",
+        url.c_str(), (int)rc, code);
 
     std::fclose(fp);
     if (hdrs) curl_slist_free_all(hdrs);

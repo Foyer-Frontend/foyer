@@ -8,19 +8,15 @@
 
 namespace foyer::library {
 
-bool CoreInstallJob::start(std::string manifest_url, std::string only_core,
+bool CoreInstallJob::start(CoreManifest manifest, std::string only_core,
                            bool force) {
     return m_worker.start(
-        [this, url = std::move(manifest_url),
-               only = std::move(only_core), force](Worker& w) {
-            foyer::log::write("[install_job] starting; url=%s only=%s force=%d\n",
-                url.c_str(), only.c_str(), (int)force);
-            w.set_status("Fetching manifest...");
-            auto manifest = fetch_manifest(url);
-            foyer::log::write("[install_job] fetch_manifest returned %zu cores\n",
-                manifest.cores.size());
+        [this, manifest = std::move(manifest),
+               only = std::move(only_core), force](Worker& w) mutable {
+            foyer::log::write("[install_job] starting; %zu manifest cores; only=%s force=%d\n",
+                manifest.cores.size(), only.c_str(), (int)force);
             if (manifest.cores.empty()) {
-                w.set_status("Manifest fetch failed");
+                w.set_status("Manifest is empty");
                 return;
             }
             if (w.cancelled()) { w.set_status("Cancelled"); return; }

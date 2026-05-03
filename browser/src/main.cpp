@@ -214,9 +214,11 @@ int main(int /*argc*/, char** /*argv*/) {
             }
         }
 
-        // Spawn a background install worker. The worker now fetches
-        // the manifest itself, so the UI is responsive even during
-        // the (small) JSON pull as well as the (large) nro download.
+        // Manifest fetch runs on the main thread (~1 s on a typical
+        // connection, 7 KB JSON) — worker-side fetches hit a libcurl
+        // -on-Switch quirk where the third-or-later worker thread's
+        // perform call can hang for ~90 s. The big nro download still
+        // happens on the worker, where blocking the UI matters.
         if (state.request_install_cores && !state.install_job.active()) {
             state.request_install_cores = false;
             std::string only = std::move(state.install_only_core);
@@ -224,15 +226,24 @@ int main(int /*argc*/, char** /*argv*/) {
             const bool force = state.install_force;
             state.install_force = false;
 
-            const bool started = state.install_job.start(
-                foyer::library::config().cores_manifest_url,
-                std::move(only), force);
-            if (!started) {
-                state.banner_text = "Install worker failed to start";
+            state.banner_text = "Fetching manifest...";
+            state.banner_ttl  = 60;
+            app.tick();
+            auto manifest = foyer::library::fetch_manifest(
+                foyer::library::config().cores_manifest_url);
+            if (manifest.cores.empty()) {
+                state.banner_text = "Manifest fetch failed";
                 state.banner_ttl  = 240;
             } else {
-                state.banner_text = "Starting...";
-                state.banner_ttl  = 60;
+                const bool started = state.install_job.start(
+                    std::move(manifest), std::move(only), force);
+                if (!started) {
+                    state.banner_text = "Install worker failed to start";
+                    state.banner_ttl  = 240;
+                } else {
+                    state.banner_text = "Starting...";
+                    state.banner_ttl  = 60;
+                }
             }
         } else if (state.request_install_cores) {
             state.request_install_cores = false;
