@@ -29,11 +29,16 @@ CoreManifest fetch_manifest(const std::string& manifest_url);
 
 // Per-core install outcome reported to the progress callback.
 enum class InstallAction {
-    Skipped,    // already present at expected size
+    Skipped,    // already present at the manifest's version
     Installed,  // wasn't on disk, downloaded fresh
-    Updated,    // size mismatch — replaced
+    Updated,    // version mismatch — replaced
     Failed,     // network or write error
 };
+
+// Read the version sidecar (`<nro>.version`) we write next to each
+// installed core. Empty string means: never installed via this code
+// path, or the sidecar was deleted.
+std::string installed_core_version(std::string_view core_nro);
 
 struct InstallProgress {
     int           index = 0;     // 1-based, including skips

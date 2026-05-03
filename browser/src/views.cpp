@@ -1303,31 +1303,41 @@ std::vector<Item> build_items(Category cat, const State& s) {
             rows.push_back({ItemKind::Action, "Refresh manifest", "A: fetch",
                 "Pulls the latest foyer-cores release listing.",     OpUpdRefreshManifest});
 
-            // Show only INSTALLED cores whose local size doesn't match the
-            // manifest — i.e. an actual update is pending. New cores live
-            // in Settings → Emulator (catalog/install). Up-to-date cores
-            // simply don't clutter this category at all.
-            auto size_of = [](const std::string& path) -> std::size_t {
+            // Show only INSTALLED cores whose recorded version differs
+            // from the manifest — i.e. a real release-tag update is
+            // pending. Compare against the `<nro>.version` sidecar
+            // (written at install time). Size compare is unreliable
+            // (recompiles can shift bytes for no functional change, and
+            // genuine fixes can preserve byte counts).
+            auto file_present = [](const std::string& path) -> bool {
                 struct stat st{};
-                return (::stat(path.c_str(), &st) == 0) ? (std::size_t)st.st_size : 0;
+                return ::stat(path.c_str(), &st) == 0 && st.st_size > 0;
             };
 
             const auto& mc = manifest_cache();
             int outdated_count = 0;
             if (mc.loaded && !mc.data.cores.empty()) {
                 for (const auto& c : mc.data.cores) {
-                    const auto local = size_of(std::string{"/foyer/cores/"} + c.nro);
-                    if (local == 0) continue;                       // not installed → Emulator
-                    if (c.size > 0 && local == c.size) continue;    // up to date
+                    if (!file_present(std::string{"/foyer/cores/"} + c.nro))
+                        continue;                                   // not installed → Emulator
+                    const auto local_v = library::installed_core_version(c.nro);
+                    // Up to date when the sidecar matches exactly.
+                    // Sidecar empty = legacy install, no recorded version
+                    // — surface as "update available" to migrate.
+                    if (!local_v.empty() && local_v == c.version)
+                        continue;
                     if (outdated_count == 0) {
                         rows.push_back({ItemKind::Static, "Pending core updates", "", "", 0});
                         rows.push_back({ItemKind::Action,
                             "Update all", "A: run",
                             "", OpUpdInstallCores});
                     }
+                    std::string subtitle = local_v.empty()
+                        ? std::string{"unknown -> v"} + c.version
+                        : std::string{"v"} + local_v + " -> v" + c.version;
                     Item it{ItemKind::Action,
                             std::string{"  "} + c.name,
-                            "update",
+                            std::move(subtitle),
                             "",
                             OpUpdInstallSingleCore};
                     it.data = c.name;

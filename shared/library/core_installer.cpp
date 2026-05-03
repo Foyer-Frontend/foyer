@@ -3,6 +3,7 @@
 #include "platform/log.hpp"
 #include "scrapers/cache.hpp"
 
+#include <cstdio>
 #include <sys/stat.h>
 
 #include <yyjson.h>
@@ -23,7 +24,30 @@ std::size_t file_size(const std::string& path) {
     return (std::size_t)st.st_size;
 }
 
+void write_version_sidecar(const std::string& nro_path,
+                           const std::string& version) {
+    if (version.empty()) return;
+    const std::string side = nro_path + ".version";
+    if (auto* f = std::fopen(side.c_str(), "wb")) {
+        std::fwrite(version.data(), 1, version.size(), f);
+        std::fclose(f);
+    }
+}
+
 } // namespace
+
+std::string installed_core_version(std::string_view core_nro) {
+    const std::string side = std::string{kCoresDir} + "/"
+                           + std::string{core_nro} + ".version";
+    auto* f = std::fopen(side.c_str(), "rb");
+    if (!f) return {};
+    char buf[64];
+    auto n = std::fread(buf, 1, sizeof(buf), f);
+    std::fclose(f);
+    while (n > 0 && (buf[n-1] == '\n' || buf[n-1] == '\r' || buf[n-1] == ' '))
+        n--;
+    return std::string(buf, n);
+}
 
 CoreManifest fetch_manifest(const std::string& url) {
     CoreManifest m;
@@ -84,11 +108,18 @@ InstallTotals install_cores(const CoreManifest& manifest,
         const auto have = file_size(dest);
         const bool was_present = (have > 0);
 
-        if (was_present && c.size > 0 && have == c.size) {
-            p.action = InstallAction::Skipped;
-            out.skipped++;
-            if (progress) progress(p);
-            continue;
+        // Skip when the installed version sidecar matches the manifest's
+        // version exactly. Sidecar is the source of truth — size compare
+        // is a fragile proxy (recompiles with no functional change can
+        // shift bytes; genuine fixes can preserve them).
+        if (was_present) {
+            const auto installed = installed_core_version(c.nro);
+            if (!installed.empty() && installed == c.version) {
+                p.action = InstallAction::Skipped;
+                out.skipped++;
+                if (progress) progress(p);
+                continue;
+            }
         }
 
         const bool ok = foyer::net::get_to_file(c.url, dest);
@@ -98,11 +129,12 @@ InstallTotals install_cores(const CoreManifest& manifest,
             foyer::log::write("[core_install] failed: %s -> %s\n",
                 c.url.c_str(), dest.c_str());
         } else {
+            write_version_sidecar(dest, c.version);
             p.action = was_present ? InstallAction::Updated : InstallAction::Installed;
             (was_present ? out.updated : out.installed)++;
-            foyer::log::write("[core_install] %s %s (%zu bytes)\n",
+            foyer::log::write("[core_install] %s %s v%s (%zu bytes)\n",
                 was_present ? "updated" : "installed",
-                c.nro.c_str(), file_size(dest));
+                c.nro.c_str(), c.version.c_str(), file_size(dest));
         }
 
         if (progress) progress(p);

@@ -29,7 +29,10 @@ constexpr CoreDef kCoresMgba[]        = {
     { "vba_next", "VBA Next" },
     { "gpsp",     "gpSP (arm64 dynarec)" },
 };
-constexpr CoreDef kCoresMupen64[]     = { { "mupen64plus",   "Mupen64Plus"   } };
+constexpr CoreDef kCoresMupen64[]     = {
+    { "mupen64plus", "Mupen64Plus" },
+    { "parallel_n64", "parallel-n64 (16:9 hacks DB)" },
+};
 constexpr CoreDef kCoresMelonds[]     = { { "melonds",       "melonDS"       } };
 constexpr CoreDef kCoresDolphin[]     = { { "dolphin",       "Dolphin"       } };
 // Genesis / Mega Drive / Master System / Game Gear share the same core
