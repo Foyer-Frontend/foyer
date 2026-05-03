@@ -27,6 +27,7 @@ constexpr CoreDef kCoresGambatte[]    = {
 constexpr CoreDef kCoresMgba[]        = {
     { "mgba",     "mGBA"     },
     { "vba_next", "VBA Next" },
+    { "gpsp",     "gpSP (arm64 dynarec)" },
 };
 constexpr CoreDef kCoresMupen64[]     = { { "mupen64plus",   "Mupen64Plus"   } };
 constexpr CoreDef kCoresMelonds[]     = { { "melonds",       "melonDS"       } };
@@ -53,7 +54,10 @@ constexpr CoreDef kCoresRace[]        = {
 };
 constexpr CoreDef kCoresStella[]      = { { "stella",        "Stella"        } };
 constexpr CoreDef kCoresProsystem[]   = { { "prosystem",     "ProSystem"     } };
-constexpr CoreDef kCoresHandy[]       = { { "handy",         "Handy"         } };
+constexpr CoreDef kCoresHandy[]       = {
+    { "handy",         "Handy"      },
+    { "mednafen_lynx", "Beetle Lynx"},
+};
 // 32X and SegaCD currently ship via picodrive only.
 constexpr CoreDef kCoresPicoOnly[]    = { { "picodrive",     "PicoDrive"     } };
 
