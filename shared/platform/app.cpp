@@ -357,6 +357,12 @@ void userAppInit(void) {
 
     // BSD sockets — needed by libcurl for the scrapers + RetroAchievements.
     // Use the applet-friendly profile so foyer plays nicely under hbloader.
+    // num_bsd_sessions bumped to 8 from 3: with the v0.2.11 background
+    // workers, two transfers can be in flight simultaneously (boot-time
+    // foyer manifest check + a user-triggered core install/scrape).
+    // Each transfer needs ~2 sessions (DNS + connection), so 3 was tight
+    // enough to cause the second worker's curl_easy_perform to hang
+    // waiting for a session to free.
     static const SocketInitConfig kSockets = {
         .tcp_tx_buf_size      = 1024 * 32,
         .tcp_rx_buf_size      = 1024 * 64,
@@ -365,7 +371,7 @@ void userAppInit(void) {
         .udp_tx_buf_size      = 0x2400,
         .udp_rx_buf_size      = 0xA500,
         .sb_efficiency        = 4,
-        .num_bsd_sessions     = 3,
+        .num_bsd_sessions     = 8,
         .bsd_service_type     = BsdServiceType_Auto,
     };
     if (R_FAILED(rc = socketInitialize(&kSockets)))      diagAbortWithResult(rc);

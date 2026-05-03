@@ -13,8 +13,12 @@ bool CoreInstallJob::start(std::string manifest_url, std::string only_core,
     return m_worker.start(
         [this, url = std::move(manifest_url),
                only = std::move(only_core), force](Worker& w) {
+            foyer::log::write("[install_job] starting; url=%s only=%s force=%d\n",
+                url.c_str(), only.c_str(), (int)force);
             w.set_status("Fetching manifest...");
             auto manifest = fetch_manifest(url);
+            foyer::log::write("[install_job] fetch_manifest returned %zu cores\n",
+                manifest.cores.size());
             if (manifest.cores.empty()) {
                 w.set_status("Manifest fetch failed");
                 return;

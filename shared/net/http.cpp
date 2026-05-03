@@ -100,13 +100,19 @@ Response get(const std::string& url, const std::vector<std::string>& headers,
     init();
     Response r;
     auto* curl = curl_easy_init();
-    if (!curl) return r;
+    if (!curl) {
+        foyer::log::write("[http] curl_easy_init failed for GET %s\n", url.c_str());
+        return r;
+    }
     auto* hdrs = build_headers(headers);
     apply_common(curl, url, hdrs, &cancel, /*streaming=*/false);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, mem_writer);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA,     &r.body);
 
+    foyer::log::write("[http] GET %s start\n", url.c_str());
     const auto rc = curl_easy_perform(curl);
+    foyer::log::write("[http] GET %s rc=%d body=%zu\n",
+        url.c_str(), (int)rc, r.body.size());
     if (rc != CURLE_OK && rc != CURLE_ABORTED_BY_CALLBACK) {
         foyer::log::write("[http] GET %s failed: %s\n", url.c_str(), curl_easy_strerror(rc));
     }
