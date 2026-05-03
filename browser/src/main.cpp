@@ -190,6 +190,8 @@ int main(int /*argc*/, char** /*argv*/) {
             state.request_install_cores = false;
             const std::string only = std::move(state.install_only_core);
             state.install_only_core.clear();
+            const bool force = state.install_force;
+            state.install_force = false;
 
             auto manifest = foyer::library::fetch_manifest(
                 foyer::library::config().cores_manifest_url);
@@ -218,7 +220,7 @@ int main(int /*argc*/, char** /*argv*/) {
                             state.banner_text = b;
                             state.banner_ttl  = 60;
                             app.tick();
-                        });
+                        }, force);
                     char done[200];
                     std::snprintf(done, sizeof(done),
                         "Cores: %d installed, %d updated, %d skipped, %d failed",

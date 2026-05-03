@@ -55,14 +55,16 @@ struct InstallTotals {
 };
 
 // Install/update every core in `manifest` to /foyer/cores/<nro>. Existing
-// files that already match the manifest size are skipped. `progress` (if
-// set) is invoked once per core after each one resolves.
+// files at the manifest's version are skipped unless `force` is true
+// (re-install path: redownload regardless of recorded version).
+// `progress` (if set) is invoked once per core after each one resolves.
 //
 // Network IO is synchronous; expect this to take many seconds per core.
 // Caller is responsible for pumping the UI loop between callbacks if it
 // wants live progress.
 InstallTotals install_cores(
     const CoreManifest& manifest,
-    std::function<void(const InstallProgress&)> progress = {});
+    std::function<void(const InstallProgress&)> progress = {},
+    bool force = false);
 
 } // namespace foyer::library

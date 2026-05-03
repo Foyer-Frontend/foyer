@@ -145,7 +145,6 @@ void App::init_gfx() {
     }
 
     // Probe the natively-attached framebuffer size (handheld vs docked).
-    const auto fb = nwindowGetDefault();
     NWindow* win = nwindowGetDefault();
     u32 w = 0, h = 0;
     nwindowGetDimensions(win, &w, &h);

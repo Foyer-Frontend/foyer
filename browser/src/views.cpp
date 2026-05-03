@@ -1123,7 +1123,7 @@ enum : int {
     OpEmuList,
     OpAccCreds,
     OpUpdScrapeAll, OpUpdInstalledCores, OpUpdInstallCores,
-    OpUpdRefreshManifest, OpUpdInstallSingleCore,
+    OpUpdRefreshManifest, OpUpdInstallSingleCore, OpUpdReinstallSingleCore,
     OpUpdCheckFoyer, OpUpdInstallFoyer,
     OpEmuSysCore,    // Cycle through available cores for one system.
     OpExpMtp, OpExpMtpAutostart, OpExpDebugLog,
@@ -1209,9 +1209,9 @@ std::vector<Item> build_items(Category cat, const State& s) {
                 "Pulls the latest foyer-cores release listing from GitHub.",
                 OpUpdRefreshManifest});
 
-            auto size_of = [](const std::string& path) -> std::size_t {
+            auto file_present = [](const std::string& path) -> bool {
                 struct stat st{};
-                return (::stat(path.c_str(), &st) == 0) ? (std::size_t)st.st_size : 0;
+                return ::stat(path.c_str(), &st) == 0 && st.st_size > 0;
             };
 
             const auto& mc = manifest_cache();
@@ -1220,19 +1220,36 @@ std::vector<Item> build_items(Category cat, const State& s) {
                     std::string{"Available cores (manifest "} + mc.data.version + ")",
                     "", "", 0});
                 for (const auto& c : mc.data.cores) {
-                    const auto local = size_of(std::string{"/foyer/cores/"} + c.nro);
-                    if (local == 0) {
-                        Item it{ItemKind::Action,
-                                std::string{"  "} + c.name,
-                                "install",
-                                "",
-                                OpUpdInstallSingleCore};
-                        it.data = c.name;
-                        rows.push_back(std::move(it));
+                    const bool installed =
+                        file_present(std::string{"/foyer/cores/"} + c.nro);
+                    Item it;
+                    it.kind  = ItemKind::Action;
+                    it.label = std::string{"  "} + c.name;
+                    it.data  = c.name;
+                    if (!installed) {
+                        // Not on disk -> Download.
+                        it.value   = "download";
+                        it.payload = OpUpdInstallSingleCore;
                     } else {
-                        rows.push_back({ItemKind::Static,
-                            std::string{"  "} + c.name, "installed", "", 0});
+                        const auto local_v = library::installed_core_version(c.nro);
+                        const bool up_to_date =
+                            !local_v.empty() && local_v == c.version;
+                        if (up_to_date) {
+                            // Already at the manifest's version -> Re-install
+                            // (forces a redownload, useful if the user
+                            // suspects a corrupt nro).
+                            it.value   = std::string{"v"} + local_v + " - reinstall";
+                            it.payload = OpUpdReinstallSingleCore;
+                        } else {
+                            // Installed but a newer release exists. Same
+                            // action also surfaces in Settings -> Updates.
+                            it.value = local_v.empty()
+                                ? std::string{"unknown -> v"} + c.version + " (update)"
+                                : std::string{"v"} + local_v + " -> v" + c.version + " (update)";
+                            it.payload = OpUpdInstallSingleCore;
+                        }
                     }
+                    rows.push_back(std::move(it));
                 }
             } else {
                 rows.push_back({ItemKind::Static,
@@ -1814,14 +1831,6 @@ void update(State& s, const Library& lib,
     s.frame_counter++;
     if (s.banner_ttl > 0) s.banner_ttl--;
 
-    // Snapshot the touch state into State so draw() can render markers
-    // even when no view-specific gesture handler is running.
-    s.last_touch_count = touch.count;
-    for (int i = 0; i < touch.count && i < 4; i++) {
-        s.last_touch_x[i] = touch.points[i].x;
-        s.last_touch_y[i] = touch.points[i].y;
-    }
-
     // Quit confirmation modal intercepts everything while open.
     if (s.quit_confirm_open) {
         reset_input_state(s);
@@ -1942,6 +1951,14 @@ void update(State& s, const Library& lib,
 
         if (down & HidNpadButton_AnyDown) s.popup_index = (s.popup_index + 1) % n;
         if (down & HidNpadButton_AnyUp)   s.popup_index = (s.popup_index - 1 + n) % n;
+        // L/R shoulder paging — popup is short, so a single shoulder press
+        // jumps to the first / last item. Consistent gesture with longer
+        // lists (Settings content, game list).
+        if (n > 0) {
+            if (const int sh = shoulder_step(s, held, down)) {
+                s.popup_index = (sh > 0) ? n - 1 : 0;
+            }
+        }
         if (down & HidNpadButton_B)    { s.popup_open = false; return; }
         if (down & HidNpadButton_Plus) { s.popup_open = false; return; }
         if (down & HidNpadButton_A) {
@@ -2201,6 +2218,14 @@ void update(State& s, const Library& lib,
             if (s.detail_core_index > 0) s.detail_core_index--;
         }
 
+        // L/R shoulder jumps to first / last entry. The list is short
+        // (cores per system), so paging by N rows isn't meaningful.
+        if (row_count > 0) {
+            if (const int sh = shoulder_step(s, held, down)) {
+                s.detail_core_index = (sh > 0) ? row_count - 1 : 0;
+            }
+        }
+
         if (down & HidNpadButton_B) {
             s.view = View::System;
         }
@@ -2319,6 +2344,24 @@ void update(State& s, const Library& lib,
                 s.settings_row = (s.settings_row - 1 + row_count) % row_count;
             }
 
+            // L/R shoulders page through the settings list a screenful at
+            // a time, matching the System view's game-list behavior.
+            if (row_count > 0) {
+                if (const int sh = shoulder_step(s, held, down)) {
+                    constexpr float kCardPad = 18.0f;
+                    constexpr float kRowH    = 60.0f;
+                    const float content_y = kTopBarH + 12.0f;
+                    const float content_h = h - content_y - kBottomBarH - 12.0f;
+                    const float card_h    = content_h - 56;
+                    const int   page = std::max(1,
+                        (int)((card_h - kCardPad * 2.0f) / kRowH));
+                    int next = s.settings_row + sh * page;
+                    if (next < 0) next = 0;
+                    if (next >= row_count) next = row_count - 1;
+                    s.settings_row = next;
+                }
+            }
+
             if (s.settings_row >= row_count) return;
             const auto& it = rows[s.settings_row];
 
@@ -2397,7 +2440,14 @@ void update(State& s, const Library& lib,
                         } else if (it.payload == settings::OpUpdInstallSingleCore) {
                             s.request_install_cores = true;
                             s.install_only_core    = it.data;
+                            s.install_force        = false;
                             s.banner_text = std::string{"Installing "} + it.data + "...";
+                            s.banner_ttl  = 180;
+                        } else if (it.payload == settings::OpUpdReinstallSingleCore) {
+                            s.request_install_cores = true;
+                            s.install_only_core    = it.data;
+                            s.install_force        = true;
+                            s.banner_text = std::string{"Re-installing "} + it.data + "...";
                             s.banner_ttl  = 180;
                         } else if (it.payload == settings::OpUpdCheckFoyer) {
                             s.request_check_foyer_update = true;
@@ -2569,37 +2619,6 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
     draw_popup(vg, w, h, s);
     draw_quit_confirm(vg, w, h, s);
     draw_update_confirm(vg, w, h, s);
-
-    // ---- TOUCH DEBUG OVERLAY -------------------------------------------
-    // Renders a magenta ring under every reported touch point + a corner
-    // HUD with the live finger count. If you can see the rings move with
-    // your finger, the panel is reporting touches — anything not working
-    // beyond that is a views-layer bug. If you see only the count
-    // ticking but no rings, something's mis-mapping coordinates. If the
-    // count never moves off zero, libnx isn't getting touch events
-    // (applet permission / docked mode / mis-init).
-    {
-        char hud[64];
-        std::snprintf(hud, sizeof(hud), "touch: %d", s.last_touch_count);
-        nvgFontSize(vg, 14.0f);
-        nvgFillColor(vg, nvgRGBA(0xC2, 0x86, 0xFF, 0xC0));
-        nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_TOP);
-        nvgText(vg, w - 12.0f, 4.0f, hud, nullptr);
-
-        for (int i = 0; i < s.last_touch_count && i < 4; i++) {
-            const float tx = s.last_touch_x[i];
-            const float ty = s.last_touch_y[i];
-            nvgBeginPath(vg);
-            nvgCircle(vg, tx, ty, 18.0f);
-            nvgStrokeColor(vg, nvgRGBA(0xFF, 0x3D, 0xC8, 0xE0));
-            nvgStrokeWidth(vg, 3.0f);
-            nvgStroke(vg);
-            nvgBeginPath(vg);
-            nvgCircle(vg, tx, ty, 4.0f);
-            nvgFillColor(vg, nvgRGBA(0xFF, 0x3D, 0xC8, 0xFF));
-            nvgFill(vg);
-        }
-    }
 
     // Banner (e.g., "Scraping NES…  3 / 24"). Drawn last so nothing covers it.
     if (s.banner_ttl > 0 && !s.banner_text.empty()) {

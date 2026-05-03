@@ -92,7 +92,8 @@ CoreManifest fetch_manifest(const std::string& url) {
 }
 
 InstallTotals install_cores(const CoreManifest& manifest,
-                            std::function<void(const InstallProgress&)> progress) {
+                            std::function<void(const InstallProgress&)> progress,
+                            bool force) {
     InstallTotals out;
     foyer::scrapers::ensure_parent_dir(std::string{kCoresDir} + "/.placeholder");
 
@@ -111,8 +112,9 @@ InstallTotals install_cores(const CoreManifest& manifest,
         // Skip when the installed version sidecar matches the manifest's
         // version exactly. Sidecar is the source of truth — size compare
         // is a fragile proxy (recompiles with no functional change can
-        // shift bytes; genuine fixes can preserve them).
-        if (was_present) {
+        // shift bytes; genuine fixes can preserve them). `force` bypasses
+        // the skip — used by the explicit "Re-install" action.
+        if (was_present && !force) {
             const auto installed = installed_core_version(c.nro);
             if (!installed.empty() && installed == c.version) {
                 p.action = InstallAction::Skipped;

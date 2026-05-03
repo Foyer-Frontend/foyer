@@ -74,6 +74,10 @@ struct State {
     // When non-empty, request_install_cores acts on just this one core.
     // Cleared by main.cpp after the install runs.
     std::string install_only_core;
+    // When true, install_cores is invoked with `force=true`, bypassing
+    // the version-match skip. Used by the explicit "Re-install" path.
+    // Cleared after the install runs.
+    bool        install_force            = false;
 
     // Self-update flow. Boot-time check populates `foyer_update_*` once
     // and a banner shows if a newer release is on GitHub.
@@ -95,13 +99,6 @@ struct State {
     // Per-frame counter incremented at the top of update(). Used as a coarse
     // "now" for hold/touch durations — seconds = frames / 60.
     std::uint32_t frame_counter = 0;
-
-    // Latest touch snapshot, copied from the platform Touch each frame so
-    // draw() can paint a debug overlay (visible markers under each finger)
-    // without taking a dependency on the App.
-    int   last_touch_count = 0;
-    float last_touch_x[4]  = {0, 0, 0, 0};
-    float last_touch_y[4]  = {0, 0, 0, 0};
 
     // Shoulder-button hold counters. Reset to 0 the frame the button is
     // released, otherwise increment. Auto-repeat fires once `hold > 30` and
