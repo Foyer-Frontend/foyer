@@ -47,6 +47,19 @@ void apply_common(CURL* curl, const std::string& url, curl_slist* hdrs,
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL,       1L);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
+    // Force a fresh TCP+TLS handshake per call and don't pool the
+    // connection afterwards. Field reports show repeat fetches from
+    // worker threads hanging ~15-90 s before timing out; the most
+    // likely cause is libcurl-on-devkitA64 reusing a stale pooled
+    // connection that the kernel-side socket has already closed.
+    // Cost: ~100-200 ms per call for the fresh handshake. Worth it.
+    curl_easy_setopt(curl, CURLOPT_FRESH_CONNECT, 1L);
+    curl_easy_setopt(curl, CURLOPT_FORBID_REUSE,  1L);
+    // Pin HTTP/1.1. github's HTTP/2 server uses stream multiplexing
+    // over a single TCP connection; if the curl HTTP/2 implementation
+    // has any thread-safety issues, sticking to 1.1 sidesteps them.
+    curl_easy_setopt(curl, CURLOPT_HTTP_VERSION,
+                     (long)CURL_HTTP_VERSION_1_1);
     if (streaming) {
         // Multi-MB downloads: no overall wall-clock timeout
         // (a 30 MB nro on a 2 Mbps connection takes ~120s and is
