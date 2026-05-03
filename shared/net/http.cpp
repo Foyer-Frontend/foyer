@@ -47,16 +47,14 @@ void apply_common(CURL* curl, const std::string& url, curl_slist* hdrs,
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL,       1L);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
-    // Don't pool the TCP/TLS connection after this call — the next
-    // perform() should start fresh. The v0.2.15 logs showed repeat
-    // fetches from worker threads hanging 15-90 s, consistent with
-    // libcurl-on-devkitA64 reusing a connection the kernel had
-    // silently closed. Costs ~100-200 ms per call for the next
-    // handshake; cheap relative to the transfer body sizes we deal
-    // with. (HTTP_VERSION pin removed — caused instant failures on
-    // some curl builds; FRESH_CONNECT removed too, FORBID_REUSE
-    // alone covers the stale-connection case.)
-    curl_easy_setopt(curl, CURLOPT_FORBID_REUSE, 1L);
+    // History: v0.2.17 added CURLOPT_HTTP_VERSION = 1.1 +
+    // CURLOPT_FRESH_CONNECT + CURLOPT_FORBID_REUSE to dodge a
+    // suspected stale-pooled-connection hang. All three turned out
+    // to break github's three-hop redirect chain (latest -> versioned
+    // -> CDN) and made manifest fetches return HTML instead of JSON.
+    // None of those options are set here. The hang is back to being
+    // intermittent rather than universal — but a fetch returning the
+    // wrong body silently is worse than one that times out.
     if (streaming) {
         // Multi-MB downloads: no overall wall-clock timeout
         // (a 30 MB nro on a 2 Mbps connection takes ~120s and is
