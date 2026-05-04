@@ -103,6 +103,11 @@ void App::init_fs() {
         "/foyer/system",
         "/foyer/saves",
         "/foyer/states",
+        // Bundled-asset destinations. Browser extracts romfs:/bezels/
+        // and romfs:/cheats/ here on first boot; user replacements drop
+        // straight in.
+        "/foyer/bezels",
+        "/foyer/cheats",
         // Default rom root. Lives under /foyer/ so the whole foyer state
         // tree is self-contained on the SD root.
         "/foyer/roms",

@@ -20,6 +20,7 @@ add_executable(foyer
     src/theme.cpp
     src/launch.cpp
     src/mtp.cpp
+    src/seed_assets.cpp
 )
 
 target_link_libraries(foyer PRIVATE foyer_shared libhaze)

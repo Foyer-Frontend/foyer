@@ -1199,6 +1199,7 @@ enum : int {
     OpShader,
     OpRunahead,
     OpInstallShaderPresets,
+    OpInstallCheatPacks,
     OpUpdCheckFoyer, OpUpdInstallFoyer,
     OpEmuSysCore,    // Cycle through available cores for one system.
     OpExpMtp, OpExpMtpAutostart, OpExpDebugLog,
@@ -1455,6 +1456,9 @@ std::vector<Item> build_items(Category cat, const State& s) {
             rows.push_back({ItemKind::Action, "Install shader presets", "run",
                 "Downloads the foyer-shaders catalogue into "
                 "/foyer/shaders/.",                                  OpInstallShaderPresets});
+            rows.push_back({ItemKind::Action, "Install cheat packs",   "run",
+                "Per-system cheat packs from libretro-database. "
+                "Installed under /foyer/cheats/<system>/.",          OpInstallCheatPacks});
 
             // Show only INSTALLED cores whose recorded version differs
             // from the manifest — i.e. a real release-tag update is
@@ -2765,6 +2769,10 @@ void update(State& s, const Library& lib,
                         } else if (it.payload == settings::OpInstallShaderPresets) {
                             s.request_install_shaders = true;
                             s.banner_text = "Fetching shader manifest...";
+                            s.banner_ttl  = 180;
+                        } else if (it.payload == settings::OpInstallCheatPacks) {
+                            s.request_install_cheats = true;
+                            s.banner_text = "Fetching cheats manifest...";
                             s.banner_ttl  = 180;
                         } else if (it.payload == settings::OpUpdInstallSingleCore) {
                             s.request_install_cores = true;

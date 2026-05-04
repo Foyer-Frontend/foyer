@@ -16,6 +16,7 @@
 #include "library/core_installer.hpp"
 #include "library/foyer_updater.hpp"
 #include "library/shader_installer.hpp"
+#include "library/cheat_installer.hpp"
 #include "net/http.hpp"
 #include "scrapers/cache.hpp"
 #include "scrapers/libretro_thumbnails.hpp"
@@ -26,6 +27,7 @@
 #include "views.hpp"
 #include "launch.hpp"
 #include "mtp.hpp"
+#include "seed_assets.hpp"
 
 #include <cstdio>
 #include <cstring>
@@ -57,6 +59,11 @@ int main(int /*argc*/, char** /*argv*/) {
     apply_staged_update_if_present();
 
     foyer::platform::App app;
+
+    // Seed bundled bezels + cheats from romfs into the SD tree on
+    // first boot (and every boot a NEW system / cheat ships in the
+    // browser's romfs). User-installed files are never overwritten.
+    foyer::browser::seed_assets_if_missing();
 
     // Initialise curl on the main thread BEFORE any worker spawns
     // one. curl_global_init must run single-threaded; if a worker
@@ -343,6 +350,51 @@ int main(int /*argc*/, char** /*argv*/) {
                     char b[120];
                     std::snprintf(b, sizeof(b),
                         "Shader presets ready (%d new, %d updated, %d skipped)",
+                        totals.installed, totals.updated, totals.skipped);
+                    state.banner_text = b;
+                }
+                state.banner_ttl = 360;
+            }
+        }
+
+        // Cheat-pack install. Same shape as shaders: blocking call on
+        // the main thread, banner-driven progress, atomic per-pack
+        // .tmp -> rename via libarchive.
+        if (state.request_install_cheats) {
+            state.request_install_cheats = false;
+            state.banner_text = "Fetching cheats manifest...";
+            state.banner_ttl  = 60;
+            app.tick();
+            auto cm = foyer::library::fetch_cheat_manifest(
+                foyer::library::config().cheats_manifest_url);
+            if (cm.packs.empty()) {
+                state.banner_text = "Cheats manifest fetch failed";
+                state.banner_ttl  = 240;
+            } else {
+                const auto totals = foyer::library::install_cheats(cm,
+                    [&](const foyer::library::CheatInstallProgress& p) {
+                        char b[160];
+                        const char* verb =
+                            p.action == foyer::library::CheatInstallAction::Skipped   ? "skipped" :
+                            p.action == foyer::library::CheatInstallAction::Updated   ? "updated" :
+                            p.action == foyer::library::CheatInstallAction::Installed ? "installed"
+                                                                                       : "FAILED";
+                        std::snprintf(b, sizeof(b), "[%d/%d] %s - %s",
+                            p.index, p.total, p.name.c_str(), verb);
+                        state.banner_text = b;
+                        state.banner_ttl  = 60;
+                        app.tick();
+                    });
+                if (totals.failed > 0) {
+                    char b[120];
+                    std::snprintf(b, sizeof(b),
+                        "%d cheat pack%s failed - check log",
+                        totals.failed, totals.failed == 1 ? "" : "s");
+                    state.banner_text = b;
+                } else {
+                    char b[160];
+                    std::snprintf(b, sizeof(b),
+                        "Cheat packs ready (%d new, %d updated, %d skipped)",
                         totals.installed, totals.updated, totals.skipped);
                     state.banner_text = b;
                 }

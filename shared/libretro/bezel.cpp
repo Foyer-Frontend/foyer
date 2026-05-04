@@ -18,21 +18,24 @@ bool exists(const std::string& path) {
     return ::stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode);
 }
 
-// Picks the PNG path to use; per-rom wins, per-system is the fallback.
-// Returns "" if neither file is on disk.
+// Picks the PNG path to use; per-rom wins, per-system is the fallback,
+// /foyer/bezels/default.png is the catch-all so every game gets at
+// least the generic CRT-TV frame the browser seeds on first boot.
+// Returns "" only if even the catch-all is missing.
 std::string resolve_path() {
-    if (g_folder.empty()) return {};
-
     char buf[512];
-    if (!g_stem.empty()) {
+    if (!g_folder.empty() && !g_stem.empty()) {
         std::snprintf(buf, sizeof(buf),
             "/foyer/bezels/%s/%s.png", g_folder.c_str(), g_stem.c_str());
         if (exists(buf)) return std::string{buf};
     }
-    std::snprintf(buf, sizeof(buf),
-        "/foyer/bezels/%s.png", g_folder.c_str());
-    if (exists(buf)) return std::string{buf};
-
+    if (!g_folder.empty()) {
+        std::snprintf(buf, sizeof(buf),
+            "/foyer/bezels/%s.png", g_folder.c_str());
+        if (exists(buf)) return std::string{buf};
+    }
+    static constexpr const char* kDefault = "/foyer/bezels/default.png";
+    if (exists(kDefault)) return kDefault;
     return {};
 }
 

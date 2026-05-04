@@ -179,6 +179,10 @@ void load_locked() {
         v && yyjson_is_str(v)) {
         g_config.foyer_manifest_url = yyjson_get_str(v);
     }
+    if (auto* v = yyjson_obj_get(root, "cheats_manifest_url");
+        v && yyjson_is_str(v)) {
+        g_config.cheats_manifest_url = yyjson_get_str(v);
+    }
     if (auto* obj = yyjson_obj_get(root, "default_core_per_system");
         obj && yyjson_is_obj(obj)) {
         std::size_t i, max; yyjson_val *k, *v;

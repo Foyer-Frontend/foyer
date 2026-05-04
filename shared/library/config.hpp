@@ -66,6 +66,13 @@ struct Config {
     std::string  shaders_manifest_url =
         "https://github.com/foyer-frontend/foyer-shaders/releases/latest/download/manifest.json";
 
+    // foyer-cheats per-system pack catalogue. CI re-slices
+    // libretro-database/cht weekly + on each upstream release; the
+    // manifest tracks which upstream version the packs were sliced
+    // from so foyer can show "based on libretro-database vX.Y.Z".
+    std::string  cheats_manifest_url =
+        "https://github.com/foyer-frontend/foyer-cheats/releases/latest/download/manifest.json";
+
     // Per-system core override. Stored flat to keep the header light; the
     // list is short (≤20 systems) so linear lookup is fine.
     struct PerSystemCore { std::string folder; std::string core; };

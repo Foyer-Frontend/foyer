@@ -11,15 +11,16 @@ namespace foyer::libretro {
 // Lookup order (first match wins):
 //   1. /foyer/bezels/<system_folder>/<rom_stem>.png   (per-rom)
 //   2. /foyer/bezels/<system_folder>.png              (per-system)
+//   3. /foyer/bezels/default.png                      (catch-all CRT TV)
 //
 // The PNG is expected to be the full screen size with a transparent
 // hole where the emulator output should show through. We composite it
 // AFTER the video sink and BEFORE the pause overlay so the overlay
 // stays on top of bezel art.
 //
-// No-op when neither file exists. Caller tells us once via
-// set_rom_id() what to look for; subsequent draw calls are cheap (the
-// nanovg image handle is cached).
+// (3) is seeded by the browser on first boot from its bundled romfs,
+// so every game gets at least the generic CRT TV frame out of the box.
+// No-op only if even the default has been deleted from SD.
 void set_bezel_rom_id(const std::string& system_folder,
                       const std::string& rom_stem);
 

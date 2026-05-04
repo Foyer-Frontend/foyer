@@ -1,0 +1,18 @@
+foyer bundles bezel art adapted from libretro/common-overlays
+(https://github.com/libretro/common-overlays), licensed under the
+Creative Commons Attribution 4.0 International license:
+
+  https://creativecommons.org/licenses/by/4.0/
+
+Source files used:
+  - borders/img/nes-smb2-integer.png
+  - borders/img/snes-lttp.png
+  - borders/img/gb.png  (gb, gbc)
+  - borders/img/gba-4k.png  (gba)
+  - borders/img/tv-integer.png  (default, plus tinted variations)
+  - borders/animated-border/img-md/main_retroarch.png  (genesis, megadrive)
+  - borders/animated-border/img-psx/main_body_lights.png  (psx)
+
+Attribution: libretro contributors. Foyer's adaptations (resize +
+per-system tints + system labels) are released under the same
+CC-BY-4.0 license.
