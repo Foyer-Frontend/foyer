@@ -19,6 +19,7 @@ constexpr const char* kMainItems[] = {
     "Load State",
     "Settings",
     "Core Options",
+    "Cheats",
     "Quit Game",
 };
 constexpr int kMainCount = (int)(sizeof(kMainItems) / sizeof(kMainItems[0]));
@@ -28,7 +29,8 @@ enum : int {
     MainLoad    = 1,
     MainSettings = 2,
     MainCoreOpts = 3,
-    MainQuit     = 4,
+    MainCheats   = 4,
+    MainQuit     = 5,
 };
 
 constexpr const char* kAspectLabels[] = {
@@ -150,6 +152,7 @@ Overlay::Action Overlay::update(std::uint64_t held, std::uint64_t down,
                     case State::LoadSlots:   focus = &m_slot_index;     count = kStateSlotCount; break;
                     case State::Settings:    focus = &m_settings_index; count = kAspectCount;   break;
                     case State::CoreOptions: focus = &m_core_opt_index; count = 0; break; // dynamic; A still works after focus
+                    case State::Cheats:      focus = &m_cheat_index;    count = (int)m_cheats.size(); break;
                     default: break;
                 }
                 if (focus && row_idx < count) {
@@ -197,6 +200,17 @@ Overlay::Action Overlay::update(std::uint64_t held, std::uint64_t down,
                     m_core_opt_index  = 0;
                     m_core_opt_scroll = 0;
                     break;
+                case MainCheats:
+                    m_state = State::Cheats;
+                    m_cheat_index = 0;
+                    if (m_cheats.empty()) {
+                        m_cheats = load_cheats_for(m_rom_folder, m_rom_stem);
+                        // Push the persisted enable state to the core
+                        // so toggles applied last session take effect
+                        // before the user opens the menu.
+                        if (!m_cheats.empty()) apply_cheats_to_core(m_cheats);
+                    }
+                    break;
                 case MainQuit:
                     m_state = State::Hidden;
                     return Action::Quit;
@@ -241,6 +255,24 @@ Overlay::Action Overlay::update(std::uint64_t held, std::uint64_t down,
             const auto saving = (m_state == State::SaveSlots);
             m_state = State::Hidden;
             return saving ? Action::SaveStateSlot : Action::LoadStateSlot;
+        }
+    } else if (m_state == State::Cheats) {
+        const int n = (int)m_cheats.size();
+        if (n == 0) {
+            if (pressed(HidNpadButton_B)) m_state = State::Main;
+        } else {
+            if (nav_up)   m_cheat_index = (m_cheat_index - 1 + n) % n;
+            if (nav_down) m_cheat_index = (m_cheat_index + 1) % n;
+            if (pressed(HidNpadButton_B)) m_state = State::Main;
+            else if (pressed(HidNpadButton_A)) {
+                // Toggle the focused cheat. Push the new enable list
+                // to the core immediately AND save back to the .cht so
+                // the toggle survives the next launch.
+                m_cheats[m_cheat_index].enabled =
+                    !m_cheats[m_cheat_index].enabled;
+                apply_cheats_to_core(m_cheats);
+                save_cheats_for(m_rom_folder, m_rom_stem, m_cheats);
+            }
         }
     }
     return Action::None;
@@ -296,6 +328,9 @@ void Overlay::draw_panel(NVGcontext* vg, float w, float h, const char* title) {
         case State::CoreOptions:
             hint = std::string{Left} + Right + " change   " + B + " back";
             break;
+        case State::Cheats:
+            hint = std::string{A} + " toggle   " + B + " back";
+            break;
         default: break;
     }
     if (!hint.empty()) nvgText(vg, w * 0.5f, py + ph - 16, hint.c_str(), nullptr);
@@ -333,6 +368,7 @@ void Overlay::draw(NVGcontext* vg, float w, float h) {
         case State::LoadSlots:   title = "Load State"; break;
         case State::Settings:    title = "Settings"; break;
         case State::CoreOptions: title = "Core Options"; break;
+        case State::Cheats:      title = "Cheats"; break;
         default: title = "";
     }
     draw_panel(vg, w, h, title);
@@ -415,6 +451,37 @@ void Overlay::draw(NVGcontext* vg, float w, float h) {
 
             const bool dim = !m_slots[i].exists && (m_state == State::LoadSlots);
             row(i, i == m_slot_index, label, ts, dim);
+        }
+    } else if (m_state == State::Cheats) {
+        if (m_cheats.empty()) {
+            nvgFontSize(vg, 18.0f);
+            nvgFillColor(vg, kTextDim);
+            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+            nvgText(vg, list_x + list_w * 0.5f, list_y + 64,
+                    "no cheats found for this rom", nullptr);
+            nvgFontSize(vg, 14.0f);
+            char hint_path[160];
+            std::snprintf(hint_path, sizeof(hint_path),
+                "drop a .cht file at /foyer/cheats/%s/%s.cht",
+                m_rom_folder.c_str(), m_rom_stem.c_str());
+            nvgText(vg, list_x + list_w * 0.5f, list_y + 90,
+                    hint_path, nullptr);
+        } else {
+            const int visible = (int)((ph - 84 - 28) / row_h);
+            // Same scroll-tracking pattern as the core-options view —
+            // keep the focused row in the visible window.
+            int first = std::max(0, m_cheat_index - visible / 2);
+            const int total = (int)m_cheats.size();
+            if (first + visible > total) first = std::max(0, total - visible);
+
+            for (int i = 0; i < visible && first + i < total; i++) {
+                const auto& c = m_cheats[first + i];
+                const bool sel = (first + i == m_cheat_index);
+                row(i, sel,
+                    c.desc.c_str(),
+                    c.enabled ? "ON" : "off",
+                    !c.enabled);
+            }
         }
     }
 }

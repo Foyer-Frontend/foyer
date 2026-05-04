@@ -3,11 +3,13 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <vector>
 
 #include <nanovg.h>
 #include <switch.h>
 
 #include "aspect.hpp"
+#include "cheats.hpp"
 #include "savestate.hpp"
 
 namespace foyer::libretro {
@@ -45,6 +47,16 @@ struct Overlay {
 
     void set_hooks(Hooks h) { m_hooks = std::move(h); }
 
+    // Tell the overlay which rom is loaded so the Cheats sub-screen
+    // can resolve /foyer/cheats/<system>/<stem>.cht. Must be called
+    // before the user opens Cheats; reasonable spot is right after
+    // Frontend::load_game succeeds.
+    void set_rom(std::string system_folder, std::string rom_stem) {
+        m_rom_folder = std::move(system_folder);
+        m_rom_stem   = std::move(rom_stem);
+        m_cheats.clear();   // force reload on next entry
+    }
+
     bool is_open() const { return m_state != State::Hidden; }
 
     // Per-frame update. `held`/`down` are libnx pad bitmasks for this
@@ -77,6 +89,7 @@ private:
         LoadSlots,
         Settings,
         CoreOptions,
+        Cheats,
     };
 
     void refresh_slots();
@@ -88,11 +101,19 @@ private:
     int          m_slot_index     = 0;
     int          m_core_opt_index = 0;
     int          m_core_opt_scroll = 0;
+    int          m_cheat_index    = 0;
 
     int          m_result_slot    = 0;
 
     StateSlot    m_slots[kStateSlotCount]{};
     bool         m_slots_dirty    = true;
+
+    // Cheats. Loaded lazily when the user enters the Cheats sub-screen
+    // via load_cheats_for(rom). m_rom_* are populated by set_rom()
+    // from the player after retro_load_game completes.
+    std::string        m_rom_folder;
+    std::string        m_rom_stem;
+    std::vector<Cheat> m_cheats;
 
     Hooks        m_hooks{};
 

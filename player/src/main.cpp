@@ -25,6 +25,7 @@
 #include "libretro/audio.hpp"
 #include "libretro/input.hpp"
 #include "libretro/overlay.hpp"
+#include "libretro/bezel.hpp"
 #include "libretro/savestate.hpp"
 #include "libretro/cheevos.hpp"
 
@@ -229,6 +230,23 @@ int main(int argc, char** argv) {
     // Pause overlay (Phase 4 polish: 10 timestamped slots).
     foyer::libretro::Overlay overlay;
     const std::string  rom_for_slots = rom_path;
+    // Tell the overlay which rom is loaded so the Cheats sub-screen
+    // can resolve /foyer/cheats/<system>/<stem>.cht. We derive the
+    // system folder from the rom path's parent directory and the
+    // stem from its filename.
+    {
+        std::string folder, stem;
+        const auto last_slash = rom_path.find_last_of('/');
+        if (last_slash != std::string::npos && last_slash > 0) {
+            const auto parent = rom_path.substr(0, last_slash);
+            const auto p2     = parent.find_last_of('/');
+            folder = (p2 == std::string::npos) ? parent : parent.substr(p2 + 1);
+            stem   = rom_path.substr(last_slash + 1);
+            const auto dot = stem.find_last_of('.');
+            if (dot != std::string::npos) stem = stem.substr(0, dot);
+        }
+        overlay.set_rom(folder, stem);
+    }
     overlay.set_hooks({
         .get_aspect = []() { return foyer::libretro::VideoSinkImpl::instance().aspect(); },
         .set_aspect = [](foyer::libretro::AspectMode m) {
@@ -269,14 +287,34 @@ int main(int argc, char** argv) {
 
     cheevos.identify_game(rom_path);
 
+    // Tell the bezel module which rom is loaded so it can pick up
+    // /foyer/bezels/<folder>/<stem>.png (per-rom) or
+    // /foyer/bezels/<folder>.png (per-system) if either exists.
+    {
+        std::string folder, stem;
+        const auto last_slash = rom_path.find_last_of('/');
+        if (last_slash != std::string::npos && last_slash > 0) {
+            const auto parent = rom_path.substr(0, last_slash);
+            const auto p2     = parent.find_last_of('/');
+            folder = (p2 == std::string::npos) ? parent : parent.substr(p2 + 1);
+            stem   = rom_path.substr(last_slash + 1);
+            const auto dot = stem.find_last_of('.');
+            if (dot != std::string::npos) stem = stem.substr(0, dot);
+        }
+        foyer::libretro::set_bezel_rom_id(folder, stem);
+    }
+
     // Once a game is loaded, the per-frame draw is the core's framebuffer
-    // composited with the (possibly hidden) pause overlay.
+    // composited with the (possibly hidden) pause overlay. Bezel art (if
+    // present) is sandwiched between them so it sits over the emulator
+    // output but UNDER the pause menu.
     app.set_draw_fn([&overlay](NVGcontext* vg, float w, float h) {
         nvgBeginPath(vg);
         nvgRect(vg, 0, 0, w, h);
         nvgFillColor(vg, nvgRGBA(0, 0, 0, 0xFF));
         nvgFill(vg);
         foyer::libretro::VideoSinkImpl::instance().draw(vg, w, h);
+        foyer::libretro::draw_bezel(vg, w, h);
         overlay.draw(vg, w, h);
     });
 
