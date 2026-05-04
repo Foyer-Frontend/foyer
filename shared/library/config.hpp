@@ -73,6 +73,14 @@ struct Config {
     std::string  cheats_manifest_url =
         "https://github.com/foyer-frontend/foyer-cheats/releases/latest/download/manifest.json";
 
+    // foyer-bezels per-system bezel catalogue. CI re-slices
+    // libretro/common-overlays weekly. Per-system PNGs land at
+    // /foyer/bezels/<system>.png; the player falls back to
+    // /foyer/bezels/default.png (bundled with the browser) for
+    // anything not covered.
+    std::string  bezels_manifest_url =
+        "https://github.com/foyer-frontend/foyer-bezels/releases/latest/download/manifest.json";
+
     // Per-system core override. Stored flat to keep the header light; the
     // list is short (≤20 systems) so linear lookup is fine.
     struct PerSystemCore { std::string folder; std::string core; };

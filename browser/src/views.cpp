@@ -1200,6 +1200,7 @@ enum : int {
     OpRunahead,
     OpInstallShaderPresets,
     OpInstallCheatPacks,
+    OpInstallBezelPacks,
     OpUpdCheckFoyer, OpUpdInstallFoyer,
     OpEmuSysCore,    // Cycle through available cores for one system.
     OpExpMtp, OpExpMtpAutostart, OpExpDebugLog,
@@ -1459,6 +1460,10 @@ std::vector<Item> build_items(Category cat, const State& s) {
             rows.push_back({ItemKind::Action, "Install cheat packs",   "run",
                 "Per-system cheat packs from libretro-database. "
                 "Installed under /foyer/cheats/<system>/.",          OpInstallCheatPacks});
+            rows.push_back({ItemKind::Action, "Install bezel packs",   "run",
+                "Per-system bezel art from libretro/common-overlays. "
+                "Installed at /foyer/bezels/<system>.png; uncovered "
+                "systems fall back to default.png.",                 OpInstallBezelPacks});
 
             // Show only INSTALLED cores whose recorded version differs
             // from the manifest — i.e. a real release-tag update is
@@ -2773,6 +2778,10 @@ void update(State& s, const Library& lib,
                         } else if (it.payload == settings::OpInstallCheatPacks) {
                             s.request_install_cheats = true;
                             s.banner_text = "Fetching cheats manifest...";
+                            s.banner_ttl  = 180;
+                        } else if (it.payload == settings::OpInstallBezelPacks) {
+                            s.request_install_bezels = true;
+                            s.banner_text = "Fetching bezels manifest...";
                             s.banner_ttl  = 180;
                         } else if (it.payload == settings::OpUpdInstallSingleCore) {
                             s.request_install_cores = true;

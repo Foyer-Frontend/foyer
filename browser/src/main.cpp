@@ -17,6 +17,7 @@
 #include "library/foyer_updater.hpp"
 #include "library/shader_installer.hpp"
 #include "library/cheat_installer.hpp"
+#include "library/bezel_installer.hpp"
 #include "net/http.hpp"
 #include "scrapers/cache.hpp"
 #include "scrapers/libretro_thumbnails.hpp"
@@ -395,6 +396,51 @@ int main(int /*argc*/, char** /*argv*/) {
                     char b[160];
                     std::snprintf(b, sizeof(b),
                         "Cheat packs ready (%d new, %d updated, %d skipped)",
+                        totals.installed, totals.updated, totals.skipped);
+                    state.banner_text = b;
+                }
+                state.banner_ttl = 360;
+            }
+        }
+
+        // Bezel-pack install. Same blocking shape as the cheats /
+        // shaders flows; per-system PNGs land at /foyer/bezels/<sys>.png
+        // and the player's bezel.cpp picks them up automatically.
+        if (state.request_install_bezels) {
+            state.request_install_bezels = false;
+            state.banner_text = "Fetching bezels manifest...";
+            state.banner_ttl  = 60;
+            app.tick();
+            auto bm = foyer::library::fetch_bezel_manifest(
+                foyer::library::config().bezels_manifest_url);
+            if (bm.packs.empty()) {
+                state.banner_text = "Bezels manifest fetch failed";
+                state.banner_ttl  = 240;
+            } else {
+                const auto totals = foyer::library::install_bezels(bm,
+                    [&](const foyer::library::BezelInstallProgress& p) {
+                        char b[160];
+                        const char* verb =
+                            p.action == foyer::library::BezelInstallAction::Skipped   ? "skipped" :
+                            p.action == foyer::library::BezelInstallAction::Updated   ? "updated" :
+                            p.action == foyer::library::BezelInstallAction::Installed ? "installed"
+                                                                                       : "FAILED";
+                        std::snprintf(b, sizeof(b), "[%d/%d] %s - %s",
+                            p.index, p.total, p.name.c_str(), verb);
+                        state.banner_text = b;
+                        state.banner_ttl  = 60;
+                        app.tick();
+                    });
+                if (totals.failed > 0) {
+                    char b[120];
+                    std::snprintf(b, sizeof(b),
+                        "%d bezel pack%s failed - check log",
+                        totals.failed, totals.failed == 1 ? "" : "s");
+                    state.banner_text = b;
+                } else {
+                    char b[160];
+                    std::snprintf(b, sizeof(b),
+                        "Bezel packs ready (%d new, %d updated, %d skipped)",
                         totals.installed, totals.updated, totals.skipped);
                     state.banner_text = b;
                 }

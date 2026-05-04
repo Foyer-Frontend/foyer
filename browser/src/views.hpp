@@ -78,6 +78,7 @@ struct State {
     bool        request_install_cores     = false;
     bool        request_install_shaders   = false;
     bool        request_install_cheats    = false;
+    bool        request_install_bezels    = false;
     bool        request_refresh_manifest  = false;
     // When non-empty, request_install_cores acts on just this one core.
     // Cleared by main.cpp after the install runs.
