@@ -5,6 +5,13 @@
 #include <EGL/eglext.h>
 #include <GLES3/gl3.h>
 
+#include <yyjson.h>
+
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_ONLY_PNG
+#define STBI_NO_STDIO
+#include <stb_image.h>
+
 #include <cstdio>
 #include <cstring>
 #include <dirent.h>
@@ -32,24 +39,26 @@ void main() {
 }
 )";
 
-// Standard preamble every fragment shader gets. Defines:
-//   in  vec2 v_uv          — texcoord (0..1)
-//   uniform sampler2D u_tex — emulator frame
-//   uniform vec2 u_size    — frame size in pixels
-//   out vec4 fragColor     — output
+// Standard preamble each fragment shader gets prepended. Mirrors the
+// libretro slang preamble in spirit but spelled in GLES 3.0 syntax.
+//   v_uv          — texcoord (0..1)
+//   u_tex         — previous pass output (or original frame for pass 0)
+//   u_size        — destination size in pixels
+//   u_orig        — original emulator-frame size in pixels
+//   u_frame       — frame counter (for animated shaders)
 constexpr const char* kFragmentPreamble = R"(#version 300 es
 precision highp float;
 in vec2 v_uv;
 uniform sampler2D u_tex;
-uniform vec2 u_size;
+uniform vec2  u_size;
+uniform vec2  u_orig;
+uniform float u_frame;
 out vec4 fragColor;
 )";
 
-// ----------------------------- built-ins ----------------------------------
-// One GLSL ES 3.0 main() per preset. Real fragment shaders, not CPU
-// approximations. They run on the GPU via switch-mesa's libGLESv2
-// against an EGL pbuffer context — the same path video_hw.cpp uses
-// for HW-render-callback cores.
+constexpr const char* kPresetNone = R"(
+void main() { fragColor = texture(u_tex, v_uv); }
+)";
 
 constexpr const char* kPresetScanlines = R"(
 void main() {
@@ -112,10 +121,6 @@ void main() {
 }
 )";
 
-constexpr const char* kPresetNone = R"(
-void main() { fragColor = texture(u_tex, v_uv); }
-)";
-
 struct BuiltIn {
     const char* name;
     const char* label;
@@ -152,7 +157,6 @@ const char* egl_err_str(EGLint e) {
     }
 }
 
-// Compile a single shader stage; returns 0 on failure (logged).
 unsigned compile_stage(unsigned type, const char* src) {
     const auto sh = glCreateShader(type);
     if (!sh) return 0;
@@ -179,7 +183,7 @@ const BuiltIn* find_builtin(std::string_view name) {
 }
 
 std::string read_file(const std::string& path) {
-    std::ifstream in{path};
+    std::ifstream in{path, std::ios::binary};
     if (!in) return {};
     std::stringstream ss; ss << in.rdbuf();
     return ss.str();
@@ -190,11 +194,49 @@ bool file_exists(const std::string& path) {
     return ::stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode);
 }
 
-std::string user_shader_path(std::string_view name) {
-    char buf[512];
-    std::snprintf(buf, sizeof(buf), "/foyer/shaders/%.*s.glsl",
-        (int)name.size(), name.data());
-    return std::string{buf};
+std::string strip_jsonc_comments(const std::string& in) {
+    std::string out; out.reserve(in.size());
+    bool in_str = false, escape = false;
+    for (std::size_t i = 0; i < in.size(); i++) {
+        const char c = in[i];
+        if (in_str) {
+            out.push_back(c);
+            if (escape)         escape = false;
+            else if (c == '\\') escape = true;
+            else if (c == '"')  in_str = false;
+            continue;
+        }
+        if (c == '"') { in_str = true; out.push_back(c); continue; }
+        if (c == '/' && i + 1 < in.size() && in[i+1] == '/') {
+            while (i < in.size() && in[i] != '\n') i++;
+            if (i < in.size()) out.push_back(in[i]);
+            continue;
+        }
+        out.push_back(c);
+    }
+    return out;
+}
+
+std::string resolve_fragment_source(const std::string& spec) {
+    // Caller can give us:
+    //   * a built-in name ("scanlines")
+    //   * an absolute path
+    //   * a path relative to /foyer/shaders/
+    if (auto* b = find_builtin(spec)) return b->body;
+
+    // Drop a leading "./" if present.
+    std::string p = spec;
+    if (p.size() >= 2 && p[0] == '.' && p[1] == '/') p = p.substr(2);
+
+    if (file_exists(p)) return read_file(p);
+
+    const std::string base = "/foyer/shaders/" + p;
+    if (file_exists(base)) return read_file(base);
+
+    // Maybe they passed a name without extension; try .glsl
+    if (file_exists(base + ".glsl")) return read_file(base + ".glsl");
+
+    return {};
 }
 
 } // namespace
@@ -205,12 +247,16 @@ ShaderPipeline::~ShaderPipeline() {
     if (m_egl_display) {
         eglMakeCurrent((EGLDisplay)m_egl_display, EGL_NO_SURFACE,
                        EGL_NO_SURFACE, EGL_NO_CONTEXT);
-        if (m_program)  glDeleteProgram(m_program);
-        if (m_vao)      glDeleteVertexArrays(1, &m_vao);
-        if (m_vbo)      glDeleteBuffers(1, &m_vbo);
-        if (m_fbo)      glDeleteFramebuffers(1, &m_fbo);
-        if (m_in_tex)   glDeleteTextures(1, &m_in_tex);
-        if (m_out_tex)  glDeleteTextures(1, &m_out_tex);
+        destroy_chain();
+        for (auto& l : m_luts) {
+            if (l.texture) glDeleteTextures(1, &l.texture);
+        }
+        if (m_vao)         glDeleteVertexArrays(1, &m_vao);
+        if (m_in_tex)      glDeleteTextures(1, &m_in_tex);
+        for (int i = 0; i < 2; i++) {
+            if (m_pp_fbo[i]) glDeleteFramebuffers(1, &m_pp_fbo[i]);
+            if (m_pp_tex[i]) glDeleteTextures(1, &m_pp_tex[i]);
+        }
         if (m_egl_context) eglDestroyContext(
             (EGLDisplay)m_egl_display, (EGLContext)m_egl_context);
         if (m_egl_surface) eglDestroySurface(
@@ -274,16 +320,13 @@ bool ShaderPipeline::init() {
     m_egl_context = (void*)ctx;
     if (!make_current()) return false;
 
-    // Empty VAO with constant attribs (vertex positions baked into
-    // the vertex shader). VAO is still required by GLES3 to draw.
     glGenVertexArrays(1, &m_vao);
-
-    glGenFramebuffers(1, &m_fbo);
-    glGenTextures   (1, &m_in_tex);
-    glGenTextures   (1, &m_out_tex);
+    glGenTextures(1, &m_in_tex);
+    glGenFramebuffers(2, m_pp_fbo);
+    glGenTextures(2, m_pp_tex);
 
     foyer::log::write("[shader] EGL %d.%d ready\n", maj, min);
-    return compile_program(std::string{kPresetNone});
+    return load_builtin("none");
 }
 
 bool ShaderPipeline::make_current() {
@@ -293,23 +336,23 @@ bool ShaderPipeline::make_current() {
                           (EGLContext)m_egl_context);
 }
 
-void ShaderPipeline::destroy_program() {
-    if (m_program) { glDeleteProgram(m_program); m_program = 0; }
-    m_loc_tex = m_loc_size = -1;
+void ShaderPipeline::destroy_chain() {
+    for (auto& p : m_chain) {
+        if (p.program) glDeleteProgram(p.program);
+    }
+    m_chain.clear();
 }
 
-bool ShaderPipeline::compile_program(const std::string& fragment_src) {
-    if (!m_egl_context) return false;
-    if (!make_current()) return false;
-
-    destroy_program();
+bool ShaderPipeline::build_program(const std::string& fragment_src, Pass& out) {
+    out.program  = 0;
+    out.params.clear();
+    out.lut_locs.clear();
 
     auto vs = compile_stage(GL_VERTEX_SHADER, kVertexSrc);
     if (!vs) return false;
 
     const std::string full = std::string{kFragmentPreamble} + fragment_src;
-    const char* p = full.c_str();
-    auto fs = compile_stage(GL_FRAGMENT_SHADER, p);
+    auto fs = compile_stage(GL_FRAGMENT_SHADER, full.c_str());
     if (!fs) { glDeleteShader(vs); return false; }
 
     auto prog = glCreateProgram();
@@ -328,35 +371,222 @@ bool ShaderPipeline::compile_program(const std::string& fragment_src) {
         glDeleteProgram(prog);
         return false;
     }
-    m_program  = prog;
-    m_loc_tex  = glGetUniformLocation(prog, "u_tex");
-    m_loc_size = glGetUniformLocation(prog, "u_size");
+    out.program   = prog;
+    out.loc_tex   = glGetUniformLocation(prog, "u_tex");
+    out.loc_size  = glGetUniformLocation(prog, "u_size");
+    out.loc_orig  = glGetUniformLocation(prog, "u_orig");
+    out.loc_frame = glGetUniformLocation(prog, "u_frame");
     return true;
+}
+
+bool ShaderPipeline::load_lut(const std::string& name,
+                              const std::string& path, bool linear) {
+    const auto bytes = read_file(path);
+    if (bytes.empty()) {
+        foyer::log::write("[shader] lut '%s' missing\n", path.c_str());
+        return false;
+    }
+    int w = 0, h = 0, comp = 0;
+    auto* px = stbi_load_from_memory(
+        reinterpret_cast<const stbi_uc*>(bytes.data()),
+        (int)bytes.size(), &w, &h, &comp, 4);
+    if (!px) {
+        foyer::log::write("[shader] lut '%s' decode failed\n", path.c_str());
+        return false;
+    }
+    Lut l;
+    l.name   = name;
+    l.linear = linear;
+    glGenTextures(1, &l.texture);
+    glBindTexture(GL_TEXTURE_2D, l.texture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0,
+                 GL_RGBA, GL_UNSIGNED_BYTE, px);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                    linear ? GL_LINEAR : GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
+                    linear ? GL_LINEAR : GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    stbi_image_free(px);
+    foyer::log::write("[shader] lut '%s' (%s, %dx%d) loaded\n",
+        name.c_str(), path.c_str(), w, h);
+    m_luts.push_back(std::move(l));
+    return true;
+}
+
+void ShaderPipeline::bind_pass_resources(Pass& pass) {
+    glUseProgram(pass.program);
+    // Texture unit 0 stays for u_tex (the input/previous-pass output).
+    // LUTs occupy units 1+.
+    int unit = 1;
+    for (auto& lut : m_luts) {
+        const std::string uname = "u_lut_" + lut.name;
+        const int loc = glGetUniformLocation(pass.program, uname.c_str());
+        if (loc < 0) continue;
+        glUniform1i(loc, unit);
+        pass.lut_locs[lut.name] = unit;
+        unit++;
+    }
+    glUseProgram(0);
+}
+
+bool ShaderPipeline::load_builtin(std::string_view name) {
+    auto* b = find_builtin(name);
+    if (!b) return false;
+    destroy_chain();
+    Pass p;
+    if (!build_program(b->body, p)) return false;
+    m_chain.push_back(std::move(p));
+    return true;
+}
+
+bool ShaderPipeline::load_glsl_file(const std::string& path) {
+    const auto src = read_file(path);
+    if (src.empty()) return false;
+    destroy_chain();
+    Pass p;
+    if (!build_program(src, p)) return false;
+    m_chain.push_back(std::move(p));
+    return true;
+}
+
+bool ShaderPipeline::load_json_manifest(const std::string& path) {
+    const auto raw = read_file(path);
+    if (raw.empty()) return false;
+    const auto stripped = strip_jsonc_comments(raw);
+
+    auto* doc = yyjson_read(stripped.data(), stripped.size(), 0);
+    if (!doc) {
+        foyer::log::write("[shader] manifest parse failed: %s\n", path.c_str());
+        return false;
+    }
+    auto* root = yyjson_doc_get_root(doc);
+    if (!yyjson_is_obj(root)) { yyjson_doc_free(doc); return false; }
+
+    // Free any LUTs from a previous preset before loading this one.
+    for (auto& l : m_luts) {
+        if (l.texture) glDeleteTextures(1, &l.texture);
+    }
+    m_luts.clear();
+    destroy_chain();
+
+    // LUTs first so per-pass uniform binding can pick them up.
+    if (auto* luts = yyjson_obj_get(root, "luts");
+        luts && yyjson_is_arr(luts)) {
+        std::size_t i, max; yyjson_val* item;
+        yyjson_arr_foreach(luts, i, max, item) {
+            if (!yyjson_is_obj(item)) continue;
+            std::string lname, lpath; bool linear = true;
+            if (auto* x = yyjson_obj_get(item, "name");   x && yyjson_is_str(x))
+                lname = yyjson_get_str(x);
+            if (auto* x = yyjson_obj_get(item, "path");   x && yyjson_is_str(x))
+                lpath = yyjson_get_str(x);
+            if (auto* x = yyjson_obj_get(item, "filter"); x && yyjson_is_str(x))
+                linear = std::strcmp(yyjson_get_str(x), "linear") == 0;
+            if (lname.empty() || lpath.empty()) continue;
+            if (lpath[0] != '/') lpath = "/foyer/shaders/" + lpath;
+            load_lut(lname, lpath, linear);
+        }
+    }
+
+    // Passes.
+    auto* passes = yyjson_obj_get(root, "passes");
+    if (!passes || !yyjson_is_arr(passes)) {
+        yyjson_doc_free(doc);
+        return false;
+    }
+    std::size_t i, max; yyjson_val* p_item;
+    yyjson_arr_foreach(passes, i, max, p_item) {
+        if (!yyjson_is_obj(p_item)) continue;
+
+        std::string frag_spec;
+        bool linear = false;
+        if (auto* x = yyjson_obj_get(p_item, "fragment");
+            x && yyjson_is_str(x)) frag_spec = yyjson_get_str(x);
+        if (auto* x = yyjson_obj_get(p_item, "filter");
+            x && yyjson_is_str(x))
+            linear = std::strcmp(yyjson_get_str(x), "linear") == 0;
+        if (frag_spec.empty()) continue;
+
+        const auto src = resolve_fragment_source(frag_spec);
+        if (src.empty()) {
+            foyer::log::write("[shader] pass '%s' source not found\n",
+                frag_spec.c_str());
+            continue;
+        }
+
+        Pass pass;
+        if (!build_program(src, pass)) continue;
+        pass.filter_linear = linear;
+
+        // Per-pass parameter values. Each declared key gets a uniform
+        // location lookup; values are uploaded each frame in process().
+        if (auto* params = yyjson_obj_get(p_item, "params");
+            params && yyjson_is_obj(params)) {
+            std::size_t j, jm; yyjson_val *k, *v;
+            yyjson_obj_foreach(params, j, jm, k, v) {
+                if (!yyjson_is_str(k)) continue;
+                const char* key = yyjson_get_str(k);
+                float val = 0.0f;
+                if (yyjson_is_real(v)) val = (float)yyjson_get_real(v);
+                else if (yyjson_is_int(v))  val = (float)yyjson_get_int(v);
+                else continue;
+                Pass::Param pp;
+                pp.value = val;
+                pp.loc   = glGetUniformLocation(pass.program, key);
+                pass.params[key] = pp;
+            }
+        }
+
+        bind_pass_resources(pass);
+        m_chain.push_back(std::move(pass));
+    }
+
+    yyjson_doc_free(doc);
+    return !m_chain.empty();
 }
 
 bool ShaderPipeline::set_preset(std::string_view name) {
     if (!m_egl_context && !init()) return false;
+    if (!make_current()) return false;
 
-    // Built-in lookup first.
-    if (auto* b = find_builtin(name)) {
-        if (!compile_program(b->body)) return false;
-        m_active_name = b->name;
-        foyer::log::write("[shader] active=%s (built-in)\n", b->name);
+    // 1. Built-in name.
+    if (find_builtin(name)) {
+        if (!load_builtin(name)) return false;
+        m_active_name = name;
+        foyer::log::write("[shader] active=%.*s (built-in, 1 pass)\n",
+            (int)name.size(), name.data());
         return true;
     }
-    // File-based fallback: /foyer/shaders/<name>.glsl
-    const auto path = user_shader_path(name);
-    if (file_exists(path)) {
-        const auto src = read_file(path);
-        if (!src.empty() && compile_program(src)) {
+
+    // 2. JSON multi-pass manifest.
+    char buf[512];
+    std::snprintf(buf, sizeof(buf), "/foyer/shaders/%.*s.json",
+        (int)name.size(), name.data());
+    if (file_exists(buf)) {
+        if (load_json_manifest(buf)) {
             m_active_name = std::string{name};
-            foyer::log::write("[shader] active=%s (from %s)\n",
-                m_active_name.c_str(), path.c_str());
+            foyer::log::write("[shader] active=%s (manifest, %zu pass%s, %zu lut%s)\n",
+                m_active_name.c_str(),
+                m_chain.size(), m_chain.size() == 1 ? "" : "es",
+                m_luts.size(),  m_luts.size()  == 1 ? "" : "s");
             return true;
         }
     }
-    // Unknown -> no-op pass-through.
-    if (!compile_program(std::string{kPresetNone})) return false;
+
+    // 3. Single .glsl file.
+    std::snprintf(buf, sizeof(buf), "/foyer/shaders/%.*s.glsl",
+        (int)name.size(), name.data());
+    if (file_exists(buf)) {
+        if (load_glsl_file(buf)) {
+            m_active_name = std::string{name};
+            foyer::log::write("[shader] active=%s (single .glsl)\n", buf);
+            return true;
+        }
+    }
+
+    // Unknown — fall back to no-op pass-through.
+    if (!load_builtin("none")) return false;
     m_active_name.clear();
     foyer::log::write("[shader] active=none (unknown name=%.*s)\n",
         (int)name.size(), name.data());
@@ -366,29 +596,29 @@ bool ShaderPipeline::set_preset(std::string_view name) {
 bool ShaderPipeline::ensure_size(unsigned w, unsigned h) {
     if (w == m_w && h == m_h) return true;
     if (!make_current()) return false;
-    glBindTexture(GL_TEXTURE_2D, m_in_tex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, (GLsizei)w, (GLsizei)h,
-                 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,     GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,     GL_CLAMP_TO_EDGE);
 
-    glBindTexture(GL_TEXTURE_2D, m_out_tex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, (GLsizei)w, (GLsizei)h,
-                 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,     GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,     GL_CLAMP_TO_EDGE);
+    auto setup = [&](unsigned tex) {
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, (GLsizei)w, (GLsizei)h,
+                     0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    };
+    setup(m_in_tex);
+    setup(m_pp_tex[0]);
+    setup(m_pp_tex[1]);
 
-    glBindFramebuffer(GL_FRAMEBUFFER, m_fbo);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-        GL_TEXTURE_2D, m_out_tex, 0);
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-        foyer::log::write("[shader] FBO incomplete\n");
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        return false;
+    for (int i = 0; i < 2; i++) {
+        glBindFramebuffer(GL_FRAMEBUFFER, m_pp_fbo[i]);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                               GL_TEXTURE_2D, m_pp_tex[i], 0);
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            foyer::log::write("[shader] FBO %d incomplete\n", i);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            return false;
+        }
     }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     m_w = w;
@@ -398,59 +628,101 @@ bool ShaderPipeline::ensure_size(unsigned w, unsigned h) {
 
 bool ShaderPipeline::process(std::uint8_t* pixels, unsigned w, unsigned h) {
     if (!pixels || w == 0 || h == 0) return false;
-    if (m_active_name.empty() || m_active_name == "none") return true;
+    if (m_chain.empty()) return true;
+    if (m_active_name.empty() && m_chain.size() == 1) return true;
     if (!m_egl_context && !init()) return false;
     if (!make_current()) return false;
     if (!ensure_size(w, h)) return false;
 
-    // Upload the input frame.
+    // Upload the input frame to m_in_tex.
     glBindTexture(GL_TEXTURE_2D, m_in_tex);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
         (GLsizei)w, (GLsizei)h, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
 
-    // Render the fullscreen quad with the active fragment shader.
-    glBindFramebuffer(GL_FRAMEBUFFER, m_fbo);
-    glViewport(0, 0, (GLsizei)w, (GLsizei)h);
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_BLEND);
     glDisable(GL_CULL_FACE);
-
-    glUseProgram(m_program);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, m_in_tex);
-    if (m_loc_tex  >= 0) glUniform1i(m_loc_tex, 0);
-    if (m_loc_size >= 0) glUniform2f(m_loc_size, (float)w, (float)h);
-
+    glViewport(0, 0, (GLsizei)w, (GLsizei)h);
     glBindVertexArray(m_vao);
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-    glBindVertexArray(0);
 
-    // Read back.
+    m_frame_count++;
+
+    const std::size_t n = m_chain.size();
+    for (std::size_t i = 0; i < n; i++) {
+        auto& pass = m_chain[i];
+        // Pass i samples from m_in_tex (i==0) or m_pp_tex[i&1] (else),
+        // writes to m_pp_tex[(i+1)&1]. Last pass still writes to a
+        // ping-pong target so we can glReadPixels from there.
+        const unsigned src_tex = (i == 0) ? m_in_tex : m_pp_tex[i & 1];
+        const unsigned dst_fbo = m_pp_fbo[(i + 1) & 1];
+
+        // Per-pass filter: linear vs nearest sampling on the input.
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, src_tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                        pass.filter_linear ? GL_LINEAR : GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
+                        pass.filter_linear ? GL_LINEAR : GL_NEAREST);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, dst_fbo);
+        glUseProgram(pass.program);
+
+        if (pass.loc_tex   >= 0) glUniform1i(pass.loc_tex, 0);
+        if (pass.loc_size  >= 0) glUniform2f(pass.loc_size, (float)w, (float)h);
+        if (pass.loc_orig  >= 0) glUniform2f(pass.loc_orig, (float)w, (float)h);
+        if (pass.loc_frame >= 0) glUniform1f(pass.loc_frame, (float)m_frame_count);
+
+        // Per-pass scalar parameters.
+        for (auto& [_, pp] : pass.params) {
+            if (pp.loc >= 0) glUniform1f(pp.loc, pp.value);
+        }
+        // Bind LUT textures to the units the pass was set up for.
+        for (auto& [name, unit] : pass.lut_locs) {
+            for (auto& l : m_luts) {
+                if (l.name == name) {
+                    glActiveTexture(GL_TEXTURE0 + unit);
+                    glBindTexture(GL_TEXTURE_2D, l.texture);
+                    break;
+                }
+            }
+        }
+
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    }
+
+    // Final output sits in m_pp_tex[n & 1] — bind that FBO and read.
+    glBindFramebuffer(GL_FRAMEBUFFER, m_pp_fbo[n & 1]);
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
     glReadPixels(0, 0, (GLsizei)w, (GLsizei)h,
                  GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindVertexArray(0);
 
     return glGetError() == GL_NO_ERROR;
 }
 
 std::vector<ShaderPipeline::PresetInfo> ShaderPipeline::available_presets() {
     std::vector<PresetInfo> out;
-    out.reserve(kBuiltInCount + 4);
+    out.reserve(kBuiltInCount + 8);
     for (const auto& b : kBuiltIns) {
         out.push_back({b.name, b.label});
     }
-    // Discover *.glsl files under /foyer/shaders/. Display their bare
-    // stem as the label so users see a recognisable list.
     if (auto* d = ::opendir("/foyer/shaders")) {
         while (auto* e = ::readdir(d)) {
             const std::string n = e->d_name;
-            if (n.size() < 6 || n.substr(n.size() - 5) != ".glsl") continue;
-            const auto stem = n.substr(0, n.size() - 5);
-            // Skip if it shadows a built-in name (built-in wins).
+            if (n.size() < 6) continue;
+            std::string stem;
+            const auto dot = n.find_last_of('.');
+            if (dot == std::string::npos) continue;
+            const auto ext = n.substr(dot);
+            if (ext != ".glsl" && ext != ".json") continue;
+            stem = n.substr(0, dot);
             if (find_builtin(stem)) continue;
+            // Avoid duplicates if both .glsl and .json exist.
+            bool dup = false;
+            for (auto& p : out) if (p.name == stem) { dup = true; break; }
+            if (dup) continue;
             out.push_back({stem, stem});
         }
         ::closedir(d);
