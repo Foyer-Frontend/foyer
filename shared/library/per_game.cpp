@@ -24,6 +24,10 @@ struct Entry {
     bool          favorite    = false;
     std::uint64_t last_played = 0;
     std::uint64_t playtime    = 0;
+    // -1 means "inherit Config::runahead_frames" (default). 0..4 are
+    // explicit per-rom overrides — saved when the user touches the
+    // value via the GameDetail or pause-overlay knob.
+    int           runahead    = -1;
 };
 
 std::mutex                                 g_mutex;
@@ -32,7 +36,7 @@ std::atomic<bool>                          g_loaded{false};
 
 bool entry_is_default(const Entry& e) {
     return e.core.empty() && e.shader.empty() && !e.favorite
-        && e.last_played == 0 && e.playtime == 0;
+        && e.last_played == 0 && e.playtime == 0 && e.runahead < 0;
 }
 
 std::string strip_comments(const std::string& in) {
@@ -95,6 +99,13 @@ void load_locked() {
             if (auto* x = yyjson_obj_get(v, "playtime");
                 x && (yyjson_is_uint(x) || yyjson_is_int(x)))
                 e.playtime = (std::uint64_t)yyjson_get_uint(x);
+            if (auto* x = yyjson_obj_get(v, "runahead");
+                x && yyjson_is_int(x)) {
+                int n = (int)yyjson_get_int(x);
+                if (n < 0) n = -1;
+                if (n > 4) n = 4;
+                e.runahead = n;
+            }
             if (!entry_is_default(e)) {
                 g_entries.emplace(yyjson_get_str(k), std::move(e));
             }
@@ -140,6 +151,11 @@ void save_locked() {
         if (e.playtime) {
             if (need_comma) out << ",";
             out << " \"playtime\": " << e.playtime;
+            need_comma = true;
+        }
+        if (e.runahead >= 0) {
+            if (need_comma) out << ",";
+            out << " \"runahead\": " << e.runahead;
             need_comma = true;
         }
         out << " }";
@@ -233,6 +249,19 @@ std::string per_game_shader(std::string_view rom_path) {
 
 void set_per_game_shader(std::string_view rom_path, std::string_view shader_name) {
     mutate(rom_path, [&](Entry& e) { e.shader = std::string{shader_name}; });
+}
+
+int per_game_runahead(std::string_view rom_path) {
+    ensure_loaded();
+    std::scoped_lock lk{g_mutex};
+    auto* e = find_entry_locked(rom_path);
+    return e ? e->runahead : -1;
+}
+
+void set_per_game_runahead(std::string_view rom_path, int frames) {
+    if (frames < -1) frames = -1;
+    if (frames > 4)  frames = 4;
+    mutate(rom_path, [&](Entry& e) { e.runahead = frames; });
 }
 
 void apply_per_game_state(Game& g) {

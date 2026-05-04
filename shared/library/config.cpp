@@ -94,6 +94,7 @@ void write_locked() {
     out << "    \"theme\":             \"" << g_config.theme_name << "\",\n";
     out << "    \"sort_mode\":         \"" << sort_to_str(g_config.sort_mode) << "\",\n";
     out << "    \"shader\":            \"" << g_config.shader_name << "\",\n";
+    out << "    \"runahead_frames\":   " << g_config.runahead_frames << ",\n";
     out << "    \"scan_subfolders\":   " << bstr(g_config.scan_subfolders) << ",\n";
     out << "    \"show_clock\":        " << bstr(g_config.show_clock) << ",\n";
     out << "    \"show_backgrounds\":  " << bstr(g_config.show_backgrounds) << ",\n";
@@ -151,6 +152,13 @@ void load_locked() {
     if (auto* v = yyjson_obj_get(root, "shader");
         v && yyjson_is_str(v)) {
         g_config.shader_name = yyjson_get_str(v);
+    }
+    if (auto* v = yyjson_obj_get(root, "runahead_frames");
+        v && yyjson_is_int(v)) {
+        int n = (int)yyjson_get_int(v);
+        if (n < 0) n = 0;
+        if (n > 4) n = 4;
+        g_config.runahead_frames = n;
     }
     auto load_bool = [&](const char* key, bool& out) {
         if (auto* v = yyjson_obj_get(root, key); v && yyjson_is_bool(v)) {
@@ -234,6 +242,14 @@ void set_sort_mode(Config::SortMode mode) {
 void set_shader_name(std::string_view name) {
     std::scoped_lock lk{g_mutex};
     g_config.shader_name = std::string{name};
+    write_locked();
+}
+
+void set_runahead_frames(int frames) {
+    if (frames < 0) frames = 0;
+    if (frames > 4) frames = 4;
+    std::scoped_lock lk{g_mutex};
+    g_config.runahead_frames = frames;
     write_locked();
 }
 

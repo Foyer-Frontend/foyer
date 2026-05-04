@@ -53,6 +53,13 @@ void          add_per_game_playtime(std::string_view rom_path, std::uint64_t sec
 std::string per_game_shader(std::string_view rom_path);
 void        set_per_game_shader(std::string_view rom_path, std::string_view shader_name);
 
+// Per-game run-ahead override. -1 means "fall back to
+// Config::runahead_frames". 0..4 sets the explicit lookahead count
+// for this rom (some games tolerate higher values without artifacts;
+// others crash at K>=2 and need a per-rom cap).
+int  per_game_runahead(std::string_view rom_path);
+void set_per_game_runahead(std::string_view rom_path, int frames);
+
 // Resolve which core to use for a rom: per-game override > general
 // default_core_per_system > system_db default. Always returns a non-null
 // CoreDef when the system has at least one configured core; nullptr only

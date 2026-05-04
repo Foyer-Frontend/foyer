@@ -81,20 +81,28 @@ bool launch_game(const library::System& sys, const library::Game& game,
     if (shader.empty()) shader = library::config().shader_name;
     if (shader.empty()) shader = "none";
 
+    // Run-ahead lookahead frames: per-rom override (>=0) beats the
+    // general default. -1 from the per-rom store means "inherit".
+    int runahead = library::per_game_runahead(game.path);
+    if (runahead < 0) runahead = library::config().runahead_frames;
+    if (runahead < 0) runahead = 0;
+    if (runahead > 4) runahead = 4;
+
     // argv[0] = nro path, argv[1] = rom path, argv[2] = our own path so the
-    // player can chain back to us cleanly without hardcoding. argv[3] is an
-    // optional "resume=<slot>" hint; argv[N] = optional "shader=<name>".
+    // player can chain back to us cleanly without hardcoding. argv[3..] are
+    // optional "key=value" hint tokens parsed by the player main.
     char argv[1024];
     if (resume_slot >= 0) {
         std::snprintf(argv, sizeof(argv),
-            "\"%s\" \"%s\" \"%s\" \"resume=%d\" \"shader=%s\"",
+            "\"%s\" \"%s\" \"%s\" \"resume=%d\" \"shader=%s\" \"runahead=%d\"",
             sd_nro.c_str(), sd_rom.c_str(),
-            browser_self_path().c_str(), resume_slot, shader.c_str());
+            browser_self_path().c_str(), resume_slot,
+            shader.c_str(), runahead);
     } else {
         std::snprintf(argv, sizeof(argv),
-            "\"%s\" \"%s\" \"%s\" \"shader=%s\"",
+            "\"%s\" \"%s\" \"%s\" \"shader=%s\" \"runahead=%d\"",
             sd_nro.c_str(), sd_rom.c_str(),
-            browser_self_path().c_str(), shader.c_str());
+            browser_self_path().c_str(), shader.c_str(), runahead);
     }
 
     if (R_FAILED(envSetNextLoad(sd_nro.c_str(), argv))) {

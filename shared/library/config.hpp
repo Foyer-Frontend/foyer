@@ -38,6 +38,12 @@ struct Config {
     bool         show_backgrounds  = true;
     bool         show_covers       = true;
 
+    // Run-ahead lookahead frames. 0 disables (default); 1..4 trade CPU
+    // for reduced visible input lag — each enabled frame adds one extra
+    // retro_run() call per displayed frame. Cores with a 0-byte
+    // serialize state silently fall back to no run-ahead at runtime.
+    int          runahead_frames   = 0;
+
     // Experimental knobs — exposed under the Experimental category only.
     bool         mtp_autostart     = false;
     bool         debug_log         = false;
@@ -80,6 +86,7 @@ void          set_default_core_for(std::string_view folder,
 void          set_theme_name(std::string_view name);
 void          set_sort_mode(Config::SortMode mode);
 void          set_shader_name(std::string_view name);
+void          set_runahead_frames(int frames);
 void          set_bool(std::string_view key, bool value);  // accepts the field names below
 
 } // namespace foyer::library

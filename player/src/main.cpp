@@ -32,6 +32,15 @@
 
 #include <nanovg.h>
 
+// Linker-resolved against the bundled core. We use these directly for
+// run-ahead so we can serialize/unserialize state into a heap buffer
+// without touching disk.
+extern "C" {
+    std::size_t retro_serialize_size(void);
+    bool        retro_serialize  (void* data, std::size_t size);
+    bool        retro_unserialize(const void* data, std::size_t size);
+}
+
 namespace {
 
 // Strip the "sdmc:" devoptab prefix that hbloader argv brings along — POSIX
@@ -206,10 +215,12 @@ int main(int argc, char** argv) {
     }
 
     // Optional argv tokens:
-    //   "resume=<slot>"  — load a save state right after boot
-    //   "shader=<name>"  — bring up the post-process shader pipeline
-    int         resume_slot = -1;
+    //   "resume=<slot>"   — load a save state right after boot
+    //   "shader=<name>"   — bring up the post-process shader pipeline
+    //   "runahead=<int>"  — lookahead frames for input-lag reduction
+    int         resume_slot     = -1;
     std::string shader_name;
+    int         runahead_frames = 0;
     for (int i = 2; i < argc; i++) {
         if (!argv[i]) continue;
         const auto raw = normalise_argv_path(argv[i]);
@@ -218,6 +229,11 @@ int main(int argc, char** argv) {
             if (n >= 0 && n < foyer::libretro::kStateSlotCount) resume_slot = n;
         } else if (raw.rfind("shader=", 0) == 0) {
             shader_name = raw.substr(7);
+        } else if (raw.rfind("runahead=", 0) == 0) {
+            int n = std::atoi(raw.c_str() + 9);
+            if (n < 0) n = 0;
+            if (n > 4) n = 4;
+            runahead_frames = n;
         }
     }
     if (resume_slot >= 0) {
@@ -237,6 +253,32 @@ int main(int argc, char** argv) {
 
     // Hook audio at the core's reported sample rate. Voice format = stereo S16.
     foyer::libretro::AudioSink::instance().init((unsigned)fe.sample_rate());
+
+    // Run-ahead bring-up. We call retro_serialize_size() now, after
+    // load_game, since most cores only know their state size once a
+    // rom is loaded. A 0-byte state means the core can't roll back —
+    // we silently downgrade to no run-ahead.
+    std::size_t runahead_state_sz = 0;
+    void*       runahead_state    = nullptr;
+    if (runahead_frames > 0) {
+        runahead_state_sz = retro_serialize_size();
+        if (runahead_state_sz == 0) {
+            foyer::log::write(
+                "[runahead] core reports 0-byte state; disabling run-ahead\n");
+            runahead_frames = 0;
+        } else {
+            runahead_state = std::malloc(runahead_state_sz);
+            if (!runahead_state) {
+                foyer::log::write(
+                    "[runahead] state buf alloc(%zu) failed; disabling\n",
+                    runahead_state_sz);
+                runahead_frames = 0;
+            } else {
+                foyer::log::write("[runahead] enabled K=%d state=%zu bytes\n",
+                    runahead_frames, runahead_state_sz);
+            }
+        }
+    }
 
     // Pause overlay (Phase 4 polish: 10 timestamped slots).
     foyer::libretro::Overlay overlay;
@@ -383,10 +425,44 @@ int main(int argc, char** argv) {
         }
 
         foyer::libretro::poll_input(app.pad());
-        fe.run_frame();
+
+        if (runahead_frames > 0 && runahead_state) {
+            // Run-ahead: emulate K frames into the future without
+            // playing audio, then roll back and run one "real" frame
+            // (audio on, video frozen on the K-th lookahead frame).
+            // Visible video ends up K frames ahead of the audible
+            // game state, which masks most of the inherent input
+            // delay games carry. Cost: K+1 retro_run() per displayed
+            // frame.
+            using foyer::libretro::Frontend;
+            using foyer::libretro::AudioSink;
+            using foyer::libretro::VideoSinkImpl;
+            if (retro_serialize(runahead_state, runahead_state_sz)) {
+                fe.set_audio_sink(nullptr);
+                for (int i = 0; i < runahead_frames; i++) {
+                    fe.run_frame();
+                }
+                fe.set_audio_sink(&AudioSink::on_frame);
+                fe.set_video_sink(nullptr);
+                if (retro_unserialize(runahead_state, runahead_state_sz)) {
+                    fe.run_frame();
+                }
+                fe.set_video_sink(&VideoSinkImpl::on_frame);
+            } else {
+                // Serialization failed unexpectedly — fall back to a
+                // plain frame. Don't disable run-ahead permanently;
+                // some cores reject mid-frame snapshots transiently.
+                fe.run_frame();
+            }
+        } else {
+            fe.run_frame();
+        }
+
         foyer::libretro::Cheevos::instance().do_frame();
         foyer::libretro::AudioSink::instance().pump();
     }
+
+    if (runahead_state) std::free(runahead_state);
 
     foyer::libretro::Cheevos::instance().shutdown();
     fe.unload_game();

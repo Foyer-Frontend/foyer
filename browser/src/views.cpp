@@ -1199,6 +1199,7 @@ enum : int {
     OpUpdCancelJob,
     OpSortMode,
     OpShader,
+    OpRunahead,
     OpInstallShaderPresets,
     OpUpdCheckFoyer, OpUpdInstallFoyer,
     OpEmuSysCore,    // Cycle through available cores for one system.
@@ -1282,6 +1283,21 @@ std::vector<Item> build_items(Category cat, const State& s) {
             rows.push_back({ItemKind::Cycle, "Shader", shader_label,
                 "Built-ins or /foyer/shaders/<name>.glsl. Per-game "
                 "overrides via per_game.jsonc.", OpShader});
+            // Run-ahead trades CPU for visible input-lag reduction.
+            // Each enabled frame adds one extra retro_run() per
+            // displayed frame, so K=1 ~= 2x core load.
+            const char* ra_label = "Off";
+            char ra_buf[16];
+            if (cfg.runahead_frames > 0) {
+                std::snprintf(ra_buf, sizeof(ra_buf),
+                    cfg.runahead_frames == 1 ? "%d frame" : "%d frames",
+                    cfg.runahead_frames);
+                ra_label = ra_buf;
+            }
+            rows.push_back({ItemKind::Cycle, "Run-ahead", ra_label,
+                "Reduces visible input lag by emulating ahead. Costs "
+                "extra CPU per frame; some cores can't serialize state "
+                "and silently fall back to off.", OpRunahead});
             break;
         }
         case Category::Audio:
@@ -2705,6 +2721,19 @@ void update(State& s, const Library& lib,
                     cur = ((cur + delta) % kCount + kCount) % kCount;
                     library::set_shader_name(kShaderNames[cur]);
                     s.banner_text = std::string{"Shader: "} + kShaderNames[cur];
+                    s.banner_ttl  = 120;
+                } else if (it.payload == settings::OpRunahead) {
+                    constexpr int kMax = 4;
+                    int n = library::config().runahead_frames + delta;
+                    if (n < 0)    n = kMax;
+                    if (n > kMax) n = 0;
+                    library::set_runahead_frames(n);
+                    char buf[40];
+                    if (n == 0) std::snprintf(buf, sizeof(buf), "Run-ahead: off");
+                    else        std::snprintf(buf, sizeof(buf),
+                                    n == 1 ? "Run-ahead: %d frame"
+                                           : "Run-ahead: %d frames", n);
+                    s.banner_text = buf;
                     s.banner_ttl  = 120;
                 }
             }
