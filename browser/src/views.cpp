@@ -2953,51 +2953,96 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
                 }
                 clock = rhs;
             }
-            hint = std::string{DPad} + " pick   "
-                 + A + " enter   " + Minus + " settings   "
-                 + Plus + " menu   " + B + " quit";
+            // Home: hint follows whether anything is loaded. With no
+            // systems there's nothing to "enter", so drop the DPad/A
+            // pair; otherwise show the full carousel action set.
+            if (lib.systems.empty()) {
+                hint = std::string{Minus} + " settings   "
+                     + Plus + " menu   " + B + " quit";
+            } else {
+                hint = std::string{DPad} + " pick   "
+                     + A + " enter   " + Minus + " settings   "
+                     + Plus + " menu   " + B + " quit";
+            }
             break;
         }
         case View::System: {
-            if (!lib.systems.empty()) {
-                const auto& sys = lib.systems[s.system_index];
+            const auto* sys_ptr = !lib.systems.empty()
+                ? &lib.systems[s.system_index] : nullptr;
+            if (sys_ptr) {
                 char buf[160];
                 std::snprintf(buf, sizeof(buf), "foyer  >  %.*s",
-                    (int)sys.def->display_name.size(),
-                    sys.def->display_name.data());
+                    (int)sys_ptr->def->display_name.size(),
+                    sys_ptr->def->display_name.data());
                 title = buf;
-                if (!sys.games.empty()) {
+                if (!sys_ptr->games.empty()) {
                     char rhs[64];
                     if (clock.empty()) {
                         std::snprintf(rhs, sizeof(rhs), "%zu / %zu",
-                            s.game_index + 1, sys.games.size());
+                            s.game_index + 1, sys_ptr->games.size());
                     } else {
                         std::snprintf(rhs, sizeof(rhs), "%zu / %zu  ·  %s",
-                            s.game_index + 1, sys.games.size(), clock.c_str());
+                            s.game_index + 1, sys_ptr->games.size(), clock.c_str());
                     }
                     clock = rhs;
                 }
             }
-            hint = std::string{DPad} + " pick   "
-                 + A + " launch   " + X + " details   "
-                 + Y + " scrape   " + B + " back";
+            // System: only show actions that apply right now. An empty
+            // system has nothing to launch / detail / scrape, so collapse
+            // to just B back. Virtual systems (Recent / Favorites) can't
+            // be scraped wholesale, so drop the scrape hint there.
+            const bool empty_sys  = !sys_ptr || sys_ptr->games.empty();
+            const bool can_scrape = sys_ptr && !library::is_virtual_system(*sys_ptr->def);
+            if (empty_sys) {
+                hint = std::string{Plus} + " menu   " + B + " back";
+            } else {
+                hint = std::string{DPad} + " pick   "
+                     + A + " launch   " + X + " details";
+                if (can_scrape) hint += std::string{"   "} + Y + " scrape";
+                hint += std::string{"   "} + Plus + " menu   " + B + " back";
+            }
             break;
         }
         case View::GameDetail: {
-            if (!lib.systems.empty()) {
-                const auto& sys = lib.systems[s.system_index];
-                if (!sys.games.empty()) {
-                    char buf[200];
-                    std::snprintf(buf, sizeof(buf), "foyer  >  %.*s  >  %s",
-                        (int)sys.def->short_name.size(),
-                        sys.def->short_name.data(),
-                        sys.games[s.game_index].display.c_str());
-                    title = buf;
+            const auto* sys_ptr = !lib.systems.empty()
+                ? &lib.systems[s.system_index] : nullptr;
+            const auto* game_ptr = (sys_ptr && !sys_ptr->games.empty())
+                ? &sys_ptr->games[s.game_index] : nullptr;
+            if (game_ptr) {
+                char buf[200];
+                std::snprintf(buf, sizeof(buf), "foyer  >  %.*s  >  %s",
+                    (int)sys_ptr->def->short_name.size(),
+                    sys_ptr->def->short_name.data(),
+                    game_ptr->display.c_str());
+                title = buf;
+            }
+            // GameDetail: rows are Continue (when a save state exists)
+            // followed by core entries. The Continue row only supports
+            // A/B; core rows support A (per-game) / Y (system default)
+            // / X (clear override). Switch the hint based on which row
+            // currently holds focus.
+            if (!game_ptr) {
+                hint = std::string{B} + " back";
+            } else {
+                const auto* def = library::is_virtual_system(*sys_ptr->def)
+                    ? library::origin_system_for_rom(game_ptr->path)
+                    : sys_ptr->def;
+                if (!def) def = sys_ptr->def;
+                const int  resume_slot = latest_state_slot(*sys_ptr, *game_ptr);
+                const bool has_resume  = (resume_slot >= 0);
+                const bool on_resume   = has_resume && s.detail_core_index == 0;
+                if (on_resume) {
+                    hint = std::string{DPad} + " pick   "
+                         + A + " continue   " + B + " back";
+                } else if (def->cores.empty()) {
+                    hint = std::string{B} + " back";
+                } else {
+                    hint = std::string{DPad} + " pick   "
+                         + A + " set per-game   "
+                         + Y + " set sys default   "
+                         + X + " clear override   " + B + " back";
                 }
             }
-            hint = std::string{DPad} + " pick   "
-                 + A + " set per-game   " + Y + " set sys default   "
-                 + X + " clear override   " + B + " back";
             break;
         }
         case View::Settings: {
@@ -3041,8 +3086,16 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
         }
         case View::Search: {
             title = "foyer  >  Search";
-            hint  = std::string{DPad} + " navigate   "
-                  + A + " open   " + Y + " new query   " + B + " back";
+            // Search: A only does anything when there's a result row to
+            // open. With no results (either no query yet, or no matches)
+            // the only useful keys are Y to open the keyboard and B to
+            // back out.
+            if (s.search_results.empty()) {
+                hint = std::string{Y} + " new query   " + B + " back";
+            } else {
+                hint = std::string{DPad} + " navigate   "
+                     + A + " open   " + Y + " new query   " + B + " back";
+            }
             break;
         }
     }
