@@ -40,6 +40,7 @@ add_library(${_frontend} STATIC
     ${CMAKE_SOURCE_DIR}/shared/libretro/core_options.cpp
     ${CMAKE_SOURCE_DIR}/shared/libretro/cheats.cpp
     ${CMAKE_SOURCE_DIR}/shared/libretro/bezel.cpp
+    ${CMAKE_SOURCE_DIR}/shared/libretro/shader.cpp
 )
 target_include_directories(${_frontend} PUBLIC
     ${CMAKE_SOURCE_DIR}/shared/libretro

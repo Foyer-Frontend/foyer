@@ -26,6 +26,7 @@
 #include "libretro/input.hpp"
 #include "libretro/overlay.hpp"
 #include "libretro/bezel.hpp"
+#include "libretro/shader.hpp"
 #include "libretro/savestate.hpp"
 #include "libretro/cheevos.hpp"
 
@@ -204,15 +205,19 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // Optional argv[3] = "resume=<slot>" — load the save state once the rom
-    // has booted so the user picks up where they left off.
-    int resume_slot = -1;
+    // Optional argv tokens:
+    //   "resume=<slot>"  — load a save state right after boot
+    //   "shader=<name>"  — bring up the post-process shader pipeline
+    int         resume_slot = -1;
+    std::string shader_name;
     for (int i = 2; i < argc; i++) {
         if (!argv[i]) continue;
         const auto raw = normalise_argv_path(argv[i]);
         if (raw.rfind("resume=", 0) == 0) {
             const auto n = std::atoi(raw.c_str() + 7);
             if (n >= 0 && n < foyer::libretro::kStateSlotCount) resume_slot = n;
+        } else if (raw.rfind("shader=", 0) == 0) {
+            shader_name = raw.substr(7);
         }
     }
     if (resume_slot >= 0) {
@@ -222,6 +227,12 @@ int main(int argc, char** argv) {
         } else {
             foyer::log::write("[player] auto-resume slot %d failed\n", resume_slot);
         }
+    }
+    if (!shader_name.empty() && shader_name != "none") {
+        // Lazy init — set_preset() calls init() if needed. EGL setup
+        // failure logs but is otherwise non-fatal: process() falls back
+        // to no-op so the game still renders.
+        foyer::libretro::shader_pipeline().set_preset(shader_name);
     }
 
     // Hook audio at the core's reported sample rate. Voice format = stereo S16.

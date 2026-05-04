@@ -1,5 +1,6 @@
 #include "video.hpp"
 #include "platform/log.hpp"
+#include "shader.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -141,6 +142,12 @@ void VideoSinkImpl::upload(const Frontend::VideoFrame& f) {
         default:
             return;
     }
+
+    // Apply the active post-process shader pass (if any) BEFORE the
+    // nanovg blit. shader_pipeline().process() is a no-op when the
+    // active preset is "none" or empty, so this stays free for users
+    // who haven't picked a shader.
+    shader_pipeline().process(dst, f.width, f.height);
 
     if (m_image > 0 && (int)f.width == m_w && (int)f.height == m_h) {
         nvgUpdateImage(m_vg, m_image, dst);

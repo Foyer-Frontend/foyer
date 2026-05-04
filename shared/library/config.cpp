@@ -93,6 +93,7 @@ void write_locked() {
     out << "    \"rom_root\":          \"" << g_config.rom_root << "\",\n";
     out << "    \"theme\":             \"" << g_config.theme_name << "\",\n";
     out << "    \"sort_mode\":         \"" << sort_to_str(g_config.sort_mode) << "\",\n";
+    out << "    \"shader\":            \"" << g_config.shader_name << "\",\n";
     out << "    \"scan_subfolders\":   " << bstr(g_config.scan_subfolders) << ",\n";
     out << "    \"show_clock\":        " << bstr(g_config.show_clock) << ",\n";
     out << "    \"show_backgrounds\":  " << bstr(g_config.show_backgrounds) << ",\n";
@@ -146,6 +147,10 @@ void load_locked() {
     if (auto* v = yyjson_obj_get(root, "sort_mode");
         v && yyjson_is_str(v)) {
         g_config.sort_mode = str_to_sort(yyjson_get_str(v));
+    }
+    if (auto* v = yyjson_obj_get(root, "shader");
+        v && yyjson_is_str(v)) {
+        g_config.shader_name = yyjson_get_str(v);
     }
     auto load_bool = [&](const char* key, bool& out) {
         if (auto* v = yyjson_obj_get(root, key); v && yyjson_is_bool(v)) {
@@ -223,6 +228,12 @@ void set_theme_name(std::string_view name) {
 void set_sort_mode(Config::SortMode mode) {
     std::scoped_lock lk{g_mutex};
     g_config.sort_mode = mode;
+    write_locked();
+}
+
+void set_shader_name(std::string_view name) {
+    std::scoped_lock lk{g_mutex};
+    g_config.shader_name = std::string{name};
     write_locked();
 }
 

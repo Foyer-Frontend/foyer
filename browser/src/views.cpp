@@ -1198,6 +1198,7 @@ enum : int {
     OpUpdRefreshManifest, OpUpdInstallSingleCore, OpUpdReinstallSingleCore,
     OpUpdCancelJob,
     OpSortMode,
+    OpShader,
     OpUpdCheckFoyer, OpUpdInstallFoyer,
     OpEmuSysCore,    // Cycle through available cores for one system.
     OpExpMtp, OpExpMtpAutostart, OpExpDebugLog,
@@ -1259,14 +1260,29 @@ std::vector<Item> build_items(Category cat, const State& s) {
                 "Edit /foyer/config/general.jsonc to change.",       OpRomRoot});
             rows.push_back({ItemKind::Toggle, "Scan subfolders",   "", "",     OpScanSub});
             break;
-        case Category::Display:
+        case Category::Display: {
             rows.push_back({ItemKind::Cycle,  "Theme",        cfg.theme_name,
                 "Drop palettes into /foyer/config/themes/.",          OpTheme});
             rows.push_back({ItemKind::Toggle, "Show clock",       "", "",     OpShowClock});
             rows.push_back({ItemKind::Toggle, "Show backgrounds", "",
                 "Use /foyer/assets/backgrounds/<sys>/<stem>.jpg.",    OpShowBg});
             rows.push_back({ItemKind::Toggle, "Show covers",      "", "",     OpShowCovers});
+            // Post-process shader, applied per-frame in every player.
+            // Built-in presets ship with the player binary; users can
+            // also drop their own /foyer/shaders/<name>.glsl files.
+            const char* shader_label = cfg.shader_name.c_str();
+            if (cfg.shader_name == "none"        || cfg.shader_name.empty())
+                shader_label = "None";
+            else if (cfg.shader_name == "scanlines")   shader_label = "Scanlines";
+            else if (cfg.shader_name == "crt_simple")  shader_label = "CRT (simple)";
+            else if (cfg.shader_name == "lcd_grid")    shader_label = "LCD grid";
+            else if (cfg.shader_name == "gb_dmg")      shader_label = "Game Boy DMG";
+            else if (cfg.shader_name == "gba_correct") shader_label = "GBA correction";
+            rows.push_back({ItemKind::Cycle, "Shader", shader_label,
+                "Built-ins or /foyer/shaders/<name>.glsl. Per-game "
+                "overrides via per_game.jsonc.", OpShader});
             break;
+        }
         case Category::Audio:
             rows.push_back({ItemKind::Static, "System volume controls live in the Switch home menu",
                 "", "Per-core audio settings are exposed in the in-game pause overlay.", 0});
@@ -2665,6 +2681,21 @@ void update(State& s, const Library& lib,
                     s.request_rescan = true;
                     s.banner_text = "Sort changed - rescanning...";
                     s.banner_ttl  = 180;
+                } else if (it.payload == settings::OpShader) {
+                    static const char* kShaderNames[] = {
+                        "none", "scanlines", "crt_simple", "lcd_grid",
+                        "gb_dmg", "gba_correct",
+                    };
+                    constexpr int kCount = (int)(sizeof(kShaderNames) / sizeof(kShaderNames[0]));
+                    int cur = 0;
+                    const auto& curr = library::config().shader_name;
+                    for (int i = 0; i < kCount; i++) {
+                        if (curr == kShaderNames[i]) { cur = i; break; }
+                    }
+                    cur = ((cur + delta) % kCount + kCount) % kCount;
+                    library::set_shader_name(kShaderNames[cur]);
+                    s.banner_text = std::string{"Shader: "} + kShaderNames[cur];
+                    s.banner_ttl  = 120;
                 }
             }
 

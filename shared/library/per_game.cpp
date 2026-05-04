@@ -20,6 +20,7 @@ constexpr const char* kPath = "/foyer/config/per_game.jsonc";
 
 struct Entry {
     std::string   core;
+    std::string   shader;
     bool          favorite    = false;
     std::uint64_t last_played = 0;
     std::uint64_t playtime    = 0;
@@ -30,7 +31,8 @@ std::unordered_map<std::string, Entry>     g_entries;
 std::atomic<bool>                          g_loaded{false};
 
 bool entry_is_default(const Entry& e) {
-    return e.core.empty() && !e.favorite && e.last_played == 0 && e.playtime == 0;
+    return e.core.empty() && e.shader.empty() && !e.favorite
+        && e.last_played == 0 && e.playtime == 0;
 }
 
 std::string strip_comments(const std::string& in) {
@@ -81,6 +83,9 @@ void load_locked() {
             if (auto* x = yyjson_obj_get(v, "core");
                 x && yyjson_is_str(x))
                 e.core = yyjson_get_str(x);
+            if (auto* x = yyjson_obj_get(v, "shader");
+                x && yyjson_is_str(x))
+                e.shader = yyjson_get_str(x);
             if (auto* x = yyjson_obj_get(v, "favorite");
                 x && yyjson_is_bool(x))
                 e.favorite = yyjson_get_bool(x);
@@ -115,6 +120,11 @@ void save_locked() {
         bool need_comma = false;
         if (!e.core.empty()) {
             out << " \"core\": \"" << e.core << "\"";
+            need_comma = true;
+        }
+        if (!e.shader.empty()) {
+            if (need_comma) out << ",";
+            out << " \"shader\": \"" << e.shader << "\"";
             need_comma = true;
         }
         if (e.favorite) {
@@ -212,6 +222,17 @@ std::uint64_t per_game_playtime(std::string_view rom_path) {
 
 void add_per_game_playtime(std::string_view rom_path, std::uint64_t seconds) {
     mutate(rom_path, [&](Entry& e) { e.playtime += seconds; });
+}
+
+std::string per_game_shader(std::string_view rom_path) {
+    ensure_loaded();
+    std::scoped_lock lk{g_mutex};
+    auto* e = find_entry_locked(rom_path);
+    return e ? e->shader : std::string{};
+}
+
+void set_per_game_shader(std::string_view rom_path, std::string_view shader_name) {
+    mutate(rom_path, [&](Entry& e) { e.shader = std::string{shader_name}; });
 }
 
 void apply_per_game_state(Game& g) {

@@ -1,4 +1,5 @@
 #include "launch.hpp"
+#include "library/config.hpp"
 #include "library/scanner.hpp"
 #include "library/system_db.hpp"
 #include "library/per_game.hpp"
@@ -72,18 +73,28 @@ bool launch_game(const library::System& sys, const library::Game& game,
     std::string sd_nro = std::string{"sdmc:"} + nro_path;
     std::string sd_rom = std::string{"sdmc:"} + game.path;
 
+    // Resolve the active shader: per-rom override beats the general
+    // default. "none" / empty = no shader applied. The player parses
+    // an argv "shader=<name>" token and passes it to its
+    // shader_pipeline.
+    std::string shader = library::per_game_shader(game.path);
+    if (shader.empty()) shader = library::config().shader_name;
+    if (shader.empty()) shader = "none";
+
     // argv[0] = nro path, argv[1] = rom path, argv[2] = our own path so the
     // player can chain back to us cleanly without hardcoding. argv[3] is an
-    // optional "resume=<slot>" hint.
+    // optional "resume=<slot>" hint; argv[N] = optional "shader=<name>".
     char argv[1024];
     if (resume_slot >= 0) {
         std::snprintf(argv, sizeof(argv),
-            "\"%s\" \"%s\" \"%s\" \"resume=%d\"",
+            "\"%s\" \"%s\" \"%s\" \"resume=%d\" \"shader=%s\"",
             sd_nro.c_str(), sd_rom.c_str(),
-            browser_self_path().c_str(), resume_slot);
+            browser_self_path().c_str(), resume_slot, shader.c_str());
     } else {
-        std::snprintf(argv, sizeof(argv), "\"%s\" \"%s\" \"%s\"",
-            sd_nro.c_str(), sd_rom.c_str(), browser_self_path().c_str());
+        std::snprintf(argv, sizeof(argv),
+            "\"%s\" \"%s\" \"%s\" \"shader=%s\"",
+            sd_nro.c_str(), sd_rom.c_str(),
+            browser_self_path().c_str(), shader.c_str());
     }
 
     if (R_FAILED(envSetNextLoad(sd_nro.c_str(), argv))) {

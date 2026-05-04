@@ -47,6 +47,12 @@ void          mark_per_game_played(std::string_view rom_path);
 std::uint64_t per_game_playtime(std::string_view rom_path);
 void          add_per_game_playtime(std::string_view rom_path, std::uint64_t seconds);
 
+// Per-game shader override (built-in name or *.glsl stem). Empty
+// string means "fall back to Config::shader_name". Resolution order
+// at launch time is per-rom > general default > "none".
+std::string per_game_shader(std::string_view rom_path);
+void        set_per_game_shader(std::string_view rom_path, std::string_view shader_name);
+
 // Resolve which core to use for a rom: per-game override > general
 // default_core_per_system > system_db default. Always returns a non-null
 // CoreDef when the system has at least one configured core; nullptr only
