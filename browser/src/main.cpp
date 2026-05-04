@@ -1,8 +1,9 @@
-// foyer browser entry — Phase 3.
+// foyer browser entry.
 //
-// Scans /foyer/roms for known systems, draws an ES-DE-style carousel + game
-// list, and chain-launches the matching foyer-<core>.nro player when the
-// user picks a game.
+// Scans /foyer/roms for known systems, drives the carousel + game list +
+// detail + search + settings views, manages the background workers
+// (manifest fetch, core install, scrape, foyer self-update, shader
+// install), and chain-launches the matching foyer-<core>.nro player.
 
 #include <switch.h>
 
@@ -91,12 +92,29 @@ int main(int /*argc*/, char** /*argv*/) {
         foyer::browser::draw(vg, w, h, state, lib);
     });
 
+    // Cache the most recently rendered MTP status so we only refresh
+    // the banner when the haze callback actually changed the string.
+    // Without this we'd thrash banner_ttl every frame and stomp on
+    // unrelated banners (rescan toast, scrape progress, etc.).
+    std::string last_mtp_status;
+
     while (app.tick()) {
         const auto held = padGetButtons(&app.pad());
         const auto down = padGetButtonsDown(&app.pad());
 
         foyer::browser::update(state, lib, held, down,
             app.touch(), (float)app.width(), (float)app.height());
+
+        if (foyer::browser::mtp_running()) {
+            auto s = foyer::browser::mtp_status();
+            if (s != last_mtp_status && !s.empty()) {
+                state.banner_text = s;
+                state.banner_ttl  = 90;
+                last_mtp_status   = std::move(s);
+            }
+        } else if (!last_mtp_status.empty()) {
+            last_mtp_status.clear();
+        }
 
         if (state.request_quit) {
             foyer::browser::mtp_stop();

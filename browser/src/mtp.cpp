@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstring>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <string_view>
 
@@ -17,6 +18,29 @@ namespace foyer::browser {
 namespace {
 
 std::atomic<bool> g_running{false};
+
+// haze fires its callback from the IO thread. Cache the most recent
+// status under a small lock so the UI can read it on the game thread
+// without racing on the std::string buffer. Cleared on session
+// teardown so the banner doesn't linger after the cable is unplugged.
+std::mutex  g_status_mu;
+std::string g_status;
+
+void set_status(std::string s) {
+    std::scoped_lock lk{g_status_mu};
+    g_status = std::move(s);
+}
+
+const char* basename_view(const char* path) {
+    if (!path || !*path) return path ? path : "";
+    const char* p   = path;
+    const char* out = path;
+    while (*p) {
+        if (*p == '/' || *p == '\\') out = p + 1;
+        p++;
+    }
+    return out;
+}
 
 // Forwards every libhaze filesystem call through the SD card's fsFs* API
 // after rewriting the path so the host sees us as if `/foyer/roms` were
@@ -107,8 +131,73 @@ struct FsRomRoot final : haze::FileSystemProxyImpl {
     std::string  m_root;
 };
 
-void haze_callback(const haze::CallbackData* /*data*/) {
-    // No-op for now; we'll route progress into a banner in a later pass.
+void haze_callback(const haze::CallbackData* data) {
+    if (!data) return;
+    char buf[160];
+    switch (data->type) {
+        case haze::CallbackType_OpenSession:
+            set_status("MTP: connected");
+            break;
+        case haze::CallbackType_CloseSession:
+            set_status({});
+            break;
+        case haze::CallbackType_CreateFile:
+            std::snprintf(buf, sizeof(buf),
+                "MTP: creating %s", basename_view(data->file.filename));
+            set_status(buf);
+            break;
+        case haze::CallbackType_DeleteFile:
+            std::snprintf(buf, sizeof(buf),
+                "MTP: deleting %s", basename_view(data->file.filename));
+            set_status(buf);
+            break;
+        case haze::CallbackType_RenameFile:
+        case haze::CallbackType_RenameFolder:
+            std::snprintf(buf, sizeof(buf),
+                "MTP: renaming %s", basename_view(data->rename.filename));
+            set_status(buf);
+            break;
+        case haze::CallbackType_CreateFolder:
+            std::snprintf(buf, sizeof(buf),
+                "MTP: mkdir %s", basename_view(data->file.filename));
+            set_status(buf);
+            break;
+        case haze::CallbackType_DeleteFolder:
+            std::snprintf(buf, sizeof(buf),
+                "MTP: rmdir %s", basename_view(data->file.filename));
+            set_status(buf);
+            break;
+        case haze::CallbackType_ReadBegin:
+            std::snprintf(buf, sizeof(buf),
+                "MTP: ↑ %s", basename_view(data->file.filename));
+            set_status(buf);
+            break;
+        case haze::CallbackType_WriteBegin:
+            std::snprintf(buf, sizeof(buf),
+                "MTP: ↓ %s", basename_view(data->file.filename));
+            set_status(buf);
+            break;
+        case haze::CallbackType_ReadProgress:
+        case haze::CallbackType_WriteProgress: {
+            // Progress fires often (every chunk); only refresh the
+            // banner once per ~64 KiB so we don't churn the mutex.
+            const long long off  = data->progress.offset;
+            const long long size = data->progress.size;
+            if (size <= 0 || (off & 0xFFFF)) break;
+            const int pct = (int)((off * 100) / (size ? size : 1));
+            std::snprintf(buf, sizeof(buf),
+                "MTP: %lld / %lld KiB (%d%%)",
+                off / 1024, size / 1024, pct);
+            set_status(buf);
+            break;
+        }
+        case haze::CallbackType_ReadEnd:
+        case haze::CallbackType_WriteEnd:
+            std::snprintf(buf, sizeof(buf),
+                "MTP: done %s", basename_view(data->file.filename));
+            set_status(buf);
+            break;
+    }
 }
 
 } // namespace
@@ -137,9 +226,15 @@ void mtp_stop() {
     if (!g_running.load()) return;
     haze::Exit();
     g_running = false;
+    set_status({});
     foyer::log::write("[mtp] stopped\n");
 }
 
 bool mtp_running() { return g_running.load(); }
+
+std::string mtp_status() {
+    std::scoped_lock lk{g_status_mu};
+    return g_status;
+}
 
 } // namespace foyer::browser

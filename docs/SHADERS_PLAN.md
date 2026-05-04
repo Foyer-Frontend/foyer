@@ -1,7 +1,9 @@
 # Post-process shaders — design notes
 
-Future-work doc. Captures the shape of the shader feature so we can pick
-it back up without re-deriving the architecture from scratch.
+Historical design doc. The shader pipeline shipped in v0.2.25 (single-pass
+GLES3) and was extended through v0.2.27 (multi-pass + LUT textures +
+per-pass parameters + foyer-shaders manifest installer). Kept around to
+explain *why* the pipeline looks the way it does for future contributors.
 
 ## Motivation
 

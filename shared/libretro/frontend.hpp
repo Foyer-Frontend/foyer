@@ -19,9 +19,10 @@ namespace foyer::libretro {
 //   4. Frontend::instance().unload_game();
 //   5. Frontend::instance().shutdown();
 //
-// Phase 2 wires only the bare minimum needed to boot a NES rom under fceumm.
-// Aspect / shader / save-state / overlay belong to later phases and are not
-// implemented here.
+// Aspect handling, post-process shaders, save-state, and the pause
+// overlay all sit in their own modules (aspect.hpp, shader.hpp,
+// savestate.hpp, overlay.hpp). Frontend stays narrowly focused on the
+// libretro contract — env / video / audio / input / log callbacks.
 struct Frontend {
     // System metadata pulled from retro_get_system_info() at init time.
     struct SystemInfo {

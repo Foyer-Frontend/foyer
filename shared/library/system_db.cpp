@@ -209,6 +209,9 @@ const SystemDef kVirtualRecentDef = {
 const SystemDef kVirtualFavoritesDef = {
     "__favorites", "Favorites", "FAVS", "", "", {},
 };
+const SystemDef kVirtualUnknownDef = {
+    "__unknown", "Unknown",  "UNK", "", "", {},
+};
 
 bool is_virtual_system(const SystemDef& sys) {
     return !sys.folder_name.empty() && sys.folder_name.starts_with("__");

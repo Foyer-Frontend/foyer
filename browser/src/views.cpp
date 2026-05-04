@@ -1192,8 +1192,6 @@ enum : int {
     OpScraper = 1, OpTheme, OpRomRoot, OpScanSub,
     OpShowClock, OpShowBg, OpShowCovers,
     OpRescan, OpInvalidateCovers,
-    OpEmuList,
-    OpAccCreds,
     OpUpdScrapeAll, OpUpdInstalledCores, OpUpdInstallCores,
     OpUpdRefreshManifest, OpUpdInstallSingleCore, OpUpdReinstallSingleCore,
     OpUpdCancelJob,
@@ -2462,9 +2460,8 @@ void update(State& s, const Library& lib,
             }
         }
         if (down & HidNpadButton_Y) {
-            // Y always uses the scraper picked in /foyer/config/general.jsonc.
-            // Settings UI (Phase 8) will let the user change it from foyer
-            // itself; for now they can edit the file via MTP.
+            // Y always uses the scraper picked under Settings → General →
+            // Preferred scraper (or general.jsonc on disk).
             switch (foyer::library::config().preferred_scraper) {
                 case foyer::library::Config::Scraper::ScreenScraper:
                     s.request_scrape_kind = State::ScrapeKind::ScreenScraper; break;

@@ -51,6 +51,11 @@ const CoreDef* find_core_in_system(const SystemDef& sys, std::string_view core_n
 // sentinels (which have an empty cores span).
 extern const SystemDef kVirtualRecentDef;     // "__recent"
 extern const SystemDef kVirtualFavoritesDef;  // "__favorites"
+// Catch-all for /foyer/roms/<folder>/ paths whose folder name doesn't
+// match any entry in kSystems. Surfaced so the user at least *sees*
+// stray collections; launching is disabled (no cores, no
+// thumbnails_db).
+extern const SystemDef kVirtualUnknownDef;    // "__unknown"
 
 bool is_virtual_system(const SystemDef& sys);
 

@@ -59,6 +59,43 @@ bool is_archive_ext(std::string_view ext) {
     return ext == "zip" || ext == "7z";
 }
 
+// Loose variant for the synthetic Unknown system — accepts any file
+// with any extension so the user can see what's actually inside an
+// unrecognised /foyer/roms/<folder>/. We don't peek archives here
+// (we don't know what to look for inside them) and we cap the
+// per-folder count at 200 so a misplaced 5,000-file dump doesn't
+// blow up the carousel. Symlinks (DT_LNK) are not followed.
+void scan_dir_loose(const std::string& path,
+                    std::vector<Game>& out,
+                    bool recurse,
+                    std::size_t soft_cap) {
+    if (out.size() >= soft_cap) return;
+    auto* dir = ::opendir(path.c_str());
+    if (!dir) return;
+    while (auto* g = ::readdir(dir)) {
+        if (out.size() >= soft_cap) break;
+        if (g->d_name[0] == '.') continue;
+        const std::string full = path + "/" + g->d_name;
+        if (g->d_type == DT_DIR) {
+            if (recurse) scan_dir_loose(full, out, true, soft_cap);
+            continue;
+        }
+        if (g->d_type != DT_REG) continue;
+        const auto ext = ext_of(g->d_name);
+        if (ext.empty()) continue;
+
+        Game game;
+        game.path     = full;
+        game.filename = g->d_name;
+        game.stem     = stem_of(g->d_name);
+        game.ext      = ext;
+        game.display  = game.stem;
+        apply_per_game_state(game);
+        out.emplace_back(std::move(game));
+    }
+    ::closedir(dir);
+}
+
 void scan_dir_into(const std::string& path,
                    const SystemDef& def,
                    std::vector<Game>& out,
@@ -145,14 +182,23 @@ std::vector<System> scan_library(const ScanOptions& opts) {
         return out;
     }
 
+    // Folders that don't match any known system get pooled into the
+    // synthetic Unknown tile after the main scan, so the user at least
+    // sees the rom data exists.
+    System unknown;
+    unknown.def       = &kVirtualUnknownDef;
+    unknown.root_path = opts.rom_root;
+
     while (auto* d = ::readdir(root)) {
         if (d->d_name[0] == '.' || d->d_type != DT_DIR) continue;
 
         const auto* def = find_system_by_folder(d->d_name);
         if (!def) {
-            // Folder name doesn't match any known system. Could be a user
-            // collection — ignore for now (Phase 8 may surface it as an
-            // "Unknown" system in the carousel).
+            // Unrecognised folder. Pull its files into the Unknown
+            // bucket — capped at 200 so a misplaced dump doesn't
+            // dominate the carousel.
+            const auto sub = opts.rom_root + "/" + d->d_name;
+            scan_dir_loose(sub, unknown.games, opts.recurse, /*soft_cap=*/200);
             continue;
         }
 
@@ -172,6 +218,11 @@ std::vector<System> scan_library(const ScanOptions& opts) {
         }
     }
     ::closedir(root);
+
+    if (!unknown.games.empty()) {
+        sort_games(unknown.games, Config::SortMode::Name);
+        out.emplace_back(std::move(unknown));
+    }
 
     // Synthesise the virtual "Recent" + "Favorites" carousel tiles by
     // pooling games across every real system. Inserted in reverse order

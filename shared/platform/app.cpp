@@ -262,7 +262,7 @@ bool App::tick() {
     padUpdate(&m_pad);
     // No default quit gesture here — the caller decides when to call quit().
     // The browser binds + to exit; the player passes + through to the core
-    // as the START button and uses a different combo (Phase 4 pause overlay).
+    // as the START button and uses a different combo for the pause menu.
 
     // Pull touch state. hidGetTouchScreenStates returns positions in the
     // 1280x720 handheld panel space; we just forward them as-is so views

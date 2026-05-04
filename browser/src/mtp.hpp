@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 namespace foyer::browser {
 
 // Roms-over-USB. Spins up libhaze with a single FileSystemProxy whose root is
@@ -12,5 +14,11 @@ namespace foyer::browser {
 bool mtp_start();
 void mtp_stop();
 bool mtp_running();
+
+// Most recent libhaze callback, formatted for the bottom-of-screen
+// banner. Empty string when nothing's happening (idle session, no
+// transfer in flight). Updated atomically as haze fires events on
+// its IO thread.
+std::string mtp_status();
 
 } // namespace foyer::browser

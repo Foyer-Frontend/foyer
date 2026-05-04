@@ -1,16 +1,20 @@
-// foyer player entry — Phase 2.
+// foyer player entry.
 //
-// Boots a rom, runs retro_run() each frame, draws the core's video output
-// aspect-fit on screen, and forwards Switch pad to libretro input.
-// Audio + pause overlay land in the next phase.
+// Boots a rom, drives retro_run() each frame, draws video aspect-fit,
+// pumps audio, and forwards Switch pad + touch to libretro. Hosts the
+// pause overlay (save/load/cheats/options/aspect/quit), bezel art,
+// post-process shader pipeline, RetroAchievements, and run-ahead.
 //
 // argv layout (set by the browser via envSetNextLoad):
 //   argv[0]  = nro path on sd ("sdmc:/switch/foyer/cores/foyer-fceumm.nro")
 //   argv[1]  = rom path on sd ("sdmc:/roms/nes/Some Game.nes")
+//   argv[2+] = optional "key=value" hint tokens
+//             ("resume=N", "shader=name", "runahead=N")
 
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <dirent.h>
 #include <string>
 #include <string_view>
@@ -19,6 +23,7 @@
 #include "platform/app.hpp"
 #include "platform/log.hpp"
 #include "library/system_db.hpp"
+#include "library/per_game.hpp"
 #include "libretro/frontend.hpp"
 #include "util/archive.hpp"
 #include "libretro/video.hpp"
@@ -213,6 +218,12 @@ int main(int argc, char** argv) {
         fe.shutdown();
         return 1;
     }
+
+    // Stamp last_played now and remember session start so we can write
+    // playtime back when the user quits cleanly. The browser uses both
+    // fields to drive the Recent virtual system and Sort-by-Playtime.
+    foyer::library::mark_per_game_played(rom_path);
+    const std::time_t session_start = std::time(nullptr);
 
     // Optional argv tokens:
     //   "resume=<slot>"   — load a save state right after boot
@@ -463,6 +474,25 @@ int main(int argc, char** argv) {
     }
 
     if (runahead_state) std::free(runahead_state);
+
+    // Persist this session's playtime to per_game.jsonc. Anything past
+    // 4h (likely a left-running console) is capped to keep the field
+    // believable; anything under 5s is treated as a misclick and
+    // dropped so we don't pollute Sort-by-Playtime with launch-and-quit
+    // sessions.
+    {
+        const std::time_t now = std::time(nullptr);
+        if (now > session_start) {
+            std::uint64_t elapsed = (std::uint64_t)(now - session_start);
+            if (elapsed < 5)        elapsed = 0;
+            if (elapsed > 4 * 3600) elapsed = 4 * 3600;
+            if (elapsed > 0) {
+                foyer::library::add_per_game_playtime(rom_path, elapsed);
+                foyer::log::write("[player] +%llu sec playtime\n",
+                    (unsigned long long)elapsed);
+            }
+        }
+    }
 
     foyer::libretro::Cheevos::instance().shutdown();
     fe.unload_game();
