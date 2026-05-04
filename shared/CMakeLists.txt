@@ -19,6 +19,7 @@ add_library(foyer_shared STATIC
     library/worker.cpp
     library/core_installer.cpp
     library/core_install_job.cpp
+    library/shader_installer.cpp
     library/foyer_updater.cpp
     library/foyer_update_job.cpp
     library/scrape_job.cpp

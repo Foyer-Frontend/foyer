@@ -14,6 +14,7 @@
 #include "library/per_game.hpp"
 #include "library/core_installer.hpp"
 #include "library/foyer_updater.hpp"
+#include "library/shader_installer.hpp"
 #include "net/http.hpp"
 #include "scrapers/cache.hpp"
 #include "scrapers/libretro_thumbnails.hpp"
@@ -280,6 +281,54 @@ int main(int /*argc*/, char** /*argv*/) {
                 foyer::browser::set_manifest_cache(
                     foyer::library::fetch_manifest(
                         foyer::library::config().cores_manifest_url));
+            }
+        }
+
+        // Shader presets install. Synchronous on the main thread for
+        // now (manifest is small; each preset zip is KB-sized; the
+        // full catalogue is < 1 MB total). The user-facing flow:
+        //   Settings -> Updates -> Install shader presets
+        // fetches manifest, downloads + unzips every preset under
+        // /foyer/shaders/<name>/.
+        if (state.request_install_shaders) {
+            state.request_install_shaders = false;
+            state.banner_text = "Fetching shader manifest...";
+            state.banner_ttl  = 60;
+            app.tick();
+            auto sm = foyer::library::fetch_shader_manifest(
+                foyer::library::config().shaders_manifest_url);
+            if (sm.presets.empty()) {
+                state.banner_text = "Shader manifest fetch failed";
+                state.banner_ttl  = 240;
+            } else {
+                const auto totals = foyer::library::install_shaders(sm,
+                    [&](const foyer::library::ShaderInstallProgress& p) {
+                        char b[160];
+                        const char* verb =
+                            p.action == foyer::library::ShaderInstallAction::Skipped   ? "skipped" :
+                            p.action == foyer::library::ShaderInstallAction::Updated   ? "updated" :
+                            p.action == foyer::library::ShaderInstallAction::Installed ? "installed"
+                                                                                       : "FAILED";
+                        std::snprintf(b, sizeof(b), "[%d/%d] %s - %s",
+                            p.index, p.total, p.name.c_str(), verb);
+                        state.banner_text = b;
+                        state.banner_ttl  = 60;
+                        app.tick();
+                    });
+                if (totals.failed > 0) {
+                    char b[120];
+                    std::snprintf(b, sizeof(b),
+                        "%d shader preset%s failed - check log",
+                        totals.failed, totals.failed == 1 ? "" : "s");
+                    state.banner_text = b;
+                } else {
+                    char b[120];
+                    std::snprintf(b, sizeof(b),
+                        "Shader presets ready (%d new, %d updated, %d skipped)",
+                        totals.installed, totals.updated, totals.skipped);
+                    state.banner_text = b;
+                }
+                state.banner_ttl = 360;
             }
         }
 

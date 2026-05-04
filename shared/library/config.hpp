@@ -54,6 +54,12 @@ struct Config {
     std::string  foyer_manifest_url =
         "https://github.com/foyer-frontend/foyer/releases/latest/download/foyer-manifest.json";
 
+    // foyer-shaders preset catalogue. Same redistribution model as
+    // cores: a manifest with a list of preset zips, each unpacking
+    // into /foyer/shaders/<name>/.
+    std::string  shaders_manifest_url =
+        "https://github.com/foyer-frontend/foyer-shaders/releases/latest/download/manifest.json";
+
     // Per-system core override. Stored flat to keep the header light; the
     // list is short (≤20 systems) so linear lookup is fine.
     struct PerSystemCore { std::string folder; std::string core; };

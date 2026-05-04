@@ -1199,6 +1199,7 @@ enum : int {
     OpUpdCancelJob,
     OpSortMode,
     OpShader,
+    OpInstallShaderPresets,
     OpUpdCheckFoyer, OpUpdInstallFoyer,
     OpEmuSysCore,    // Cycle through available cores for one system.
     OpExpMtp, OpExpMtpAutostart, OpExpDebugLog,
@@ -1288,8 +1289,8 @@ std::vector<Item> build_items(Category cat, const State& s) {
                 "", "Per-core audio settings are exposed in the in-game pause overlay.", 0});
             break;
         case Category::Library: {
-            rows.push_back({ItemKind::Action, "Rescan library",         "A: run",     "", OpRescan});
-            rows.push_back({ItemKind::Action, "Invalidate cover cache", "A: refresh", "", OpInvalidateCovers});
+            rows.push_back({ItemKind::Action, "Rescan library",         "run",     "", OpRescan});
+            rows.push_back({ItemKind::Action, "Invalidate cover cache", "refresh", "", OpInvalidateCovers});
             // Sort cycle. Cycling triggers a rescan so the new order
             // takes effect immediately.
             const char* sort_label = "Name";
@@ -1308,7 +1309,7 @@ std::vector<Item> build_items(Category cat, const State& s) {
             // Catalog of cores from the foyer-cores release manifest. This
             // is where the user *installs* cores — Updates is where they
             // *upgrade* the ones already on disk.
-            rows.push_back({ItemKind::Action, "Refresh manifest", "A: fetch",
+            rows.push_back({ItemKind::Action, "Refresh manifest", "fetch",
                 "Pulls the latest foyer-cores release listing from GitHub.",
                 OpUpdRefreshManifest});
 
@@ -1387,7 +1388,7 @@ std::vector<Item> build_items(Category cat, const State& s) {
             const auto& a = scrapers::accounts();
             rows.push_back({ItemKind::Drill, "ScreenScraper dev ID",
                 mask_credential(a.screenscraper.devid),
-                "A: edit via on-screen keyboard.", OpAccSsDevId});
+                "Edited via the on-screen keyboard.", OpAccSsDevId});
             rows.push_back({ItemKind::Drill, "ScreenScraper dev password",
                 mask_credential(a.screenscraper.devpassword), "", OpAccSsDevPw});
             rows.push_back({ItemKind::Drill, "ScreenScraper username",
@@ -1412,7 +1413,7 @@ std::vector<Item> build_items(Category cat, const State& s) {
             if (any_job_active) {
                 rows.push_back({ItemKind::Static,
                     "Background job running", "", "", 0});
-                rows.push_back({ItemKind::Action, "Cancel", "A: stop",
+                rows.push_back({ItemKind::Action, "Cancel", "stop",
                     "Aborts the in-flight transfer at the next callback.",
                     OpUpdCancelJob});
             }
@@ -1423,20 +1424,23 @@ std::vector<Item> build_items(Category cat, const State& s) {
             if (s.foyer_update_available && !s.foyer_update_version.empty()) {
                 rows.push_back({ItemKind::Action,
                     std::string{"Update foyer to v"} + s.foyer_update_version,
-                    "A: install",
+                    "install",
                     "Downloads foyer.nro to /switch/foyer/foyer.nro.new — "
                     "applied on next boot.",
                     OpUpdInstallFoyer});
             } else {
                 rows.push_back({ItemKind::Action, "Check for foyer update",
-                    "A: check",
+                    "check",
                     "Compares this build against the foyer-frontend release.",
                     OpUpdCheckFoyer});
             }
-            rows.push_back({ItemKind::Action, "Scrape all systems", "A: run",
+            rows.push_back({ItemKind::Action, "Scrape all systems", "run",
                 "Walks every system using the preferred scraper.",   OpUpdScrapeAll});
-            rows.push_back({ItemKind::Action, "Refresh manifest", "A: fetch",
+            rows.push_back({ItemKind::Action, "Refresh manifest", "fetch",
                 "Pulls the latest foyer-cores release listing.",     OpUpdRefreshManifest});
+            rows.push_back({ItemKind::Action, "Install shader presets", "run",
+                "Downloads the foyer-shaders catalogue into "
+                "/foyer/shaders/.",                                  OpInstallShaderPresets});
 
             // Show only INSTALLED cores whose recorded version differs
             // from the manifest — i.e. a real release-tag update is
@@ -1464,7 +1468,7 @@ std::vector<Item> build_items(Category cat, const State& s) {
                     if (outdated_count == 0) {
                         rows.push_back({ItemKind::Static, "Pending core updates", "", "", 0});
                         rows.push_back({ItemKind::Action,
-                            "Update all", "A: run",
+                            "Update all", "run",
                             "", OpUpdInstallCores});
                     }
                     Item it{ItemKind::Action,
@@ -1696,12 +1700,18 @@ void draw_settings(NVGcontext* vg, float w, float h, const State& s, const Libra
                 break;
             }
             case ItemKind::Cycle:
-            case ItemKind::Static:
-            case ItemKind::Action: {
+            case ItemKind::Static: {
                 nvgFontSize(vg, th.body_size);
-                nvgFillColor(vg, it.kind == ItemKind::Action ? th.accent : th.text_dim);
+                nvgFillColor(vg, th.text_dim);
                 nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
                 nvgText(vg, vx, vy, it.value.c_str(), nullptr);
+                break;
+            }
+            case ItemKind::Action: {
+                // Verb (e.g. "run") lives in it.value but is shown in
+                // the bottom bar — not duplicated on the row. We
+                // could render a glyph here too, but the bottom-bar
+                // hint already conveys the action.
                 break;
             }
             case ItemKind::Drill: {
@@ -2726,6 +2736,10 @@ void update(State& s, const Library& lib,
                             s.request_refresh_manifest = true;
                             s.banner_text = "Fetching cores manifest...";
                             s.banner_ttl  = 180;
+                        } else if (it.payload == settings::OpInstallShaderPresets) {
+                            s.request_install_shaders = true;
+                            s.banner_text = "Fetching shader manifest...";
+                            s.banner_ttl  = 180;
                         } else if (it.payload == settings::OpUpdInstallSingleCore) {
                             s.request_install_cores = true;
                             s.install_only_core    = it.data;
@@ -2992,9 +3006,37 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
             char buf[160];
             std::snprintf(buf, sizeof(buf), "foyer  >  Settings  >  %s", cat);
             title = buf;
-            hint  = std::string{DPad} + " navigate   "
-                  + Left + Right + " adjust   "
-                  + A + " select   " + B + " back";
+            // Hint composes from the focused row's kind + (for Action
+            // rows) the row's value field, which holds the verb
+            // ("run", "fetch", "install", "stop", ...).  This way
+            // `A <verb>` always reads as the literal action behind
+            // the focus, no fixed inline "A:" prefix in the row text.
+            const auto srows = settings::build_items(
+                (settings::Category)s.settings_category, s);
+            std::string a_hint;
+            std::string lr_hint;
+            if (s.settings_in_content && s.settings_row >= 0
+                && s.settings_row < (int)srows.size()) {
+                const auto& it = srows[s.settings_row];
+                switch (it.kind) {
+                    case settings::ItemKind::Toggle: a_hint = "toggle"; break;
+                    case settings::ItemKind::Drill:  a_hint = "edit";   break;
+                    case settings::ItemKind::Cycle:
+                        a_hint  = "select";
+                        lr_hint = "change";
+                        break;
+                    case settings::ItemKind::Action:
+                        a_hint = it.value.empty() ? std::string{"run"} : it.value;
+                        break;
+                    case settings::ItemKind::Static: break;
+                }
+            } else {
+                a_hint = "enter";   // sidebar focus — A goes into content
+            }
+            hint = std::string{DPad} + " navigate";
+            if (!lr_hint.empty()) hint += std::string{"   "} + Left + Right + " " + lr_hint;
+            if (!a_hint.empty())  hint += std::string{"   "} + A + " " + a_hint;
+            hint += std::string{"   "} + B + " back";
             break;
         }
         case View::Search: {
