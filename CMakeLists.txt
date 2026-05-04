@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(foyer
-    VERSION 0.2.29
+    VERSION 0.2.30
     LANGUAGES C CXX
 )
 

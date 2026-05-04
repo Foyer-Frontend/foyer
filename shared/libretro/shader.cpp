@@ -7,6 +7,13 @@
 
 #include <yyjson.h>
 
+// Static linkage for every stbi_* symbol. Some libretro cores
+// (flycast, swanstation, ...) ship their own vendored stb_image.h
+// with the implementation enabled inside the core's static lib.
+// Without STB_IMAGE_STATIC the multiple definitions clash at link
+// time when foyer_shared and the core archive get pulled into the
+// same player nro.
+#define STB_IMAGE_STATIC
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_PNG
 #define STBI_NO_STDIO
