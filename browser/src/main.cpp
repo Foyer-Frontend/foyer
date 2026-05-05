@@ -40,27 +40,61 @@
 
 namespace {
 
-// Path to the running foyer.nro on the SD card. Hard-coded because nxlink
-// builds and direct-launches both use this canonical install path.
-constexpr const char* kFoyerNroPath    = "/switch/foyer/foyer.nro";
-constexpr const char* kFoyerNroNewPath = "/switch/foyer/foyer.nro.new";
+// Filesystem path to the running foyer.nro, derived from libnx's argv.
+// hbloader / nxlink / atmosphère all surface argv[0] as the nro path
+// under sdmc:/, but users install foyer wherever they like —
+// /switch/foyer.nro, /switch/foyer/foyer.nro, /switch/applets/foyer/foyer.nro,
+// etc. The self-update flow has to write the staged .new sibling next
+// to the real running nro, so we derive the path at boot rather than
+// hard-coding one. Falls back to /switch/foyer/foyer.nro only if
+// libnx didn't expose argv (very old loaders).
+std::string detect_foyer_nro_path() {
+    std::string p;
+    if (envHasArgv()) {
+        const char* a = static_cast<const char*>(envGetArgv());
+        if (a) {
+            while (*a == ' ') a++;
+            const char* end = nullptr;
+            if (*a == '"') { a++; end = std::strchr(a, '"'); }
+            else           { end = std::strchr(a, ' '); }
+            p.assign(a, end ? static_cast<std::size_t>(end - a) : std::strlen(a));
+        }
+    }
+    if (p.compare(0, 5, "sdmc:") == 0) p.erase(0, 5);
+    if (p.empty()) p = "/switch/foyer/foyer.nro";
+    return p;
+}
+
+// Two paths the rest of main() needs: the running nro itself (for the
+// self-update download destination) and its .new sibling (which the
+// boot path swaps in if the previous run staged an update).
+std::string g_foyer_nro_path;
+std::string g_foyer_nro_new_path;
 
 // If the previous run staged an update, swap it in before we boot the
 // rest of the app. We're not the loaded-into-memory image; renaming the
 // SD-side file is safe — the next launch picks up the new bytes.
 void apply_staged_update_if_present() {
     struct stat st{};
-    if (::stat(kFoyerNroNewPath, &st) != 0) return;
-    if (::rename(kFoyerNroNewPath, kFoyerNroPath) != 0) {
-        foyer::log::write("[foyer_update] rename of staged nro failed\n");
+    if (::stat(g_foyer_nro_new_path.c_str(), &st) != 0) return;
+    if (::rename(g_foyer_nro_new_path.c_str(),
+                 g_foyer_nro_path.c_str()) != 0) {
+        foyer::log::write("[foyer_update] rename of staged nro failed errno=%d\n",
+            errno);
         return;
     }
-    foyer::log::write("[foyer_update] applied staged nro -> %s\n", kFoyerNroPath);
+    foyer::log::write("[foyer_update] applied staged nro -> %s\n",
+        g_foyer_nro_path.c_str());
 }
 
 } // namespace
 
 int main(int argc, char** argv) {
+    g_foyer_nro_path     = detect_foyer_nro_path();
+    g_foyer_nro_new_path = g_foyer_nro_path + ".new";
+    foyer::log::write("[foyer_update] running nro path = %s\n",
+        g_foyer_nro_path.c_str());
+
     apply_staged_update_if_present();
 
     foyer::platform::App app;
@@ -242,7 +276,7 @@ int main(int argc, char** argv) {
             state.foyer_job.start_check_and_download(
                 foyer::library::config().foyer_manifest_url,
                 FOYER_VERSION,
-                "/switch/foyer/foyer.nro");
+                g_foyer_nro_path);
         } else if (state.request_install_foyer_update) {
             state.request_install_foyer_update = false;
         }
