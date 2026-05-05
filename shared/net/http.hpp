@@ -1,6 +1,8 @@
 #pragma once
 
+#include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <vector>
@@ -13,6 +15,24 @@ namespace foyer::net {
 // a blocking socket read. Used by background workers (CoreInstallJob,
 // FoyerUpdateJob, ScrapeJob) to honour a UI cancel button promptly.
 using CancelHook = std::function<bool()>;
+
+// Live byte counters for the in-flight streaming download. The xferinfo
+// callback in http.cpp publishes here on every libcurl progress tick;
+// the UI reads it (lock-free) to render a progress bar in the banner.
+//
+// Only `get_to_file` flips `active` on/off — the small one-shot `get`
+// path used by manifest pulls leaves it untouched, since those are
+// already small enough to not need a progress bar.
+//
+// Single global because we only run one streaming download at a time
+// (install_cores / install_pack / foyer self-update are all sequential
+// on the main thread).
+struct DownloadStatus {
+    std::atomic<std::uint64_t> now{0};      // bytes received so far
+    std::atomic<std::uint64_t> total{0};    // bytes expected (0 if unknown)
+    std::atomic<bool>          active{false};
+};
+DownloadStatus& current_download();
 
 struct Response {
     long              code = 0;     // HTTP status (0 if no response)

@@ -9,6 +9,7 @@
 
 #include "platform/app.hpp"
 #include "platform/log.hpp"
+#include "boot_splash.hpp"
 #include "library/scanner.hpp"
 #include "library/system_db.hpp"
 #include "library/config.hpp"
@@ -67,25 +68,14 @@ int main(int argc, char** argv) {
     // The closure captures a pointer to a status string we update
     // between init phases; tick() between updates flushes a fresh
     // frame so the user gets feedback rather than a frozen logo.
+    //
+    // BootSplash is short-lived — its image handles get dropped on
+    // the floor when we replace draw_fn below. The App tears down the
+    // NVG context on quit so we don't leak across runs.
     std::string boot_status = "Starting...";
-    app.set_draw_fn([&boot_status](NVGcontext* vg, float w, float h) {
-        nvgBeginPath(vg);
-        nvgRect(vg, 0, 0, w, h);
-        nvgFillColor(vg, nvgRGBA(0x05, 0x05, 0x06, 0xFF));
-        nvgFill(vg);
-
-        nvgFontSize(vg, 96.0f);
-        nvgFillColor(vg, nvgRGBA(0xEE, 0xEE, 0xEE, 0xFF));
-        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-        nvgText(vg, w / 2.0f, h / 2.0f - 40.0f, "foyer", nullptr);
-
-        nvgFontSize(vg, 24.0f);
-        nvgFillColor(vg, nvgRGBA(0x88, 0x88, 0x88, 0xFF));
-        nvgText(vg, w / 2.0f, h / 2.0f + 40.0f, boot_status.c_str(), nullptr);
-
-        nvgFontSize(vg, 18.0f);
-        nvgFillColor(vg, nvgRGBA(0x55, 0x55, 0x55, 0xFF));
-        nvgText(vg, w / 2.0f, h - 32.0f, FOYER_DISPLAY_VERSION, nullptr);
+    foyer::browser::BootSplash splash{app.vg()};
+    app.set_draw_fn([&boot_status, &splash](NVGcontext* vg, float w, float h) {
+        splash.draw(vg, w, h, boot_status, FOYER_DISPLAY_VERSION);
     });
     boot_status = "Seeding assets...";
     app.tick();
@@ -141,6 +131,17 @@ int main(int argc, char** argv) {
     // immediately even on a slow CDN; the result is processed by the
     // foyer_job poll block in the main loop below.
     state.foyer_job.start_check(foyer::library::config().foyer_manifest_url);
+
+    // Boot-time manifest scrape: fire the same request flags that
+    // Settings → Updates → "Refresh manifest" raises, so the user
+    // arrives at a UI that already knows what's installable / out of
+    // date without having to enter any settings page first. Cores
+    // refresh runs on a Worker (async) so the UI stays responsive; the
+    // cheats / bezels paths are sync today but cheap (small JSON pulls)
+    // and only block the first frames of the main loop.
+    state.request_refresh_manifest         = true;
+    state.request_refresh_cheats_manifest  = true;
+    state.request_refresh_bezels_manifest  = true;
 
     app.set_draw_fn([&](NVGcontext* vg, float w, float h) {
         foyer::browser::draw(vg, w, h, state, lib);

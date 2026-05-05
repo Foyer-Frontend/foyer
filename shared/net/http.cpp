@@ -17,6 +17,9 @@ namespace {
 std::atomic<bool> g_inited{false};
 std::mutex        g_init_mu;
 
+// Singleton download counters — see DownloadStatus in http.hpp.
+DownloadStatus    g_download;
+
 std::size_t mem_writer(void* ptr, std::size_t sz, std::size_t n, void* userdata) {
     auto* out = static_cast<std::vector<char>*>(userdata);
     const auto bytes = sz * n;
@@ -35,13 +38,26 @@ curl_slist* build_headers(const std::vector<std::string>& hdrs) {
     return sl;
 }
 
-// Curl invokes this every ~200ms (and after each socket write). Returning
-// non-zero aborts the transfer with CURLE_ABORTED_BY_CALLBACK.
-int xferinfo_cancel(void* userdata, curl_off_t, curl_off_t, curl_off_t, curl_off_t) {
+// Curl invokes this every ~200ms (and after each socket write).
+// Publishes live progress to g_download for the UI to read, and
+// returns non-zero to abort the transfer with CURLE_ABORTED_BY_CALLBACK
+// when the cancel hook says so. The progress publish runs even when
+// the cancel hook is empty — `active` is only flipped on/off by the
+// streaming get_to_file path, so the small one-shot `get` doesn't
+// disturb it (its bytes go to nobody who cares).
+int xferinfo_cancel(void* userdata, curl_off_t dltotal, curl_off_t dlnow,
+                    curl_off_t, curl_off_t) {
+    g_download.now.store  (static_cast<std::uint64_t>(dlnow),   std::memory_order_relaxed);
+    g_download.total.store(static_cast<std::uint64_t>(dltotal), std::memory_order_relaxed);
     auto* hook = static_cast<CancelHook*>(userdata);
     return (hook && *hook && (*hook)()) ? 1 : 0;
 }
 
+// Always wire xferinfo_cancel when streaming so progress publishes,
+// even if the caller didn't supply a cancel hook. For non-streaming
+// (one-shot) GETs we still wire it when there's a cancel hook so the
+// UI can abort, but the progress publish there is harmless overhead
+// (active stays false, so no UI reads it).
 void apply_common(CURL* curl, const std::string& url, curl_slist* hdrs,
                   CancelHook* cancel_ptr, bool streaming) {
     curl_easy_setopt(curl, CURLOPT_URL,            url.c_str());
@@ -75,7 +91,9 @@ void apply_common(CURL* curl, const std::string& url, curl_slist* hdrs,
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L); // Switch CA bundle drama
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
     if (hdrs) curl_easy_setopt(curl, CURLOPT_HTTPHEADER, hdrs);
-    if (cancel_ptr && *cancel_ptr) {
+    // For streaming downloads we always wire the xferinfo callback so
+    // the UI gets live byte progress; the cancel hook is optional.
+    if (streaming || (cancel_ptr && *cancel_ptr)) {
         curl_easy_setopt(curl, CURLOPT_NOPROGRESS,       0L);
         curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, xferinfo_cancel);
         curl_easy_setopt(curl, CURLOPT_XFERINFODATA,     cancel_ptr);
@@ -83,6 +101,8 @@ void apply_common(CURL* curl, const std::string& url, curl_slist* hdrs,
 }
 
 } // namespace
+
+DownloadStatus& current_download() { return g_download; }
 
 void init() {
     // Double-checked under a mutex so a second thread can't race past
@@ -156,8 +176,18 @@ bool get_to_file(const std::string& url,
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, file_writer);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA,     fp);
 
+    // Mark the global download counters live for the duration of the
+    // transfer. UI code reads `active` to decide whether to render the
+    // progress bar. Reset on entry so a previous transfer's residual
+    // values don't flash up between consecutive downloads.
+    g_download.now.store  (0, std::memory_order_relaxed);
+    g_download.total.store(0, std::memory_order_relaxed);
+    g_download.active.store(true, std::memory_order_release);
+
     foyer::log::write("[http] STREAM %s -> %s start\n", url.c_str(), tmp_path.c_str());
     const auto rc = curl_easy_perform(curl);
+
+    g_download.active.store(false, std::memory_order_release);
     long code = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
     foyer::log::write("[http] STREAM %s rc=%d code=%ld\n",

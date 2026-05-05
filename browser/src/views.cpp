@@ -6,6 +6,7 @@
 #include "library/config.hpp"
 #include "library/per_game.hpp"
 #include "library/game_meta.hpp"
+#include "net/http.hpp"
 #include "platform/log.hpp"
 #include "scrapers/accounts.hpp"
 #include "scrapers/cache.hpp"
@@ -3324,34 +3325,14 @@ void update(State& s, const Library& lib,
                         // cursor so we land on the first entry of the
                         // sub-list instead of wherever we were on the
                         // top-level page.
+                        //
+                        // Manifests are now scraped at app boot (see
+                        // main.cpp) so there's no entry-time fetch
+                        // here — the user can still force a reload via
+                        // the explicit "Refresh manifest" actions on
+                        // each subpage.
                         s.settings_subpage = it.subpage;
                         s.settings_row     = 0;
-                        // Auto-fetch the relevant manifest if it's not
-                        // loaded yet — Cores subpage triggers cores
-                        // refresh, Bezels subpage triggers bezels, etc.
-                        // Single-shot per subpage entry; the user can
-                        // still hit "Refresh manifest" to force-reload.
-                        switch (it.subpage) {
-                            case 2: { // Cores catalog
-                                if (!settings::manifest_cache().loaded) {
-                                    s.request_refresh_manifest = true;
-                                }
-                                break;
-                            }
-                            case 3: { // Bezel packs
-                                if (!settings::bezels_manifest_cache().loaded) {
-                                    s.request_refresh_bezels_manifest = true;
-                                }
-                                break;
-                            }
-                            case 4: { // Cheat packs
-                                if (!settings::cheats_manifest_cache().loaded) {
-                                    s.request_refresh_cheats_manifest = true;
-                                }
-                                break;
-                            }
-                            default: break;
-                        }
                         break;
                     }
                     default: break;
@@ -3692,21 +3673,90 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
     draw_quit_confirm(vg, w, h, s);
     draw_update_confirm(vg, w, h, s);
 
-    // Banner (e.g., "Scraping NES…  3 / 24"). Drawn last so nothing covers it.
+    // Banner (e.g., "Scraping NES…  3 / 24"). Drawn last so nothing
+    // covers it. When a streaming download is active we widen the
+    // pill, push the text up, and add a byte-counter line + progress
+    // bar so the user can see real progress instead of a frozen
+    // "Downloading...". The download counters live in foyer::net so
+    // the banner picks them up automatically — no plumbing through
+    // every install path.
+    const auto& dl = foyer::net::current_download();
+    const bool dl_active = dl.active.load(std::memory_order_acquire);
     if (s.banner_ttl > 0 && !s.banner_text.empty()) {
-        const float bw = 460.0f;
-        const float bh = 56.0f;
+        const float bw = 520.0f;
+        const float bh = dl_active ? 96.0f : 56.0f;
         const float bx = (w - bw) * 0.5f;
         const float by = 12.0f;
         const float a  = std::min(1.0f, (float)s.banner_ttl / 30.0f);
+
         nvgBeginPath(vg);
         nvgRoundedRect(vg, bx, by, bw, bh, 12.0f);
         nvgFillColor(vg, nvgRGBAf(0.05f, 0.06f, 0.08f, 0.85f * a));
         nvgFill(vg);
+
         nvgFontSize(vg, 22.0f);
         nvgFillColor(vg, nvgRGBAf(1, 1, 1, a));
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-        nvgText(vg, w * 0.5f, by + bh * 0.5f, s.banner_text.c_str(), nullptr);
+        const float text_y = dl_active ? (by + 22.0f) : (by + bh * 0.5f);
+        nvgText(vg, w * 0.5f, text_y, s.banner_text.c_str(), nullptr);
+
+        if (dl_active) {
+            const std::uint64_t now   = dl.now.load(std::memory_order_relaxed);
+            const std::uint64_t total = dl.total.load(std::memory_order_relaxed);
+
+            // Format byte counter — "1.2 / 14.7 MB" or "823 KB" when
+            // the server didn't send Content-Length yet.
+            auto fmt = [](std::uint64_t b, char* out, std::size_t n) {
+                if (b >= (1ull << 30))
+                    std::snprintf(out, n, "%.1f GB", (double)b / (1ull << 30));
+                else if (b >= (1ull << 20))
+                    std::snprintf(out, n, "%.1f MB", (double)b / (1ull << 20));
+                else if (b >= (1ull << 10))
+                    std::snprintf(out, n, "%.0f KB", (double)b / (1ull << 10));
+                else
+                    std::snprintf(out, n, "%llu B", (unsigned long long)b);
+            };
+            char now_s[24]; fmt(now, now_s, sizeof(now_s));
+            char tot_s[24]; if (total > 0) fmt(total, tot_s, sizeof(tot_s));
+            char buf[80];
+            if (total > 0) {
+                std::snprintf(buf, sizeof(buf), "%s / %s", now_s, tot_s);
+            } else {
+                std::snprintf(buf, sizeof(buf), "%s", now_s);
+            }
+            nvgFontSize(vg, 16.0f);
+            nvgFillColor(vg, nvgRGBAf(0.85f, 0.85f, 0.85f, a));
+            nvgText(vg, w * 0.5f, by + 50.0f, buf, nullptr);
+
+            // Progress strip. Determinate when total > 0, otherwise an
+            // indeterminate sliding pip so the user still sees motion.
+            constexpr float kStripH = 6.0f;
+            const float sx = bx + 16.0f;
+            const float sw = bw - 32.0f;
+            const float sy = by + bh - 18.0f;
+            nvgBeginPath(vg);
+            nvgRoundedRect(vg, sx, sy, sw, kStripH, kStripH * 0.5f);
+            nvgFillColor(vg, nvgRGBAf(1, 1, 1, 0.15f * a));
+            nvgFill(vg);
+
+            if (total > 0) {
+                const float frac = std::min(1.0f, (float)now / (float)total);
+                nvgBeginPath(vg);
+                nvgRoundedRect(vg, sx, sy, sw * frac, kStripH, kStripH * 0.5f);
+                nvgFillColor(vg, nvgRGBAf(0.55f, 0.78f, 1.0f, a));
+                nvgFill(vg);
+            } else {
+                // Sliding pip — period 90 frames @ 60fps ≈ 1.5s.
+                constexpr float kPipW   = 90.0f;
+                constexpr float kPeriod = 90.0f;
+                const float t = std::fmod((float)s.frame_counter, kPeriod) / kPeriod;
+                const float px = sx + (sw - kPipW) * t;
+                nvgBeginPath(vg);
+                nvgRoundedRect(vg, px, sy, kPipW, kStripH, kStripH * 0.5f);
+                nvgFillColor(vg, nvgRGBAf(0.55f, 0.78f, 1.0f, a));
+                nvgFill(vg);
+            }
+        }
     }
 }
 
