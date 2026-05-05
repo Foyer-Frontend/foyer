@@ -580,7 +580,13 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
         const auto logo_path = system_logo_path(sys.def->folder_name);
         const int  logo_h    = system_logo_cache().get_or_load(vg, logo_path);
         if (logo_h > 0) {
-            blit_aspect_fit_with_shadow(vg, logo_h,
+            // Logo without a drop shadow — nanovg can't tint image
+            // patterns, so any "shadow" we'd draw here would be a
+            // rectangle behind the logo's bounding box rather than
+            // following the silhouette, and that reads worse than
+            // no shadow at all. The parallelogram tile shadow below
+            // already gives the centre slot visual lift.
+            blit_aspect_fit(vg, logo_h,
                 x, y + thh * 0.20f,
                 tw, thh * 0.60f,
                 0.0f, 1.0f);
