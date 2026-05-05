@@ -524,8 +524,14 @@ int main(int argc, char** argv) {
     if (back.empty()) {
         foyer::log::write("[player] no foyer.nro found; not chaining back\n");
     } else {
-        char next_argv[300];
-        std::snprintf(next_argv, sizeof(next_argv), "\"%s\"", back.c_str());
+        // Pass a "foyer-resume" marker token so the browser knows
+        // it's a chain-back from a core (not a cold launch from
+        // hbmenu) and should restore the saved session view +
+        // cursor. Without the marker, foyer treats the boot as
+        // cold and lands on Home.
+        char next_argv[320];
+        std::snprintf(next_argv, sizeof(next_argv),
+            "\"%s\" \"foyer-resume\"", back.c_str());
         Result rc = envSetNextLoad(back.c_str(), next_argv);
         foyer::log::write("[player] chain-back %s rc=0x%X\n", back.c_str(), rc);
     }

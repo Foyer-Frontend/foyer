@@ -29,6 +29,7 @@
 #include "launch.hpp"
 #include "mtp.hpp"
 #include "seed_assets.hpp"
+#include "session.hpp"
 
 #include <cstdio>
 #include <cstring>
@@ -56,7 +57,7 @@ void apply_staged_update_if_present() {
 
 } // namespace
 
-int main(int /*argc*/, char** /*argv*/) {
+int main(int argc, char** argv) {
     apply_staged_update_if_present();
 
     foyer::platform::App app;
@@ -128,6 +129,14 @@ int main(int /*argc*/, char** /*argv*/) {
 
     foyer::browser::State state;
 
+    // Session restore — only when we got chained back from a player
+    // nro (recognised by the "foyer-resume" argv token the player's
+    // chain-back inserts). Cold launch from hbmenu has no marker and
+    // lands on Home view; this also cleans up any stale session
+    // file from a prior run.
+    foyer::browser::load_and_consume_session(state,
+        foyer::browser::argv_has_resume_marker(argc, argv));
+
     // One-shot self-update check on boot. Off-thread so the UI is up
     // immediately even on a slow CDN; the result is processed by the
     // foyer_job poll block in the main loop below.
@@ -172,7 +181,13 @@ int main(int /*argc*/, char** /*argv*/) {
             foyer::library::reload_config();
             opts.rom_root = foyer::library::config().rom_root;
             opts.recurse  = foyer::library::config().scan_subfolders;
+            // Explicit user-triggered rescan — bypass the cache and
+            // walk the SD again. The freshly-built snapshot replaces
+            // /foyer/data/library.cache.json so future cold boots
+            // load the new content without re-scanning.
+            opts.force_rescan = true;
             lib.systems = foyer::library::scan_library(opts);
+            opts.force_rescan = false;
             // Cursors might point past the end of the rescanned library.
             if (state.system_index >= lib.systems.size()) state.system_index = 0;
             state.game_index = 0;
@@ -559,6 +574,12 @@ int main(int /*argc*/, char** /*argv*/) {
             // app.quit()s on success and doesn't return). Powers the
             // home view's Recent virtual system + the Resume action.
             foyer::library::mark_per_game_played(game.path);
+            // Stash the current view + cursor so foyer's next boot
+            // (after the core exits and chains back) lands the user
+            // exactly where they were. One-shot file with a 1h TTL,
+            // consumed + deleted on the next load_and_consume_session
+            // call. Cold launch still defaults to Home.
+            foyer::browser::save_session(state);
             if (foyer::browser::launch_game(sys, game, resume)) {
                 foyer::browser::mtp_stop();
                 app.quit();

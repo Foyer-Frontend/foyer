@@ -21,6 +21,7 @@ add_executable(foyer
     src/launch.cpp
     src/mtp.cpp
     src/seed_assets.cpp
+    src/session.cpp
 )
 
 target_link_libraries(foyer PRIVATE foyer_shared libhaze)

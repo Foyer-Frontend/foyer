@@ -34,6 +34,11 @@ struct System {
 struct ScanOptions {
     std::string rom_root = "/foyer/roms";
     bool        recurse  = false;
+    // When true, ignore /foyer/data/library.cache.json and force a
+    // full SD walk. Used by the explicit "Rescan library" action.
+    // Default false → boot path takes the cache fast-path when the
+    // cache is fresh.
+    bool        force_rescan = false;
 };
 
 // Walks the rom root and returns all Systems whose folder matches a known

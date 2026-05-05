@@ -13,6 +13,7 @@ add_library(foyer_shared STATIC
     platform/log.cpp
     library/system_db.cpp
     library/scanner.cpp
+    library/library_cache.cpp
     library/config.cpp
     library/per_game.cpp
     library/game_meta.cpp

@@ -1,5 +1,6 @@
 #include "scanner.hpp"
 #include "config.hpp"
+#include "library_cache.hpp"
 #include "per_game.hpp"
 #include "system_db.hpp"
 #include "platform/log.hpp"
@@ -175,6 +176,62 @@ void sort_games(std::vector<Game>& games, Config::SortMode mode) {
 } // namespace
 
 std::vector<System> scan_library(const ScanOptions& opts) {
+    constexpr const char* kCachePath = "/foyer/data/library.cache.json";
+
+    // Cache fast-path. Only honoured when the caller didn't ask for
+    // a forced rescan AND when the cache load validates against
+    // current rom-root + per-folder mtimes. Virtual systems
+    // (Recent / Favorites / Unknown) are NOT in the cache; they're
+    // synthesized below from the cached real-system games.
+    if (!opts.force_rescan) {
+        if (auto cached = load_library_cache(kCachePath, opts.rom_root)) {
+            // Re-apply per-game state (favorites / last_played /
+            // playtime) — these can change between runs without
+            // touching SD mtimes, so the cache stores a stale
+            // snapshot. Refresh from per_game.jsonc on every load.
+            for (auto& s : *cached) {
+                for (auto& g : s.games) {
+                    apply_per_game_state(g);
+                }
+                sort_games(s.games, config().sort_mode);
+            }
+            // Recreate virtual carousel tiles from the loaded games.
+            auto& out_real = *cached;
+            auto add_virtual = [&](const SystemDef& def, auto&& filter,
+                                   auto&& sort_fn, std::size_t cap) {
+                System v;
+                v.def       = &def;
+                v.root_path = "(virtual)";
+                for (auto& real : out_real) {
+                    for (auto& g : real.games) {
+                        if (filter(g)) v.games.push_back(g);
+                    }
+                }
+                if (v.games.empty()) return;
+                sort_fn(v.games);
+                if (cap > 0 && v.games.size() > cap) v.games.resize(cap);
+                out_real.insert(out_real.begin(), std::move(v));
+            };
+            add_virtual(kVirtualFavoritesDef,
+                [](const Game& g) { return g.favorite; },
+                [](std::vector<Game>& v) {
+                    std::sort(v.begin(), v.end(),
+                        [](const Game& a, const Game& b) { return a.stem < b.stem; });
+                },
+                /*cap=*/0);
+            add_virtual(kVirtualRecentDef,
+                [](const Game& g) { return g.last_played > 0; },
+                [](std::vector<Game>& v) {
+                    std::sort(v.begin(), v.end(),
+                        [](const Game& a, const Game& b) {
+                            return a.last_played > b.last_played;
+                        });
+                },
+                /*cap=*/100);
+            return std::move(*cached);
+        }
+    }
+
     std::vector<System> out;
     auto* root = ::opendir(opts.rom_root.c_str());
     if (!root) {
@@ -267,6 +324,13 @@ std::vector<System> scan_library(const ScanOptions& opts) {
             (int)s.def->folder_name.size(), s.def->folder_name.data(),
             s.games.size());
     }
+
+    // Persist the freshly-built snapshot. Next boot's scan_library
+    // call returns the cached vector unless rom-root or per-system
+    // mtimes invalidate. Virtual tiles aren't written — they're
+    // re-synthesized on cache load.
+    save_library_cache(kCachePath, out, opts.rom_root);
+
     return out;
 }
 
