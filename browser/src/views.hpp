@@ -69,6 +69,27 @@ struct State {
     bool update_confirm_open = false;
     int  update_confirm_index = 1; // default to "No"
 
+    // Modal option picker. Opened from a Settings Cycle row when the
+    // user presses A — instead of cycling one step, we surface the
+    // full list as a scrollable menu so they can see / pick directly.
+    // L/R on a Cycle row still does the legacy quick-cycle so power
+    // users don't have to open the picker for a single-step change.
+    //
+    // The handler that originally owned the row writes `op` and `data`
+    // (typically the system folder for OpEmuSysCore); on A inside the
+    // picker the dispatcher reads those + `cursor` and applies the
+    // chosen value via the same setter the L/R cycle path uses.
+    struct OptionPicker {
+        bool                     open    = false;
+        std::string              title;
+        std::vector<std::string> options;
+        int                      current = 0;     // currently-set value (badge)
+        int                      cursor  = 0;     // focused row in the picker
+        int                      op      = 0;     // settings opcode
+        std::string              data;            // opcode-specific payload
+    };
+    OptionPicker option_picker;
+
     // Set by the popup "Exit" item; main.cpp drains it and quits the app.
     bool request_quit = false;
 

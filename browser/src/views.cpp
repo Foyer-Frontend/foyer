@@ -2053,6 +2053,234 @@ void draw_settings(NVGcontext* vg, float w, float h, const State& s, const Libra
     nvgRestore(vg);
 }
 
+// ---- OPTION PICKER -------------------------------------------------------
+// Modal that surfaces every option for a Cycle row at once. The
+// builders below collect the (title, options[], current_index) tuple
+// for a given opcode + payload; the applier runs the same setter the
+// L/R cycle path uses but with an explicit index instead of +/-1.
+
+struct OptionList {
+    std::string              title;
+    std::vector<std::string> options;
+    int                      current_index = 0;
+};
+
+OptionList build_option_list(int op, const std::string& data) {
+    OptionList o;
+    switch (op) {
+        case OpScraper: {
+            o.title = "Preferred scraper";
+            o.options = { "libretro-thumbnails", "ScreenScraper", "SteamGridDB" };
+            o.current_index = (int)library::config().preferred_scraper;
+            break;
+        }
+        case OpTheme: {
+            o.title   = "Theme";
+            o.options = list_themes();
+            const auto& cur = library::config().theme_name;
+            for (std::size_t i = 0; i < o.options.size(); i++) {
+                if (o.options[i] == cur) { o.current_index = (int)i; break; }
+            }
+            break;
+        }
+        case OpEmuSysCore: {
+            o.title = std::string{"Default core ("} + data + ")";
+            if (const auto* sys = library::find_system_by_folder(data)) {
+                std::string current = sys->cores.empty()
+                    ? std::string{} : std::string{sys->cores.front().name};
+                if (auto* over = library::config().default_core_for(sys->folder_name)) {
+                    current = over;
+                }
+                for (std::size_t i = 0; i < sys->cores.size(); i++) {
+                    o.options.emplace_back(sys->cores[i].name);
+                    if (sys->cores[i].name == current)
+                        o.current_index = (int)i;
+                }
+            }
+            break;
+        }
+        case OpSortMode: {
+            o.title = "Sort games by";
+            o.options = { "Name", "Recently played", "Playtime", "Favorites first" };
+            o.current_index = (int)library::config().sort_mode;
+            break;
+        }
+        case OpShader: {
+            o.title = "Shader";
+            o.options = { "none", "scanlines", "crt_simple",
+                          "lcd_grid", "gb_dmg", "gba_correct" };
+            const auto& cur = library::config().shader_name;
+            for (std::size_t i = 0; i < o.options.size(); i++) {
+                if (o.options[i] == cur) { o.current_index = (int)i; break; }
+            }
+            break;
+        }
+        case OpRunahead: {
+            o.title = "Run-ahead";
+            o.options = { "off", "1 frame", "2 frames", "3 frames", "4 frames" };
+            int cur = library::config().runahead_frames;
+            if (cur < 0) cur = 0;
+            if (cur > 4) cur = 4;
+            o.current_index = cur;
+            break;
+        }
+        default: break;
+    }
+    return o;
+}
+
+// Apply the picked index. Returns the picked option's display label so
+// the caller can drop a confirmation banner. Empty string on a no-op
+// (unrecognised opcode or out-of-range index).
+std::string apply_option(int op, const std::string& data,
+                         int chosen_index, State& s) {
+    auto list = build_option_list(op, data);
+    if (chosen_index < 0 || chosen_index >= (int)list.options.size())
+        return {};
+    const std::string& chosen = list.options[chosen_index];
+    switch (op) {
+        case OpScraper: {
+            library::set_preferred_scraper(
+                (library::Config::Scraper)chosen_index);
+            break;
+        }
+        case OpTheme: {
+            library::set_theme_name(chosen);
+            load_theme(chosen);
+            s.request_invalidate_covers = true;
+            break;
+        }
+        case OpEmuSysCore: {
+            library::set_default_core_for(data, chosen);
+            break;
+        }
+        case OpSortMode: {
+            library::set_sort_mode((library::Config::SortMode)chosen_index);
+            s.request_rescan = true;
+            break;
+        }
+        case OpShader: {
+            library::set_shader_name(chosen);
+            break;
+        }
+        case OpRunahead: {
+            library::set_runahead_frames(chosen_index);
+            break;
+        }
+        default: return {};
+    }
+    return chosen;
+}
+
+void draw_option_picker(NVGcontext* vg, float w, float h, const State& s) {
+    if (!s.option_picker.open) return;
+    const auto& p = s.option_picker;
+
+    // Dim everything behind.
+    nvgBeginPath(vg);
+    nvgRect(vg, 0, 0, w, h);
+    nvgFillColor(vg, nvgRGBAf(0, 0, 0, 0.55f));
+    nvgFill(vg);
+
+    constexpr int   kVisible = 5;
+    constexpr float kRowH    = 56.0f;
+    constexpr float kPad     = 18.0f;
+    constexpr float kHeader  = 60.0f;
+    constexpr float kFooter  = 40.0f;
+    const float pw = 560.0f;
+    const float ph = kHeader + kVisible * kRowH + kFooter + kPad * 2.0f;
+    const float px = (w - pw) * 0.5f;
+    const float py = (h - ph) * 0.5f;
+
+    // Card.
+    nvgBeginPath(vg);
+    nvgRoundedRect(vg, px, py, pw, ph, 18.0f);
+    nvgFillColor(vg, nvgRGBA(0x1A, 0x12, 0x32, 0xF2));
+    nvgFill(vg);
+    nvgStrokeColor(vg, nvgRGBA(0xFF, 0xFF, 0xFF, 0x14));
+    nvgStrokeWidth(vg, 1.0f);
+    nvgStroke(vg);
+
+    // Title.
+    nvgFontSize(vg, 26.0f);
+    nvgFillColor(vg, nvgRGBA(0xFF, 0xFF, 0xFF, 0xFF));
+    nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+    nvgText(vg, px + 24.0f, py + kPad + 18.0f, p.title.c_str(), nullptr);
+
+    // Item count badge ("3 / 12") in the top-right.
+    if (!p.options.empty()) {
+        char counter[32];
+        std::snprintf(counter, sizeof(counter), "%d / %zu",
+            p.cursor + 1, p.options.size());
+        nvgFontSize(vg, 18.0f);
+        nvgFillColor(vg, nvgRGBA(0xAA, 0xA0, 0xC8, 0xFF));
+        nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+        nvgText(vg, px + pw - 24.0f, py + kPad + 18.0f, counter, nullptr);
+    }
+
+    // Visible row window. Centre the cursor in the strip and clamp.
+    const int n = (int)p.options.size();
+    int top = p.cursor - kVisible / 2;
+    if (top + kVisible > n) top = n - kVisible;
+    if (top < 0) top = 0;
+
+    const float rows_top = py + kPad + kHeader;
+    nvgFontSize(vg, 22.0f);
+    nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+    for (int i = 0; i < kVisible && top + i < n; i++) {
+        const int   idx = top + i;
+        const float ry  = rows_top + i * kRowH;
+
+        const bool focused = (idx == p.cursor);
+        if (focused) {
+            nvgBeginPath(vg);
+            nvgRoundedRect(vg, px + 12.0f, ry + 4.0f,
+                pw - 24.0f, kRowH - 8.0f, 10.0f);
+            nvgFillColor(vg, nvgRGBA(0x4C, 0x36, 0xB0, 0xCC));
+            nvgFill(vg);
+        }
+
+        nvgFillColor(vg, nvgRGBA(0xFF, 0xFF, 0xFF,
+            focused ? 0xFF : 0xCC));
+        nvgText(vg, px + 32.0f, ry + kRowH * 0.5f,
+            p.options[idx].c_str(), nullptr);
+
+        if (idx == p.current) {
+            // "Current" badge so the user can see what's set without
+            // having to scroll back.
+            nvgFontSize(vg, 14.0f);
+            nvgFillColor(vg, nvgRGBA(0x88, 0xCF, 0xFF, 0xFF));
+            nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+            nvgText(vg, px + pw - 32.0f, ry + kRowH * 0.5f,
+                "● current", nullptr);
+            nvgFontSize(vg, 22.0f);
+            nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+        }
+    }
+
+    // Up / down chevrons when the list spills past the visible window.
+    if (top > 0) {
+        nvgFontSize(vg, 18.0f);
+        nvgFillColor(vg, nvgRGBA(0xCF, 0xC9, 0xE7, 0xC0));
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
+        nvgText(vg, px + pw * 0.5f, rows_top - 22.0f, "▲", nullptr);
+    }
+    if (top + kVisible < n) {
+        nvgFontSize(vg, 18.0f);
+        nvgFillColor(vg, nvgRGBA(0xCF, 0xC9, 0xE7, 0xC0));
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM);
+        nvgText(vg, px + pw * 0.5f,
+            rows_top + kVisible * kRowH + 22.0f, "▼", nullptr);
+    }
+
+    // Hint footer.
+    nvgFontSize(vg, 16.0f);
+    nvgFillColor(vg, nvgRGBA(0xAA, 0xA0, 0xC8, 0xFF));
+    nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM);
+    nvgText(vg, px + pw * 0.5f, py + ph - kPad,
+        "DPad navigate     A select     B cancel", nullptr);
+}
+
 } // namespace settings
 
 void draw_settings(NVGcontext* vg, float w, float h, const State& s, const Library& lib) {
@@ -2441,6 +2669,41 @@ void update(State& s, const Library& lib,
             float w, float h) {
     s.frame_counter++;
     if (s.banner_ttl > 0) s.banner_ttl--;
+
+    // Option-picker modal intercepts every input while open. Stays
+    // above the other modals because the picker can be opened from
+    // inside a settings page that already has its own dispatch.
+    if (s.option_picker.open) {
+        reset_input_state(s);
+        const int n = (int)s.option_picker.options.size();
+        if (n > 0) {
+            if ((down & HidNpadButton_AnyDown) && s.option_picker.cursor + 1 < n)
+                s.option_picker.cursor++;
+            else if ((down & HidNpadButton_AnyUp) && s.option_picker.cursor > 0)
+                s.option_picker.cursor--;
+            // L/R skip a page worth of rows so picking from a 200-item
+            // theme list isn't tedious.
+            if (down & HidNpadButton_R) s.option_picker.cursor =
+                std::min(n - 1, s.option_picker.cursor + 5);
+            if (down & HidNpadButton_L) s.option_picker.cursor =
+                std::max(0,     s.option_picker.cursor - 5);
+        }
+        if (down & HidNpadButton_B) {
+            s.option_picker.open = false;
+            return;
+        }
+        if ((down & HidNpadButton_A) && n > 0) {
+            const auto chosen = settings::apply_option(
+                s.option_picker.op, s.option_picker.data,
+                s.option_picker.cursor, s);
+            s.option_picker.open = false;
+            if (!chosen.empty()) {
+                s.banner_text = chosen;
+                s.banner_ttl  = 120;
+            }
+        }
+        return;
+    }
 
     // Quit confirmation modal intercepts everything while open.
     if (s.quit_confirm_open) {
@@ -3202,9 +3465,26 @@ void update(State& s, const Library& lib,
                 }
             }
 
-            // A — toggle / action / drill.
+            // A — toggle / action / drill / open picker for Cycle.
             if (down & HidNpadButton_A) {
                 switch (it.kind) {
+                    case settings::ItemKind::Cycle: {
+                        // Surface every option in the centralised
+                        // picker overlay. L/R on the row still does
+                        // a single-step quick cycle (handled above).
+                        auto list = settings::build_option_list(
+                            it.payload, it.data);
+                        if (!list.options.empty()) {
+                            s.option_picker.open    = true;
+                            s.option_picker.title   = std::move(list.title);
+                            s.option_picker.options = std::move(list.options);
+                            s.option_picker.current = list.current_index;
+                            s.option_picker.cursor  = list.current_index;
+                            s.option_picker.op      = it.payload;
+                            s.option_picker.data    = it.data;
+                        }
+                        break;
+                    }
                     case settings::ItemKind::Toggle:
                         settings::toggle_set(it.payload, !settings::toggle_get(it.payload));
                         break;
@@ -3672,6 +3952,7 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
     draw_popup(vg, w, h, s);
     draw_quit_confirm(vg, w, h, s);
     draw_update_confirm(vg, w, h, s);
+    settings::draw_option_picker(vg, w, h, s);
 
     // Banner (e.g., "Scraping NES…  3 / 24"). Drawn last so nothing
     // covers it. When a streaming download is active we widen the
