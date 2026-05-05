@@ -278,97 +278,85 @@ int main(int /*argc*/, char** /*argv*/) {
             }
         }
 
-        // Manifest fetch runs on the main thread (~1 s on a typical
-        // connection, 7 KB JSON) — worker-side fetches hit a libcurl
-        // -on-Switch quirk where the third-or-later worker thread's
-        // perform call can hang for ~90 s. The big nro download still
-        // happens on the worker, where blocking the UI matters.
-        // Drain a finished-but-not-yet-finalised install job so a
-        // user click in the same frame as worker exit doesn't get a
-        // misleading "Download already in progress" toast — the
-        // worker IS done, we just hadn't claimed the result yet.
-        if (state.install_job.active() && state.install_job.done()) {
-            const auto totals = state.install_job.finish();
-            if (totals.failed == 0
-                && (totals.installed + totals.updated + totals.skipped) == 0) {
-                // Worker ran but produced no result rows — usually
-                // means manifest narrow wiped the list (bad
-                // install_only_core) or the worker exited before
-                // doing any work. Surface to the log so future runs
-                // are easier to diagnose.
-                foyer::log::write(
-                    "[install_job] drained empty totals (race on "
-                    "request_install_cores)\n");
-            }
-        }
+        // Drain a finished-but-not-yet-finalised foyer self-update
+        // job so the next click doesn't see a stale "active" job.
         if (state.foyer_job.active() && state.foyer_job.done()) {
-            // Same race-drain for the foyer self-update job.
-            // foyer_job's status_snapshot still holds its final
-            // banner; finish() is what we need to free m_active.
             state.foyer_job.finish();
         }
 
-        if (state.request_install_cores && !state.install_job.active()) {
+        // Cores install. Synchronous on the main thread — the
+        // earlier worker-thread path didn't reliably finish on Switch
+        // (libcurl-on-Switch quirks + Worker lifecycle races). Same
+        // shape as the shader / cheat / bezel install handlers below:
+        // banner-driven progress, app.tick() pumped between rows so
+        // the user sees a live status without needing a second
+        // worker thread.
+        if (state.request_install_cores) {
             state.request_install_cores = false;
-            std::string only = std::move(state.install_only_core);
+            const std::string only  = std::move(state.install_only_core);
             state.install_only_core.clear();
-            const bool force = state.install_force;
+            const bool        force = state.install_force;
             state.install_force = false;
 
-            state.banner_text = "Fetching manifest...";
+            state.banner_text = "Fetching cores manifest...";
             state.banner_ttl  = 60;
             app.tick();
             auto manifest = foyer::library::fetch_manifest(
                 foyer::library::config().cores_manifest_url);
+            foyer::log::write(
+                "[install_cores] manifest=%zu cores; only=%s; force=%d\n",
+                manifest.cores.size(), only.c_str(), (int)force);
             if (manifest.cores.empty()) {
-                state.banner_text = "Manifest fetch failed";
+                state.banner_text = "Cores manifest fetch failed";
                 state.banner_ttl  = 240;
             } else {
-                const bool started = state.install_job.start(
-                    std::move(manifest), std::move(only), force);
-                if (!started) {
-                    state.banner_text = "Install worker failed to start";
-                    state.banner_ttl  = 240;
-                } else {
-                    state.banner_text = "Starting...";
-                    state.banner_ttl  = 60;
+                if (!only.empty()) {
+                    std::erase_if(manifest.cores,
+                        [&](const auto& c) { return c.name != only; });
+                    if (manifest.cores.empty()) {
+                        char b[160];
+                        std::snprintf(b, sizeof(b),
+                            "Core not in manifest: %s", only.c_str());
+                        state.banner_text = b;
+                        state.banner_ttl  = 240;
+                    }
                 }
-            }
-        } else if (state.request_install_cores) {
-            state.request_install_cores = false;
-            state.install_only_core.clear();
-            state.install_force = false;
-            state.banner_text = "Download already in progress";
-            state.banner_ttl  = 180;
-        }
-
-        // Mirror live progress + finalise when worker exits.
-        if (state.install_job.active()) {
-            // Refresh banner from the worker's mutex-protected status
-            // string. Cheap copy under lock.
-            const auto status = state.install_job.status_snapshot();
-            if (!status.empty()) {
-                state.banner_text = status;
-                state.banner_ttl  = 60;
-            }
-            if (state.install_job.done()) {
-                const auto totals = state.install_job.finish();
-                // Silent on success — the worker's last per-core status
-                // line ("[N/M] foo - installed") fades naturally. Only
-                // surface a banner when something actually failed.
-                if (totals.failed > 0) {
-                    char doneb[120];
-                    std::snprintf(doneb, sizeof(doneb),
-                        "%d core%s failed - check log",
-                        totals.failed, totals.failed == 1 ? "" : "s");
-                    state.banner_text = doneb;
-                    state.banner_ttl  = 360;
+                if (!manifest.cores.empty()) {
+                    foyer::browser::set_manifest_cache(manifest);
+                    const auto totals = foyer::library::install_cores(manifest,
+                        [&](const foyer::library::InstallProgress& p) {
+                            char b[160];
+                            const char* verb =
+                                p.action == foyer::library::InstallAction::Skipped   ? "skipped" :
+                                p.action == foyer::library::InstallAction::Updated   ? "updated" :
+                                p.action == foyer::library::InstallAction::Installed ? "installed"
+                                                                                     : "FAILED";
+                            std::snprintf(b, sizeof(b), "[%d/%d] %s - %s",
+                                p.index, p.total, p.name.c_str(), verb);
+                            state.banner_text = b;
+                            state.banner_ttl  = 60;
+                            app.tick();
+                        }, force);
+                    if (totals.failed > 0) {
+                        char b[120];
+                        std::snprintf(b, sizeof(b),
+                            "%d core%s failed - check log",
+                            totals.failed, totals.failed == 1 ? "" : "s");
+                        state.banner_text = b;
+                    } else {
+                        char b[160];
+                        std::snprintf(b, sizeof(b),
+                            "Cores ready (%d new, %d updated, %d skipped)",
+                            totals.installed, totals.updated, totals.skipped);
+                        state.banner_text = b;
+                    }
+                    state.banner_ttl = 360;
+                    // Refresh manifest cache so per-row state
+                    // reflects the new "up to date" status.
+                    foyer::browser::set_manifest_cache(
+                        foyer::library::fetch_manifest(
+                            foyer::library::config().cores_manifest_url));
                 }
-                // Refresh the cached manifest so the per-core rows
-                // immediately reflect the new "up to date" state.
-                foyer::browser::set_manifest_cache(
-                    foyer::library::fetch_manifest(
-                        foyer::library::config().cores_manifest_url));
             }
         }
 

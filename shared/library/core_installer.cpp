@@ -126,12 +126,14 @@ InstallTotals install_cores(const CoreManifest& manifest,
             }
         }
 
+        foyer::log::write("[core_install] %s: GET %s -> %s\n",
+            c.name.c_str(), c.url.c_str(), dest.c_str());
         const bool ok = foyer::net::get_to_file(c.url, dest, {}, cancel);
         if (!ok) {
             p.action = InstallAction::Failed;
             out.failed++;
-            foyer::log::write("[core_install] failed: %s -> %s\n",
-                c.url.c_str(), dest.c_str());
+            foyer::log::write("[core_install] %s: download FAILED (url=%s)\n",
+                c.name.c_str(), c.url.c_str());
         } else {
             write_version_sidecar(dest, c.version);
             p.action = was_present ? InstallAction::Updated : InstallAction::Installed;

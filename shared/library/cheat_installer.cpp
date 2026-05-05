@@ -220,14 +220,21 @@ CheatInstallTotals install_cheats(
         // and let the archive's own layout drop files into the right
         // place.
         const std::string zip_path = dir + ".zip.tmp";
+        foyer::log::write("[cheat_install] %s: GET %s -> %s\n",
+            p.name.c_str(), p.url.c_str(), zip_path.c_str());
         const bool dl_ok = foyer::net::get_to_file(p.url, zip_path, {}, cancel);
         if (!dl_ok) {
             prog.action = CheatInstallAction::Failed;
             out.failed++;
-            foyer::log::write("[cheat_install] download failed: %s\n",
-                p.url.c_str());
+            foyer::log::write("[cheat_install] %s: download FAILED (url=%s)\n",
+                p.name.c_str(), p.url.c_str());
             if (progress) progress(prog);
             continue;
+        }
+        struct stat dl_st{};
+        if (::stat(zip_path.c_str(), &dl_st) == 0) {
+            foyer::log::write("[cheat_install] %s: downloaded %lld bytes\n",
+                p.name.c_str(), (long long)dl_st.st_size);
         }
 
         if (was_present) rm_rf(dir);

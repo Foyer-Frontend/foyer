@@ -189,14 +189,21 @@ BezelInstallTotals install_bezels(
 
         const std::string zip_path =
             std::string{kBezelsDir} + "/." + p.name + ".zip.tmp";
+        foyer::log::write("[bezel_install] %s: GET %s -> %s\n",
+            p.name.c_str(), p.url.c_str(), zip_path.c_str());
         const bool dl_ok = foyer::net::get_to_file(p.url, zip_path, {}, cancel);
         if (!dl_ok) {
             prog.action = BezelInstallAction::Failed;
             out.failed++;
-            foyer::log::write("[bezel_install] download failed: %s\n",
-                p.url.c_str());
+            foyer::log::write("[bezel_install] %s: download FAILED (url=%s)\n",
+                p.name.c_str(), p.url.c_str());
             if (progress) progress(prog);
             continue;
+        }
+        struct stat dl_st{};
+        if (::stat(zip_path.c_str(), &dl_st) == 0) {
+            foyer::log::write("[bezel_install] %s: downloaded %lld bytes\n",
+                p.name.c_str(), (long long)dl_st.st_size);
         }
 
         const bool xt_ok = extract_zip(zip_path, kBezelsDir);
