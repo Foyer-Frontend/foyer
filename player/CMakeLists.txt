@@ -46,10 +46,20 @@ target_include_directories(${_frontend} PUBLIC
     ${CMAKE_SOURCE_DIR}/shared/libretro
     ${CMAKE_SOURCE_DIR}/shared
 )
+# Cores that ship their own embedded rcheevos inside their libretro
+# static archive (PPSSPP, future flycast revisions, etc.) opt into the
+# headers-only path by setting FOYER_CORE_EMBEDS_RCHEEVOS in their recipe.
+# Everyone else links foyer's shared rcheevos lib.
+if (FOYER_CORE_EMBEDS_RCHEEVOS)
+    set(_rcheevos_dep rcheevos_headers)
+else()
+    set(_rcheevos_dep rcheevos)
+endif()
+
 target_link_libraries(${_frontend} PUBLIC
     foyer_shared
     core_${FOYER_CORE}
-    rcheevos
+    ${_rcheevos_dep}
     # EGL + GLES3 + Mesa stack for the HW render callback path. Even
     # pure-software cores link these (the HwContext singleton is part
     # of the frontend lib); the libs sit cold until a core actually
