@@ -1403,6 +1403,29 @@ std::vector<Item> build_items(Category cat, const State& s) {
                     "", "", 0});
             }
 
+            // External standalone emulators. Some systems on Switch
+            // (PSP, GameCube) don't have a working libretro core
+            // upstream, but their standalone Switch nros DO exist.
+            // Foyer chain-launches whichever standalone the user has
+            // installed — show that status here so it's obvious why
+            // launching a PSP rom does or doesn't work.
+            if (!library::config().external_cores.empty()) {
+                rows.push_back({ItemKind::Static,
+                    "External standalone emulators", "", "", 0});
+                for (const auto& ec : library::config().external_cores) {
+                    struct stat sst{};
+                    const bool present =
+                        ::stat(ec.nro_path.c_str(), &sst) == 0;
+                    Item it;
+                    it.kind  = ItemKind::Static;
+                    it.label = std::string{"  "} + ec.folder;
+                    it.value = present ? "installed" : "not installed";
+                    it.hint  = ec.nro_path;
+                    it.payload = 0;
+                    rows.push_back(std::move(it));
+                }
+            }
+
             // Per-system default core picker. Listed for every system in
             // system_db (even those that currently have only one core)
             // so it stays a stable place to pick once more land.

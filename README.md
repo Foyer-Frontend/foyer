@@ -134,9 +134,37 @@ cmake --build --preset Players-All
 
 Cores currently recipe'd: `fceumm`, `nestopia`, `gambatte`, `snes9x`,
 `genesisplusgx`, `mgba`, `melonds`, `pcsx_rearmed`, `swanstation`,
-`yabasanshiro`, `race`, `mupen64plus`, `flycast`. PSP (`ppsspp`) and
-GameCube/Wii (`dolphin`) are not currently building — see
-`shared/library/system_db.cpp` for declared-but-not-recipe'd entries.
+`yabasanshiro`, `race`, `mupen64plus`, `flycast`.
+
+### External standalone emulators (PSP, GameCube)
+
+PPSSPP and Dolphin don't have working libretro cores on Switch upstream,
+but their **standalone** Switch nros do exist and run well. Foyer
+chain-launches whichever standalone you have installed — its launcher
+recognises a per-system entry in `general.jsonc`'s `external_cores`
+map, looks for the configured nro on disk, and `envSetNextLoad`s it
+with the rom path as `argv[1]`. Defaults match the canonical install
+paths:
+
+```jsonc
+"external_cores": {
+    "psp": "/switch/PPSSPP/PPSSPP.nro",
+    "gc":  "/switch/dolphin-emu/dolphin-emu.nro"
+}
+```
+
+To enable PSP support: install [PPSSPP for Switch](https://www.ppsspp.org/downloads/)
+to `/switch/PPSSPP/PPSSPP.nro` and drop PSP roms into `/foyer/roms/psp/`.
+For GameCube, install Dolphin's Switch build to
+`/switch/dolphin-emu/dolphin-emu.nro` and put roms under `/foyer/roms/gc/`.
+
+Foyer's pause overlay, save-state slots, run-ahead, and bezel pipeline
+don't apply to externally-launched standalones — those emulators ship
+their own UIs. The standalone owns the experience once foyer hands off.
+
+Settings → Emulator shows the install status of every configured
+external-launcher entry so it's obvious whether the chain-launch will
+succeed.
 
 ## Build
 

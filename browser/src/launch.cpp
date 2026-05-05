@@ -51,6 +51,56 @@ bool launch_game(const library::System& sys, const library::Game& game,
                  int resume_slot) {
     if (!sys.def) return false;
 
+    // External-launcher path: when the user has a standalone Switch
+    // emulator nro for this system (PPSSPP, Dolphin, …) configured in
+    // general.jsonc's external_cores AND the file exists on disk,
+    // chain straight to it. The standalone owns its own UI; foyer's
+    // libretro player loop is bypassed entirely.
+    //
+    // For virtual systems (Recent / Favorites) we need to resolve
+    // through the rom's origin system to find the right external
+    // entry, just like the libretro path does for cores.
+    {
+        const auto* eff_def = library::is_virtual_system(*sys.def)
+            ? library::origin_system_for_rom(game.path)
+            : sys.def;
+        if (eff_def) {
+            const auto ext_nro =
+                library::config().external_core_for(eff_def->folder_name);
+            if (!ext_nro.empty()) {
+                struct stat est{};
+                if (::stat(ext_nro.c_str(), &est) == 0) {
+                    const std::string sd_ext = std::string{"sdmc:"} + ext_nro;
+                    const std::string sd_rom = std::string{"sdmc:"} + game.path;
+                    char ext_argv[768];
+                    std::snprintf(ext_argv, sizeof(ext_argv),
+                        "\"%s\" \"%s\"", sd_ext.c_str(), sd_rom.c_str());
+                    if (R_FAILED(envSetNextLoad(ext_nro.c_str(), ext_argv))) {
+                        foyer::log::write(
+                            "[launch] envSetNextLoad(external=%s) failed\n",
+                            ext_nro.c_str());
+                        return false;
+                    }
+                    library::mark_per_game_played(game.path);
+                    foyer::log::write(
+                        "[launch] queued external %s rom=%s\n",
+                        ext_nro.c_str(), sd_rom.c_str());
+                    return true;
+                } else {
+                    foyer::log::write(
+                        "[launch] external nro for %.*s not on disk: %s\n",
+                        (int)eff_def->folder_name.size(),
+                        eff_def->folder_name.data(),
+                        ext_nro.c_str());
+                    // Fall through to libretro path; almost always
+                    // there's no libretro core either, so launch_game
+                    // ultimately fails — but the log line tells the
+                    // user exactly what's missing.
+                }
+            }
+        }
+    }
+
     const auto* core = library::resolve_core(*sys.def, game.path);
     if (!core) {
         foyer::log::write("[launch] no core mapped for system %.*s\n",

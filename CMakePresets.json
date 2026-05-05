@@ -121,6 +121,17 @@
             }
         },
         {
+            "name": "Player-ppsspp",
+            "displayName": "Player (ppsspp/PSP)",
+            "inherits": ["core"],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "MinSizeRel",
+                "BUILD_BROWSER": "OFF",
+                "BUILD_PLAYER":  "ON",
+                "FOYER_CORE":    "ppsspp"
+            }
+        },
+        {
             "name": "Player-swanstation",
             "displayName": "Player (swanstation/PSX)",
             "inherits": ["core"],

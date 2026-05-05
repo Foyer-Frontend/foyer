@@ -86,9 +86,33 @@ struct Config {
     struct PerSystemCore { std::string folder; std::string core; };
     std::vector<PerSystemCore> default_core_per_system;
 
+    // External standalone-emulator launchers. Keyed by system folder
+    // name; value is an SD path to the standalone nro that ships its
+    // own UI (no libretro wrapper). When set AND the nro exists, foyer
+    // chain-launches the standalone with the rom path as argv[1] —
+    // bypassing the libretro player loop entirely.
+    //
+    // Used for systems where a libretro Switch port doesn't exist
+    // upstream but a working standalone Switch nro does. PPSSPP and
+    // Dolphin are the canonical entries; the defaults match the
+    // install paths their official Switch releases use.
+    struct ExternalCore { std::string folder; std::string nro_path; };
+    std::vector<ExternalCore> external_cores = {
+        // Defaults match the install paths PPSSPP and Dolphin's
+        // official Switch nightlies write to. Users who installed to
+        // a different path can edit /foyer/config/general.jsonc.
+        { "psp", "/switch/PPSSPP/PPSSPP.nro" },
+        { "gc",  "/switch/dolphin-emu/dolphin-emu.nro" },
+    };
+
     // Returns the user-set default core name for a system folder, or
     // nullptr if none is configured.
     const char* default_core_for(std::string_view folder) const;
+
+    // Returns the configured external standalone path for a system
+    // folder, or "" if none is set. Caller is expected to stat() the
+    // path before chain-launching.
+    std::string external_core_for(std::string_view folder) const;
 };
 
 const Config& config();

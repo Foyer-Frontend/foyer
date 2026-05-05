@@ -110,7 +110,17 @@ void write_locked() {
         first = false;
         out << "\n        \"" << folder << "\": \"" << core << "\"";
     }
-    out << (g_config.default_core_per_system.empty() ? "}\n" : "\n    }\n");
+    out << (g_config.default_core_per_system.empty() ? "},\n" : "\n    },\n");
+
+    out << "    \"external_cores\": {";
+    first = true;
+    for (const auto& [folder, nro] : g_config.external_cores) {
+        if (!first) out << ",";
+        first = false;
+        out << "\n        \"" << folder << "\": \"" << nro << "\"";
+    }
+    out << (g_config.external_cores.empty() ? "}\n" : "\n    }\n");
+
     out << "}\n";
     foyer::log::write("[config] saved %s\n", kPath);
 }
@@ -197,6 +207,29 @@ void load_locked() {
             }
         }
     }
+    if (auto* obj = yyjson_obj_get(root, "external_cores");
+        obj && yyjson_is_obj(obj)) {
+        std::size_t i, max; yyjson_val *k, *v;
+        yyjson_obj_foreach(obj, i, max, k, v) {
+            if (yyjson_is_str(k) && yyjson_is_str(v)) {
+                g_config.external_cores.push_back(
+                    { yyjson_get_str(k), yyjson_get_str(v) });
+            }
+        }
+    }
+    // Seed defaults for the canonical "external core" systems so a
+    // first-run user with PPSSPP / Dolphin already on their SD just
+    // works without editing JSON. We push only if the user hasn't
+    // explicitly mapped that folder yet — overrides win.
+    auto seed_default = [](std::string_view folder, std::string_view nro) {
+        for (const auto& e : g_config.external_cores) {
+            if (e.folder == folder) return;
+        }
+        g_config.external_cores.push_back(
+            { std::string{folder}, std::string{nro} });
+    };
+    seed_default("psp", "/switch/PPSSPP/PPSSPP.nro");
+    seed_default("gc",  "/switch/dolphin-emu/dolphin-emu.nro");
     yyjson_doc_free(doc);
 
     foyer::log::write("[config] preferred_scraper=%s rom_root=%s overrides=%zu\n",
@@ -299,6 +332,13 @@ const char* Config::default_core_for(std::string_view folder) const {
         if (e.folder == folder) return e.core.c_str();
     }
     return nullptr;
+}
+
+std::string Config::external_core_for(std::string_view folder) const {
+    for (const auto& e : external_cores) {
+        if (e.folder == folder) return e.nro_path;
+    }
+    return {};
 }
 
 } // namespace foyer::library
