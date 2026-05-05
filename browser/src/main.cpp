@@ -358,11 +358,53 @@ int main(int /*argc*/, char** /*argv*/) {
             }
         }
 
-        // Cheat-pack install. Same shape as shaders: blocking call on
-        // the main thread, banner-driven progress, atomic per-pack
-        // .tmp -> rename via libarchive.
+        // Cheat-pack manifest refresh. Pull only — per-row install
+        // happens via OpInstallSingleCheatPack below.
+        if (state.request_refresh_cheats_manifest) {
+            state.request_refresh_cheats_manifest = false;
+            auto cm = foyer::library::fetch_cheat_manifest(
+                foyer::library::config().cheats_manifest_url);
+            if (cm.packs.empty()) {
+                state.banner_text = "Cheats manifest fetch failed";
+                state.banner_ttl  = 240;
+            } else {
+                char b[160];
+                std::snprintf(b, sizeof(b),
+                    "Cheats manifest loaded (%zu packs, %s)",
+                    cm.packs.size(), cm.version.c_str());
+                state.banner_text = b;
+                state.banner_ttl  = 240;
+                foyer::browser::set_cheats_manifest_cache(std::move(cm));
+            }
+        }
+
+        // Bezel-pack manifest refresh — same shape as cheats above.
+        if (state.request_refresh_bezels_manifest) {
+            state.request_refresh_bezels_manifest = false;
+            auto bm = foyer::library::fetch_bezel_manifest(
+                foyer::library::config().bezels_manifest_url);
+            if (bm.packs.empty()) {
+                state.banner_text = "Bezels manifest fetch failed";
+                state.banner_ttl  = 240;
+            } else {
+                char b[160];
+                std::snprintf(b, sizeof(b),
+                    "Bezels manifest loaded (%zu packs, %s)",
+                    bm.packs.size(), bm.version.c_str());
+                state.banner_text = b;
+                state.banner_ttl  = 240;
+                foyer::browser::set_bezels_manifest_cache(std::move(bm));
+            }
+        }
+
+        // Cheat-pack install. Honors install_only_cheat for the
+        // per-row picker; otherwise installs every pack the manifest
+        // lists. Manifest is fetched fresh each time so the user
+        // doesn't need to refresh first for the install-all path.
         if (state.request_install_cheats) {
             state.request_install_cheats = false;
+            const auto only = std::move(state.install_only_cheat);
+            state.install_only_cheat.clear();
             state.banner_text = "Fetching cheats manifest...";
             state.banner_ttl  = 60;
             app.tick();
@@ -372,6 +414,9 @@ int main(int /*argc*/, char** /*argv*/) {
                 state.banner_text = "Cheats manifest fetch failed";
                 state.banner_ttl  = 240;
             } else {
+                // Refresh the cache so per-pack rows reflect the
+                // post-install state on the next Settings draw.
+                foyer::browser::set_cheats_manifest_cache(cm);
                 const auto totals = foyer::library::install_cheats(cm,
                     [&](const foyer::library::CheatInstallProgress& p) {
                         char b[160];
@@ -385,7 +430,9 @@ int main(int /*argc*/, char** /*argv*/) {
                         state.banner_text = b;
                         state.banner_ttl  = 60;
                         app.tick();
-                    });
+                    },
+                    only,
+                    /*force=*/false);
                 if (totals.failed > 0) {
                     char b[120];
                     std::snprintf(b, sizeof(b),
@@ -403,11 +450,12 @@ int main(int /*argc*/, char** /*argv*/) {
             }
         }
 
-        // Bezel-pack install. Same blocking shape as the cheats /
-        // shaders flows; per-system PNGs land at /foyer/bezels/<sys>.png
-        // and the player's bezel.cpp picks them up automatically.
+        // Bezel-pack install. Mirrors cheats; honors
+        // install_only_bezel for per-row picks.
         if (state.request_install_bezels) {
             state.request_install_bezels = false;
+            const auto only = std::move(state.install_only_bezel);
+            state.install_only_bezel.clear();
             state.banner_text = "Fetching bezels manifest...";
             state.banner_ttl  = 60;
             app.tick();
@@ -417,6 +465,7 @@ int main(int /*argc*/, char** /*argv*/) {
                 state.banner_text = "Bezels manifest fetch failed";
                 state.banner_ttl  = 240;
             } else {
+                foyer::browser::set_bezels_manifest_cache(bm);
                 const auto totals = foyer::library::install_bezels(bm,
                     [&](const foyer::library::BezelInstallProgress& p) {
                         char b[160];
@@ -430,7 +479,9 @@ int main(int /*argc*/, char** /*argv*/) {
                         state.banner_text = b;
                         state.banner_ttl  = 60;
                         app.tick();
-                    });
+                    },
+                    only,
+                    /*force=*/false);
                 if (totals.failed > 0) {
                     char b[120];
                     std::snprintf(b, sizeof(b),

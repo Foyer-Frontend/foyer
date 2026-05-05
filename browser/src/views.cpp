@@ -1178,6 +1178,27 @@ ManifestCache& manifest_cache() {
     return c;
 }
 
+// Same shape for the cheat / bezel catalogues. Populated by main.cpp
+// after a "Refresh <kind> manifest" action; read here to render per-
+// pack install rows just like the cores list above.
+struct CheatsManifestCache {
+    library::CheatManifest data;
+    bool loaded = false;
+};
+CheatsManifestCache& cheats_manifest_cache() {
+    static CheatsManifestCache c;
+    return c;
+}
+
+struct BezelsManifestCache {
+    library::BezelManifest data;
+    bool loaded = false;
+};
+BezelsManifestCache& bezels_manifest_cache() {
+    static BezelsManifestCache c;
+    return c;
+}
+
 const char* scraper_label(library::Config::Scraper sc) {
     switch (sc) {
         case library::Config::Scraper::ScreenScraper: return "ScreenScraper";
@@ -1199,8 +1220,12 @@ enum : int {
     OpShader,
     OpRunahead,
     OpInstallShaderPresets,
-    OpInstallCheatPacks,
-    OpInstallBezelPacks,
+    OpInstallCheatPacks,         // Install/update every cheat pack at once
+    OpInstallBezelPacks,         // Install/update every bezel pack at once
+    OpRefreshCheatsManifest,     // Pull manifest only (per-pack rows after)
+    OpRefreshBezelsManifest,
+    OpInstallSingleCheatPack,    // Per-row install for one cheat pack
+    OpInstallSingleBezelPack,    // Per-row install for one bezel pack
     OpUpdCheckFoyer, OpUpdInstallFoyer,
     OpEmuSysCore,    // Cycle through available cores for one system.
     OpExpMtp, OpExpMtpAutostart, OpExpDebugLog,
@@ -1457,13 +1482,88 @@ std::vector<Item> build_items(Category cat, const State& s) {
             rows.push_back({ItemKind::Action, "Install shader presets", "run",
                 "Downloads the foyer-shaders catalogue into "
                 "/foyer/shaders/.",                                  OpInstallShaderPresets});
-            rows.push_back({ItemKind::Action, "Install cheat packs",   "run",
-                "Per-system cheat packs from libretro-database. "
-                "Installed under /foyer/cheats/<system>/.",          OpInstallCheatPacks});
-            rows.push_back({ItemKind::Action, "Install bezel packs",   "run",
-                "Per-system bezel art from libretro/common-overlays. "
-                "Installed at /foyer/bezels/<system>.png; uncovered "
-                "systems fall back to default.png.",                 OpInstallBezelPacks});
+            rows.push_back({ItemKind::Action, "Refresh cheats manifest",   "fetch",
+                "Pulls the per-system cheat-pack listing from "
+                "foyer-cheats. Pick rows below to install or update "
+                "individual systems.",                                OpRefreshCheatsManifest});
+
+            // Per-pack rows for cheats. Mirrors the cores catalogue
+            // pattern: shows current install state + verb action per
+            // system. Sized to /foyer/cheats/<system>/.version sidecar.
+            const auto& cmc = cheats_manifest_cache();
+            if (cmc.loaded && !cmc.data.packs.empty()) {
+                rows.push_back({ItemKind::Static,
+                    std::string{"Cheat packs (manifest "}
+                        + cmc.data.version + ")",
+                    "", "", 0});
+                for (const auto& p : cmc.data.packs) {
+                    Item it;
+                    it.kind  = ItemKind::Action;
+                    it.label = std::string{"  "} + p.name;
+                    it.data  = p.name;
+                    const auto local_v =
+                        library::installed_cheat_version(p.name);
+                    if (local_v.empty()) {
+                        it.value   = "download";
+                        it.payload = OpInstallSingleCheatPack;
+                    } else if (local_v == p.version) {
+                        it.value   = "installed - reinstall";
+                        it.payload = OpInstallSingleCheatPack;
+                    } else {
+                        it.value   = "update available";
+                        it.payload = OpInstallSingleCheatPack;
+                    }
+                    rows.push_back(std::move(it));
+                }
+                rows.push_back({ItemKind::Action,
+                    "  Install all cheat packs", "run",
+                    "Walks every pack above; skips any already at the "
+                    "manifest's version.",                          OpInstallCheatPacks});
+            } else {
+                rows.push_back({ItemKind::Static,
+                    "Press 'Refresh cheats manifest' to load the catalog.",
+                    "", "", 0});
+            }
+
+            rows.push_back({ItemKind::Action, "Refresh bezels manifest",   "fetch",
+                "Pulls the per-system bezel-pack listing from "
+                "foyer-bezels. Pick rows below to install or update "
+                "individual systems.",                                OpRefreshBezelsManifest});
+
+            const auto& bmc = bezels_manifest_cache();
+            if (bmc.loaded && !bmc.data.packs.empty()) {
+                rows.push_back({ItemKind::Static,
+                    std::string{"Bezel packs (manifest "}
+                        + bmc.data.version + ")",
+                    "", "", 0});
+                for (const auto& p : bmc.data.packs) {
+                    Item it;
+                    it.kind  = ItemKind::Action;
+                    it.label = std::string{"  "} + p.name;
+                    it.data  = p.name;
+                    const auto local_v =
+                        library::installed_bezel_version(p.name);
+                    if (local_v.empty()) {
+                        it.value   = "download";
+                        it.payload = OpInstallSingleBezelPack;
+                    } else if (local_v == p.version) {
+                        it.value   = "installed - reinstall";
+                        it.payload = OpInstallSingleBezelPack;
+                    } else {
+                        it.value   = "update available";
+                        it.payload = OpInstallSingleBezelPack;
+                    }
+                    rows.push_back(std::move(it));
+                }
+                rows.push_back({ItemKind::Action,
+                    "  Install all bezel packs", "run",
+                    "Walks every pack above; skips any already at the "
+                    "manifest's version.",                          OpInstallBezelPacks});
+            } else {
+                rows.push_back({ItemKind::Static,
+                    "Press 'Refresh bezels manifest' to load the catalog.",
+                    "", "", 0});
+            }
 
             // Show only INSTALLED cores whose recorded version differs
             // from the manifest — i.e. a real release-tag update is
@@ -1930,12 +2030,42 @@ void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Li
     nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_BOTTOM);
     nvgText(vg, cx, cy + ch + 36, meta, nullptr);
 
-    // Core picker.
+    // Core picker + per-game knob rows. Layout in this order:
+    //   - Continue (if a save state exists)
+    //   - Shader   (per-game override; cycles via L/R, A clears it)
+    //   - Run-ahead (same)
+    //   - Core 1..N
+    //
+    // detail_core_index navigates the whole list; helpers below map
+    // the index back to a row kind so input dispatch stays linear.
     const auto* resolved   = library::resolve_core(*def, g.path);
     const auto  per_game   = library::per_game_core_for(g.path);
     const char* per_sys    = library::config().default_core_for(def->folder_name);
     const int   resume_slot = latest_state_slot(sys, g);
     const bool  has_resume  = (resume_slot >= 0);
+
+    // Resolve the active per-game knob values (per-game override
+    // beats the Config default; we render whichever wins).
+    const auto pg_shader   = library::per_game_shader(g.path);
+    const auto pg_runahead = library::per_game_runahead(g.path);
+    const std::string eff_shader =
+        !pg_shader.empty() ? pg_shader
+                           : (library::config().shader_name.empty()
+                                ? std::string{"none"}
+                                : library::config().shader_name);
+    const int eff_runahead =
+        pg_runahead >= 0 ? pg_runahead
+                         : library::config().runahead_frames;
+
+    auto pretty_shader = [](std::string_view name) -> std::string {
+        if (name.empty() || name == "none") return "Off";
+        if (name == "scanlines")   return "Scanlines";
+        if (name == "crt_simple")  return "CRT (simple)";
+        if (name == "lcd_grid")    return "LCD grid";
+        if (name == "gb_dmg")      return "Game Boy DMG";
+        if (name == "gba_correct") return "GBA correction";
+        return std::string{name};
+    };
 
     nvgFontSize(vg, th.head_size);
     nvgFillColor(vg, th.text_strong);
@@ -1975,6 +2105,52 @@ void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Li
 
         ry += kRow;
         row++;
+    }
+
+    // ---- Per-game knob rows (Shader, Run-ahead) ----------------------
+    // Both render as Cycle-style: left/right cycles the value, A
+    // clears the per-game override (reverts to the general default).
+    // The right-aligned tag shows whether the displayed value is
+    // overridden ("per-game") or inherited ("default").
+    auto draw_knob_row = [&](const char* label,
+                             const std::string& value_label,
+                             bool overridden) {
+        const bool sel = (row == (int)s.detail_core_index);
+        if (sel) {
+            rrect(vg, right_x + th.pad * 0.5f, ry, right_w - th.pad,
+                  kRow - 6, 8.0f, th.bg_panel_hi);
+        }
+        nvgFontSize(vg, th.body_size);
+        nvgFillColor(vg, sel ? th.text_strong : th.text);
+        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+        nvgText(vg, right_x + th.pad + 8,
+                ry + (kRow - 6) * 0.5f - 8, label, nullptr);
+
+        nvgFontSize(vg, th.label_size);
+        nvgFillColor(vg, th.text_dim);
+        nvgText(vg, right_x + th.pad + 8,
+                ry + (kRow - 6) * 0.5f + 12,
+                value_label.c_str(), nullptr);
+
+        nvgFontSize(vg, th.label_size);
+        nvgFillColor(vg, th.accent);
+        nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+        nvgText(vg, right_x + right_w - th.pad,
+                ry + (kRow - 6) * 0.5f,
+                overridden ? "per-game" : "default", nullptr);
+        ry += kRow;
+        row++;
+    };
+
+    draw_knob_row("Shader", pretty_shader(eff_shader), !pg_shader.empty());
+
+    {
+        char buf[24];
+        if (eff_runahead == 0)      std::snprintf(buf, sizeof(buf), "Off");
+        else if (eff_runahead == 1) std::snprintf(buf, sizeof(buf), "1 frame");
+        else                        std::snprintf(buf, sizeof(buf),
+                                        "%d frames", eff_runahead);
+        draw_knob_row("Run-ahead", buf, pg_runahead >= 0);
     }
 
     for (const auto& c : def->cores) {
@@ -2502,23 +2678,69 @@ void update(State& s, const Library& lib,
         const int  resume_slot = latest_state_slot(sys, g);
         const bool has_resume  = (resume_slot >= 0);
         const auto core_count  = def->cores.size();
-        const auto row_count   = core_count + (has_resume ? 1 : 0);
-        const bool on_resume   = has_resume && s.detail_core_index == 0;
-        const auto core_idx    = has_resume
-                                   ? (s.detail_core_index == 0 ? 0
-                                                                : s.detail_core_index - 1)
-                                   : s.detail_core_index;
+        // Layout: Continue? + Shader + Run-ahead + cores
+        const int  resume_idx   = 0;
+        const int  shader_idx   = (has_resume ? 1 : 0);
+        const int  runahead_idx = shader_idx + 1;
+        const int  cores_start  = runahead_idx + 1;
+        const int  row_count    = (int)cores_start + (int)core_count;
+
+        const bool on_resume   = has_resume && s.detail_core_index == resume_idx;
+        const bool on_shader   = (int)s.detail_core_index == shader_idx;
+        const bool on_runahead = (int)s.detail_core_index == runahead_idx;
+        const bool on_core     = (int)s.detail_core_index >= cores_start;
+        const auto core_idx    = on_core
+                                   ? (s.detail_core_index - cores_start)
+                                   : 0;
 
         if (down & HidNpadButton_AnyDown) {
-            if (s.detail_core_index + 1 < row_count) s.detail_core_index++;
+            if (s.detail_core_index + 1 < (std::size_t)row_count)
+                s.detail_core_index++;
         } else if (down & HidNpadButton_AnyUp) {
             if (s.detail_core_index > 0) s.detail_core_index--;
         }
 
-        // L/R shoulder jumps to first / last entry. The list is short
-        // (cores per system), so paging by N rows isn't meaningful.
-        if (row_count > 0) {
-            if (const int sh = shoulder_step(s, held, down)) {
+        // L/R: cycle Cycle-row values when focus is on the knob rows;
+        // jump to first / last otherwise.
+        if (const int sh = shoulder_step(s, held, down); sh != 0) {
+            if (on_shader) {
+                static const char* kShaderNames[] = {
+                    "none", "scanlines", "crt_simple", "lcd_grid",
+                    "gb_dmg", "gba_correct",
+                };
+                constexpr int kCount = (int)(sizeof(kShaderNames) /
+                                             sizeof(kShaderNames[0]));
+                int cur = 0;
+                const std::string current = library::per_game_shader(g.path);
+                const std::string ref = current.empty()
+                    ? library::config().shader_name : current;
+                for (int i = 0; i < kCount; i++) {
+                    if (ref == kShaderNames[i]) { cur = i; break; }
+                }
+                cur = ((cur + sh) % kCount + kCount) % kCount;
+                library::set_per_game_shader(g.path, kShaderNames[cur]);
+                s.banner_text = std::string{"Per-game shader: "}
+                              + kShaderNames[cur];
+                s.banner_ttl  = 120;
+            } else if (on_runahead) {
+                constexpr int kMax = 4;
+                const int cur =
+                    library::per_game_runahead(g.path) >= 0
+                        ? library::per_game_runahead(g.path)
+                        : library::config().runahead_frames;
+                int next = cur + sh;
+                if (next < 0)    next = kMax;
+                if (next > kMax) next = 0;
+                library::set_per_game_runahead(g.path, next);
+                char buf[40];
+                std::snprintf(buf, sizeof(buf),
+                    next == 0 ? "Per-game run-ahead: off"
+                              : (next == 1 ? "Per-game run-ahead: 1 frame"
+                                            : "Per-game run-ahead: %d frames"),
+                    next);
+                s.banner_text = buf;
+                s.banner_ttl  = 120;
+            } else if (row_count > 0) {
                 s.detail_core_index = (sh > 0) ? row_count - 1 : 0;
             }
         }
@@ -2530,20 +2752,30 @@ void update(State& s, const Library& lib,
             if (on_resume) {
                 s.request_resume_slot = resume_slot;
                 s.request_launch      = true;
-            } else {
+            } else if (on_shader) {
+                library::set_per_game_shader(g.path, "");
+                s.banner_text = "Shader override cleared (uses general default)";
+                s.banner_ttl  = 180;
+            } else if (on_runahead) {
+                library::set_per_game_runahead(g.path, -1);
+                s.banner_text = "Run-ahead override cleared (uses general default)";
+                s.banner_ttl  = 180;
+            } else if (on_core) {
                 const auto& chosen = def->cores[core_idx];
                 library::set_per_game_core(g.path, chosen.name);
-                s.banner_text = std::string{"Per-game core set: "} + std::string{chosen.name};
+                s.banner_text = std::string{"Per-game core set: "}
+                              + std::string{chosen.name};
                 s.banner_ttl  = 180;
             }
         }
-        if (!on_resume && (down & HidNpadButton_Y)) {
+        if (on_core && (down & HidNpadButton_Y)) {
             const auto& chosen = def->cores[core_idx];
             library::set_default_core_for(def->folder_name, chosen.name);
-            s.banner_text = std::string{"System default core set: "} + std::string{chosen.name};
+            s.banner_text = std::string{"System default core set: "}
+                          + std::string{chosen.name};
             s.banner_ttl  = 180;
         }
-        if (!on_resume && (down & HidNpadButton_X)) {
+        if (on_core && (down & HidNpadButton_X)) {
             library::set_per_game_core(g.path, "");
             s.banner_text = "Per-game override cleared";
             s.banner_ttl  = 180;
@@ -2777,11 +3009,37 @@ void update(State& s, const Library& lib,
                             s.banner_ttl  = 180;
                         } else if (it.payload == settings::OpInstallCheatPacks) {
                             s.request_install_cheats = true;
-                            s.banner_text = "Fetching cheats manifest...";
+                            s.install_only_cheat.clear();
+                            s.banner_text = "Installing all cheat packs...";
                             s.banner_ttl  = 180;
                         } else if (it.payload == settings::OpInstallBezelPacks) {
                             s.request_install_bezels = true;
+                            s.install_only_bezel.clear();
+                            s.banner_text = "Installing all bezel packs...";
+                            s.banner_ttl  = 180;
+                        } else if (it.payload == settings::OpRefreshCheatsManifest) {
+                            s.request_refresh_cheats_manifest = true;
+                            s.banner_text = "Fetching cheats manifest...";
+                            s.banner_ttl  = 180;
+                        } else if (it.payload == settings::OpRefreshBezelsManifest) {
+                            s.request_refresh_bezels_manifest = true;
                             s.banner_text = "Fetching bezels manifest...";
+                            s.banner_ttl  = 180;
+                        } else if (it.payload == settings::OpInstallSingleCheatPack) {
+                            s.request_install_cheats = true;
+                            s.install_only_cheat = it.data;
+                            char buf[160];
+                            std::snprintf(buf, sizeof(buf),
+                                "Installing cheat pack: %s...", it.data.c_str());
+                            s.banner_text = buf;
+                            s.banner_ttl  = 180;
+                        } else if (it.payload == settings::OpInstallSingleBezelPack) {
+                            s.request_install_bezels = true;
+                            s.install_only_bezel = it.data;
+                            char buf[160];
+                            std::snprintf(buf, sizeof(buf),
+                                "Installing bezel pack: %s...", it.data.c_str());
+                            s.banner_text = buf;
                             s.banner_ttl  = 180;
                         } else if (it.payload == settings::OpUpdInstallSingleCore) {
                             s.request_install_cores = true;
@@ -2948,6 +3206,18 @@ void set_manifest_cache(library::CoreManifest manifest) {
     mc.loaded = true;
 }
 
+void set_cheats_manifest_cache(library::CheatManifest manifest) {
+    auto& mc = settings::cheats_manifest_cache();
+    mc.data   = std::move(manifest);
+    mc.loaded = true;
+}
+
+void set_bezels_manifest_cache(library::BezelManifest manifest) {
+    auto& mc = settings::bezels_manifest_cache();
+    mc.data   = std::move(manifest);
+    mc.loaded = true;
+}
+
 void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) {
     const auto& th = theme();
     nvgBeginPath(vg);
@@ -3059,11 +3329,10 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
                     game_ptr->display.c_str());
                 title = buf;
             }
-            // GameDetail: rows are Continue (when a save state exists)
-            // followed by core entries. The Continue row only supports
-            // A/B; core rows support A (per-game) / Y (system default)
-            // / X (clear override). Switch the hint based on which row
-            // currently holds focus.
+            // GameDetail rows in order: Continue (if save exists),
+            // Shader knob, Run-ahead knob, Core entries. Each row
+            // type has its own button affordances; pick the hint
+            // based on which row currently holds focus.
             if (!game_ptr) {
                 hint = std::string{B} + " back";
             } else {
@@ -3073,17 +3342,29 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
                 if (!def) def = sys_ptr->def;
                 const int  resume_slot = latest_state_slot(*sys_ptr, *game_ptr);
                 const bool has_resume  = (resume_slot >= 0);
-                const bool on_resume   = has_resume && s.detail_core_index == 0;
-                if (on_resume) {
+                const int  shader_idx   = (has_resume ? 1 : 0);
+                const int  runahead_idx = shader_idx + 1;
+                const int  cores_start  = runahead_idx + 1;
+                const int  cur          = (int)s.detail_core_index;
+
+                if (has_resume && cur == 0) {
                     hint = std::string{DPad} + " pick   "
                          + A + " continue   " + B + " back";
-                } else if (def->cores.empty()) {
-                    hint = std::string{B} + " back";
-                } else {
+                } else if (cur == shader_idx) {
+                    hint = std::string{DPad} + " pick   "
+                         + Left + Right + " cycle shader   "
+                         + A + " clear override   " + B + " back";
+                } else if (cur == runahead_idx) {
+                    hint = std::string{DPad} + " pick   "
+                         + Left + Right + " cycle run-ahead   "
+                         + A + " clear override   " + B + " back";
+                } else if (cur >= cores_start && !def->cores.empty()) {
                     hint = std::string{DPad} + " pick   "
                          + A + " set per-game   "
                          + Y + " set sys default   "
                          + X + " clear override   " + B + " back";
+                } else {
+                    hint = std::string{B} + " back";
                 }
             }
             break;

@@ -11,6 +11,8 @@
 #include "library/scanner.hpp"
 #include "library/core_installer.hpp"
 #include "library/core_install_job.hpp"
+#include "library/cheat_installer.hpp"
+#include "library/bezel_installer.hpp"
 #include "library/foyer_update_job.hpp"
 #include "library/scrape_job.hpp"
 #include "platform/app.hpp"
@@ -80,9 +82,13 @@ struct State {
     bool        request_install_cheats    = false;
     bool        request_install_bezels    = false;
     bool        request_refresh_manifest  = false;
-    // When non-empty, request_install_cores acts on just this one core.
-    // Cleared by main.cpp after the install runs.
+    bool        request_refresh_cheats_manifest = false;
+    bool        request_refresh_bezels_manifest = false;
+    // When non-empty, request_install_cores / cheats / bezels acts on
+    // just that one entry. Cleared by main.cpp after each run.
     std::string install_only_core;
+    std::string install_only_cheat;
+    std::string install_only_bezel;
     // When true, install_cores is invoked with `force=true`, bypassing
     // the version-match skip. Used by the explicit "Re-install" path.
     // Cleared after the install runs.
@@ -177,5 +183,10 @@ void invalidate_cover_cache(NVGcontext* vg);
 // render per-core install rows. main.cpp calls this after the user
 // triggers the "Refresh manifest" action.
 void set_manifest_cache(library::CoreManifest manifest);
+
+// Same shape for the cheat- and bezel-pack catalogues. Settings reads
+// these to render per-pack install rows.
+void set_cheats_manifest_cache(library::CheatManifest manifest);
+void set_bezels_manifest_cache(library::BezelManifest manifest);
 
 } // namespace foyer::browser
