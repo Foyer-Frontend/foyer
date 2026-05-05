@@ -1311,6 +1311,7 @@ enum : int {
     OpUpdAll,          // "Update everything" footer
     OpUpdRescrape,     // "Re-scrape now" footer
     OpEmuSysCore,    // Cycle through available cores for one system.
+    OpBezelForSystem, // Per-system bezel picker (Settings → Emulator → Bezel per system)
     OpExpMtp, OpExpMtpAutostart, OpExpDebugLog,
     // Account fields opened via on-screen keyboard.
     OpAccSsDevId, OpAccSsDevPw, OpAccSsUser, OpAccSsPw,
@@ -1447,6 +1448,7 @@ std::vector<Item> build_items(Category cat, const State& s) {
             //                   = 4 → Cheat packs
             //                   = 5 → Shader presets
             //                   = 6 → External standalone emulators
+            //                   = 7 → Bezel per system (picker)
 
             auto file_present = [](const std::string& path) -> bool {
                 struct stat st{};
@@ -1467,12 +1469,15 @@ std::vector<Item> build_items(Category cat, const State& s) {
                         "browse / install", "", 0};     r5.subpage = 5;
                 Item r6{ItemKind::Subpage, "External standalone emulators",
                         "PSP / GC status", "", 0};      r6.subpage = 6;
+                Item r7{ItemKind::Subpage, "Bezel per system",
+                        "pick or clear", "", 0};        r7.subpage = 7;
                 rows.push_back(std::move(r1));
                 rows.push_back(std::move(r2));
                 rows.push_back(std::move(r3));
                 rows.push_back(std::move(r4));
                 rows.push_back(std::move(r5));
                 rows.push_back(std::move(r6));
+                rows.push_back(std::move(r7));
                 break;
             }
 
@@ -1632,6 +1637,43 @@ std::vector<Item> build_items(Category cat, const State& s) {
                     "Downloads the foyer-shaders catalogue into "
                     "/foyer/shaders/.",
                     OpInstallShaderPresets});
+                break;
+            }
+
+            if (s.settings_subpage == 7) {
+                // Per-system bezel picker. One Cycle row per system
+                // showing whether a bezel is currently set ("set" /
+                // "(none)"); A on a row opens the option picker
+                // (build_option_list/apply_option for OpBezelForSystem)
+                // which lists every PNG under /foyer/bezels/ as a
+                // choice. Apply copies the chosen PNG to
+                // /foyer/bezels/<folder>.png; "(none)" deletes it.
+                //
+                // The catch-all default.png fallback used to drive
+                // every system to the same generic CRT-TV frame —
+                // dropped from the resolution chain in v0.2.5x; users
+                // now opt into bezels per system, which is what this
+                // page exists for.
+                rows.push_back({ItemKind::Static,
+                    "Bezel per system", "", "", 0});
+                rows.push_back({ItemKind::Static,
+                    "Pick a PNG to overlay around the emulator output. "
+                    "(none) keeps the system clean.",
+                    "", "", 0});
+                for (const auto& sys : library::all_systems()) {
+                    const std::string p =
+                        std::string{"/foyer/bezels/"}
+                        + std::string{sys.folder_name} + ".png";
+                    const bool has = file_present(p);
+                    Item it{ItemKind::Cycle,
+                            std::string{sys.short_name},
+                            has ? std::string{"set"}
+                                : std::string{"(none)"},
+                            "",
+                            OpBezelForSystem};
+                    it.data = sys.folder_name;
+                    rows.push_back(std::move(it));
+                }
                 break;
             }
 
@@ -2202,6 +2244,33 @@ OptionList build_option_list(int op, const std::string& data) {
             o.current_index = cur;
             break;
         }
+        case OpBezelForSystem: {
+            // data = system folder. Walk /foyer/bezels/*.png and
+            // surface every PNG as a possible choice; the system's
+            // own destination file is excluded (it's the *output*,
+            // not a source candidate). "(none)" sits at the top so
+            // users can clear the bezel for a system they don't want
+            // overlaid.
+            o.title = std::string{"Bezel for "} + data;
+            o.options.emplace_back("(none — no bezel)");
+            std::vector<std::string> names;
+            if (auto* dir = ::opendir("/foyer/bezels")) {
+                while (auto* e = ::readdir(dir)) {
+                    if (e->d_type != DT_REG) continue;
+                    std::string_view n{e->d_name};
+                    if (n.size() < 5) continue;
+                    if (n.substr(n.size() - 4) != ".png") continue;
+                    std::string base{n.substr(0, n.size() - 4)};
+                    if (base == data) continue;        // hide own dest
+                    names.push_back(std::move(base));
+                }
+                ::closedir(dir);
+            }
+            std::sort(names.begin(), names.end());
+            for (auto& n : names) o.options.push_back(std::move(n));
+            o.current_index = -1;  // no "current" badge — file copy is fire-and-forget
+            break;
+        }
         case OpUpdSingleItem: {
             // data is "<kind>:<id>". The action menu varies by kind
             // *and* by whether the item is currently installed —
@@ -2287,6 +2356,32 @@ std::string apply_option(int op, const std::string& data,
         case OpRunahead: {
             library::set_runahead_frames(chosen_index);
             break;
+        }
+        case OpBezelForSystem: {
+            // chosen_index 0 = "(none)", >0 = base name of a PNG
+            // sitting under /foyer/bezels/. Apply by copying the
+            // source onto /foyer/bezels/<folder>.png — bezel.cpp
+            // re-resolves on the next retro_load_game. "(none)"
+            // unlinks the destination so resolve_path() returns "".
+            const std::string dst = std::string{"/foyer/bezels/"}
+                                  + data + ".png";
+            if (chosen_index == 0) {
+                ::unlink(dst.c_str());
+                return std::string{"Cleared bezel for "} + data;
+            }
+            const std::string src = std::string{"/foyer/bezels/"}
+                                  + chosen + ".png";
+            std::FILE* in = std::fopen(src.c_str(), "rb");
+            if (!in) return {};
+            std::FILE* out = std::fopen(dst.c_str(), "wb");
+            if (!out) { std::fclose(in); return {}; }
+            char buf[16 * 1024];
+            std::size_t n;
+            while ((n = std::fread(buf, 1, sizeof(buf), in)) > 0)
+                std::fwrite(buf, 1, n, out);
+            std::fclose(in);
+            std::fclose(out);
+            return std::string{"Bezel for "} + data + ": " + chosen;
         }
         case OpUpdSingleItem: {
             // Parse "kind:id" out of `data` and dispatch the chosen

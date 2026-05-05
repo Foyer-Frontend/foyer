@@ -19,10 +19,16 @@ bool exists(const std::string& path) {
     return ::stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode);
 }
 
-// Picks the PNG path to use; per-rom wins, per-system is the fallback,
-// /foyer/bezels/default.png is the catch-all. Returns "" when bezels
-// are turned off in config or even the catch-all is missing — the
-// caller short-circuits to a no-op draw in either case.
+// Picks the PNG path to use; per-rom wins, per-system is the
+// fallback. Returns "" when bezels are turned off OR when no
+// system-specific art is configured — the caller short-circuits to
+// a no-op draw (i.e. plain emulator output) in either case.
+//
+// History: v0.2.x shipped a `/foyer/bezels/default.png` catch-all
+// "tv frame" so every game got *some* art out of the box. Users
+// found it ugly and there was no way to opt out per-system, so the
+// fallback was dropped — picking an art for a system is now an
+// explicit Settings → Emulator → Bezel per system action.
 std::string resolve_path() {
     if (!foyer::library::config().show_bezels) return {};
     char buf[512];
@@ -36,8 +42,6 @@ std::string resolve_path() {
             "/foyer/bezels/%s.png", g_folder.c_str());
         if (exists(buf)) return std::string{buf};
     }
-    static constexpr const char* kDefault = "/foyer/bezels/default.png";
-    if (exists(kDefault)) return kDefault;
     return {};
 }
 
