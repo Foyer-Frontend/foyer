@@ -88,10 +88,27 @@ bool save_library_cache(std::string_view path,
             (int)path.size(), path.data());
         return false;
     }
+
+    // Snapshot every top-level folder we see today, even empty ones.
+    // The loader compares against this set to detect "user added /
+    // removed a system folder". Without it, an empty folder like
+    // /foyer/roms/nds/ (created before any roms land there) makes the
+    // loader think a new system appeared every boot, causing a full
+    // rescan even when the populated systems are unchanged.
+    const auto seen = list_top_folders(rom_root);
+
     out << "{";
-    out << "\"v\":1,";
+    out << "\"v\":2,";
     out << "\"rom_root\":\"" << rom_root << "\",";
     out << "\"rom_root_mtime\":" << mtime_of(rom_root) << ",";
+    out << "\"seen_folders\":[";
+    bool sf_first = true;
+    for (const auto& f : seen) {
+        if (!sf_first) out << ",";
+        sf_first = false;
+        out << "\"" << f << "\"";
+    }
+    out << "],";
     out << "\"systems\":[";
     bool first = true;
     for (const auto& s : systems) {
@@ -135,8 +152,10 @@ load_library_cache(std::string_view path,
     if (!yyjson_is_obj(root)) { yyjson_doc_free(doc); return std::nullopt; }
 
     // Schema version guard. Bump when the on-disk shape changes.
+    // v2 added `seen_folders` so the loader can distinguish "no-op
+    // empty folder still there" from "user added a real new system".
     if (auto* v = yyjson_obj_get(root, "v");
-        !v || !yyjson_is_int(v) || yyjson_get_int(v) != 1) {
+        !v || !yyjson_is_int(v) || yyjson_get_int(v) != 2) {
         yyjson_doc_free(doc);
         return std::nullopt;
     }
@@ -221,20 +240,30 @@ load_library_cache(std::string_view path,
             cached_folders.emplace(folder);
         }
     }
+    // Pull the `seen_folders` set written by the saver — every
+    // top-level rom_root entry we observed at save time, populated or
+    // empty. Comparing today's set against this lets us detect both
+    // additions (new system to scan) and removals without false-
+    // positives from empty folders that haven't gained roms yet.
+    std::set<std::string> seen_at_write;
+    if (auto* sf = yyjson_obj_get(root, "seen_folders");
+        sf && yyjson_is_arr(sf)) {
+        std::size_t i, n;
+        yyjson_val* item;
+        yyjson_arr_foreach(sf, i, n, item) {
+            if (yyjson_is_str(item)) seen_at_write.emplace(yyjson_get_str(item));
+        }
+    }
     yyjson_doc_free(doc);
 
-    // Final invariant: every top-level rom_root folder we see today
-    // must have been cached, otherwise a new system was added since
-    // the cache was written. (rom_root_mtime check usually catches
-    // this — this is the belt-and-braces second line.)
     const auto today = list_top_folders(rom_root);
-    for (const auto& f : today) {
-        if (find_system_by_folder(f) && !cached_folders.count(f)) {
-            foyer::log::write(
-                "[lib_cache] new system folder '%s' since cache write\n",
-                f.c_str());
-            return std::nullopt;
-        }
+    if (today != seen_at_write) {
+        // Symmetric difference would tell us add vs. remove; for the
+        // log just note the count so the user can grep.
+        foyer::log::write(
+            "[lib_cache] folder set changed (was %zu, now %zu) - rescanning\n",
+            seen_at_write.size(), today.size());
+        return std::nullopt;
     }
 
     foyer::log::write("[lib_cache] hit (%zu systems)\n", out.size());

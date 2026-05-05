@@ -37,6 +37,11 @@ struct Config {
     bool         show_clock        = true;
     bool         show_backgrounds  = true;
     bool         show_covers       = true;
+    // Display the bezel art (per-rom -> per-system -> default fallback)
+    // around the emulator output. Off short-circuits the resolution
+    // chain entirely so even the bundled default.png is hidden, useful
+    // when the user prefers integer-scale or a vendor overlay.
+    bool         show_bezels       = true;
 
     // Run-ahead lookahead frames. 0 disables (default); 1..4 trade CPU
     // for reduced visible input lag — each enabled frame adds one extra

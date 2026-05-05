@@ -1,4 +1,5 @@
 #include "bezel.hpp"
+#include "library/config.hpp"
 #include "platform/log.hpp"
 
 #include <cstdio>
@@ -19,10 +20,11 @@ bool exists(const std::string& path) {
 }
 
 // Picks the PNG path to use; per-rom wins, per-system is the fallback,
-// /foyer/bezels/default.png is the catch-all so every game gets at
-// least the generic CRT-TV frame the browser seeds on first boot.
-// Returns "" only if even the catch-all is missing.
+// /foyer/bezels/default.png is the catch-all. Returns "" when bezels
+// are turned off in config or even the catch-all is missing — the
+// caller short-circuits to a no-op draw in either case.
 std::string resolve_path() {
+    if (!foyer::library::config().show_bezels) return {};
     char buf[512];
     if (!g_folder.empty() && !g_stem.empty()) {
         std::snprintf(buf, sizeof(buf),

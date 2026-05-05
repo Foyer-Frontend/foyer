@@ -10,6 +10,8 @@
 #include "platform/app.hpp"
 #include "platform/log.hpp"
 #include "boot_splash.hpp"
+
+#include <chrono>
 #include "library/scanner.hpp"
 #include "library/system_db.hpp"
 #include "library/config.hpp"
@@ -77,6 +79,24 @@ int main(int argc, char** argv) {
     app.set_draw_fn([&boot_status, &splash](NVGcontext* vg, float w, float h) {
         splash.draw(vg, w, h, boot_status, FOYER_DISPLAY_VERSION);
     });
+    // Wall-clock helper for boot phase timing. Logs a "[boot]" line
+    // for each phase so a slow load complaint can point at the
+    // offending step (cache miss vs. seed walking the whole bezel
+    // tree vs. theme JSONC stall, etc.) without us having to rebuild.
+    auto tick_phase = [&](const char* label) {
+        static auto t0 = std::chrono::steady_clock::now();
+        static auto prev = t0;
+        const auto now  = std::chrono::steady_clock::now();
+        const auto step =
+            std::chrono::duration_cast<std::chrono::milliseconds>(now - prev).count();
+        const auto total =
+            std::chrono::duration_cast<std::chrono::milliseconds>(now - t0).count();
+        prev = now;
+        foyer::log::write("[boot] %s (+%lldms / %lldms total)\n",
+            label, (long long)step, (long long)total);
+    };
+    tick_phase("app constructed");
+
     boot_status = "Seeding assets...";
     app.tick();
 
@@ -84,6 +104,7 @@ int main(int argc, char** argv) {
     // first boot (and every boot a NEW system / cheat ships in the
     // browser's romfs). User-installed files are never overwritten.
     foyer::browser::seed_assets_if_missing();
+    tick_phase("seed_assets done");
     boot_status = "Initialising network...";
     app.tick();
 
@@ -94,10 +115,12 @@ int main(int argc, char** argv) {
     // hangs at "Fetching manifest...". Boot-time foyer manifest
     // check is the trigger.
     foyer::net::init();
+    tick_phase("net::init done");
     boot_status = "Loading theme...";
     app.tick();
 
     foyer::browser::load_theme(foyer::library::config().theme_name);
+    tick_phase("theme loaded");
 
     // NOTE: temporarily skipping MTP autostart — libhaze appears to break
     // libnx's romfs devoptab so subsequent fopen("romfs:/...") returns
@@ -114,6 +137,7 @@ int main(int argc, char** argv) {
     opts.recurse  = foyer::library::config().scan_subfolders;
     foyer::browser::Library lib;
     lib.systems = foyer::library::scan_library(opts);
+    tick_phase("scan_library done");
     boot_status = "Ready";
     app.tick();
 

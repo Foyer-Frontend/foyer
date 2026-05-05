@@ -1287,7 +1287,7 @@ const char* scraper_label(library::Config::Scraper sc) {
 // Item payloads — opaque small ids that the input dispatcher matches on.
 enum : int {
     OpScraper = 1, OpTheme, OpRomRoot, OpScanSub,
-    OpShowClock, OpShowBg, OpShowCovers,
+    OpShowClock, OpShowBg, OpShowCovers, OpShowBezels,
     OpRescan, OpInvalidateCovers,
     OpUpdScrapeAll, OpUpdInstalledCores, OpUpdInstallCores,
     OpUpdRefreshManifest, OpUpdInstallSingleCore, OpUpdReinstallSingleCore,
@@ -1377,6 +1377,11 @@ std::vector<Item> build_items(Category cat, const State& s) {
             rows.push_back({ItemKind::Toggle, "Show backgrounds", "",
                 "Use /foyer/assets/backgrounds/<sys>/<stem>.jpg.",    OpShowBg});
             rows.push_back({ItemKind::Toggle, "Show covers",      "", "",     OpShowCovers});
+            rows.push_back({ItemKind::Toggle, "Show bezels",      "",
+                "Off skips the per-system / default.png frame around the "
+                "emulator output. Drop a custom PNG at "
+                "/foyer/bezels/<system>.png to override per system.",
+                OpShowBezels});
             // Post-process shader, applied per-frame in every player.
             // Built-in presets ship with the player binary; users can
             // also drop their own /foyer/shaders/<name>.glsl files.
@@ -1878,6 +1883,7 @@ bool toggle_get(int op) {
     switch (op) {
         case OpScanSub:          return cfg.scan_subfolders;
         case OpShowClock:        return cfg.show_clock;
+        case OpShowBezels:       return cfg.show_bezels;
         case OpShowBg:           return cfg.show_backgrounds;
         case OpShowCovers:       return cfg.show_covers;
         case OpExpMtpAutostart:  return cfg.mtp_autostart;
@@ -1893,6 +1899,7 @@ void toggle_set(int op, bool val) {
         case OpShowClock:        library::set_bool("show_clock",       val); break;
         case OpShowBg:           library::set_bool("show_backgrounds", val); break;
         case OpShowCovers:       library::set_bool("show_covers",      val); break;
+        case OpShowBezels:       library::set_bool("show_bezels",      val); break;
         case OpExpMtpAutostart:  library::set_bool("mtp_autostart",    val); break;
         case OpExpDebugLog:      library::set_bool("debug_log",        val); break;
         case OpExpMtp:
