@@ -47,6 +47,11 @@ struct State {
     int  settings_category = 0;
     int  settings_row      = 0;
     bool settings_in_content = false;
+    // Subpage within the active category. 0 = top-level (default).
+    // >0 maps to a category-specific drill-down (Emulator's Cores
+    // catalog, Bezel packs, Cheat packs, etc). B from a subpage
+    // returns to the top-level Emulator list before exiting Settings.
+    int  settings_subpage  = 0;
 
     // Tico-style modal popup launched with `+`. Shadows the underlying view
     // until B cancels or A picks an entry.
@@ -84,6 +89,11 @@ struct State {
     bool        request_refresh_manifest  = false;
     bool        request_refresh_cheats_manifest = false;
     bool        request_refresh_bezels_manifest = false;
+    // Set true on first Settings entry per app run so the cores /
+    // cheats / bezels manifests start auto-fetching in the background.
+    // Stays false thereafter so the user can still trigger a manual
+    // re-fetch via the explicit refresh actions.
+    bool        manifests_auto_refreshed       = false;
     // When non-empty, request_install_cores / cheats / bezels acts on
     // just that one entry. Cleared by main.cpp after each run.
     std::string install_only_core;

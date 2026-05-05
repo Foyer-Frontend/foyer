@@ -1155,7 +1155,7 @@ void draw_category_icon(NVGcontext* vg, Category cat, float cx, float cy, float 
 
 // Flat list of items inside a category — each row is one of these kinds so
 // the input handler can dispatch generically.
-enum class ItemKind { Cycle, Toggle, Action, Static, Drill };
+enum class ItemKind { Cycle, Toggle, Action, Static, Drill, Subpage };
 
 struct Item {
     ItemKind     kind;
@@ -1164,6 +1164,7 @@ struct Item {
     std::string  hint;        // optional dim sub-label below the row
     int          payload = 0; // category-specific opcode
     std::string  data;        // opcode-specific payload (e.g. core name for OpUpdInstallSingleCore)
+    int          subpage = 0; // ItemKind::Subpage destination (1-based)
 };
 
 // Lazily-populated copy of the foyer-cores manifest for the per-core
@@ -1347,104 +1348,229 @@ std::vector<Item> build_items(Category cat, const State& s) {
             break;
         }
         case Category::Emulator: {
-            // Catalog of cores from the foyer-cores release manifest. This
-            // is where the user *installs* cores — Updates is where they
-            // *upgrade* the ones already on disk.
-            rows.push_back({ItemKind::Action, "Refresh manifest", "fetch",
-                "Pulls the latest foyer-cores release listing from GitHub.",
-                OpUpdRefreshManifest});
+            // Subpage routing — Emulator is split into focused
+            // sub-screens (cores, bezels, cheats, shaders, defaults,
+            // external standalones) so the top-level Settings list
+            // doesn't drown the user in a flat 80-row catalogue.
+            //
+            // settings_subpage = 0 → top-level (5 Subpage drill rows).
+            //                   = 1 → Default core per system
+            //                   = 2 → Cores catalog
+            //                   = 3 → Bezel packs
+            //                   = 4 → Cheat packs
+            //                   = 5 → Shader presets
+            //                   = 6 → External standalone emulators
 
             auto file_present = [](const std::string& path) -> bool {
                 struct stat st{};
                 return ::stat(path.c_str(), &st) == 0 && st.st_size > 0;
             };
 
-            const auto& mc = manifest_cache();
-            if (mc.loaded && !mc.data.cores.empty()) {
-                rows.push_back({ItemKind::Static,
-                    std::string{"Available cores (manifest "} + mc.data.version + ")",
-                    "", "", 0});
-                for (const auto& c : mc.data.cores) {
-                    const bool installed =
-                        file_present(std::string{"/foyer/cores/"} + c.nro);
-                    Item it;
-                    it.kind  = ItemKind::Action;
-                    it.label = std::string{"  "} + c.name;
-                    it.data  = c.name;
-                    if (!installed) {
-                        // Not on disk -> Download.
-                        it.value   = "download";
-                        it.payload = OpUpdInstallSingleCore;
-                    } else {
-                        const auto local_v = library::installed_core_version(c.nro);
-                        const bool up_to_date =
-                            !local_v.empty() && local_v == c.version;
-                        if (up_to_date) {
-                            // Already at the manifest's version -> Re-install
-                            // (forces a redownload, useful if the user
-                            // suspects a corrupt nro).
-                            it.value   = "installed - reinstall";
-                            it.payload = OpUpdReinstallSingleCore;
-                        } else {
-                            // Installed but the manifest's nro hash differs
-                            // from what's on disk. Same action also surfaces
-                            // in Settings -> Updates. Versions are sha256
-                            // prefixes, not meaningful to users — show the
-                            // verb only.
-                            it.value   = "update available";
-                            it.payload = OpUpdInstallSingleCore;
-                        }
-                    }
-                    rows.push_back(std::move(it));
-                }
-            } else {
-                rows.push_back({ItemKind::Static,
-                    "Press 'Refresh manifest' to load the catalog.",
-                    "", "", 0});
+            if (s.settings_subpage == 0) {
+                // Top-level: navigate-only Drill rows.
+                Item r1{ItemKind::Subpage, "Default core per system",
+                        "configure", "", 0};            r1.subpage = 1;
+                Item r2{ItemKind::Subpage, "Cores catalog",
+                        "browse / install", "", 0};     r2.subpage = 2;
+                Item r3{ItemKind::Subpage, "Bezel packs",
+                        "browse / install", "", 0};     r3.subpage = 3;
+                Item r4{ItemKind::Subpage, "Cheat packs",
+                        "browse / install", "", 0};     r4.subpage = 4;
+                Item r5{ItemKind::Subpage, "Shader presets",
+                        "browse / install", "", 0};     r5.subpage = 5;
+                Item r6{ItemKind::Subpage, "External standalone emulators",
+                        "PSP / GC status", "", 0};      r6.subpage = 6;
+                rows.push_back(std::move(r1));
+                rows.push_back(std::move(r2));
+                rows.push_back(std::move(r3));
+                rows.push_back(std::move(r4));
+                rows.push_back(std::move(r5));
+                rows.push_back(std::move(r6));
+                break;
             }
 
-            // External standalone emulators. Some systems on Switch
-            // (PSP, GameCube) don't have a working libretro core
-            // upstream, but their standalone Switch nros DO exist.
-            // Foyer chain-launches whichever standalone the user has
-            // installed — show that status here so it's obvious why
-            // launching a PSP rom does or doesn't work.
-            if (!library::config().external_cores.empty()) {
+            if (s.settings_subpage == 1) {
+                // Per-system default core picker — Cycle row per
+                // system that has at least one core.
+                rows.push_back({ItemKind::Static, "Default core per system",
+                    "", "", 0});
+                for (const auto& sys : library::all_systems()) {
+                    if (sys.cores.empty()) continue;
+                    std::string current = std::string{sys.cores.front().name};
+                    if (auto* over = library::config().default_core_for(sys.folder_name)) {
+                        current = over;
+                    }
+                    Item it{ItemKind::Cycle,
+                            std::string{sys.short_name},
+                            current,
+                            "",
+                            OpEmuSysCore};
+                    it.data = sys.folder_name;
+                    rows.push_back(std::move(it));
+                }
+                break;
+            }
+
+            if (s.settings_subpage == 2) {
+                // Cores catalog: refresh + per-core install rows.
+                rows.push_back({ItemKind::Action, "Refresh manifest", "fetch",
+                    "Pulls the latest foyer-cores release listing from GitHub.",
+                    OpUpdRefreshManifest});
+
+                const auto& mc = manifest_cache();
+                if (mc.loaded && !mc.data.cores.empty()) {
+                    rows.push_back({ItemKind::Static,
+                        std::string{"Available cores (manifest "}
+                            + mc.data.version + ")",
+                        "", "", 0});
+                    for (const auto& c : mc.data.cores) {
+                        const bool installed =
+                            file_present(std::string{"/foyer/cores/"} + c.nro);
+                        Item it;
+                        it.kind  = ItemKind::Action;
+                        it.label = c.name;
+                        it.data  = c.name;
+                        if (!installed) {
+                            it.value   = "download";
+                            it.payload = OpUpdInstallSingleCore;
+                        } else {
+                            const auto local_v =
+                                library::installed_core_version(c.nro);
+                            const bool up_to_date =
+                                !local_v.empty() && local_v == c.version;
+                            if (up_to_date) {
+                                it.value   = "installed - reinstall";
+                                it.payload = OpUpdReinstallSingleCore;
+                            } else {
+                                it.value   = "update available";
+                                it.payload = OpUpdInstallSingleCore;
+                            }
+                        }
+                        rows.push_back(std::move(it));
+                    }
+                } else {
+                    rows.push_back({ItemKind::Static,
+                        "Loading catalog...", "", "", 0});
+                }
+                break;
+            }
+
+            if (s.settings_subpage == 3) {
+                // Bezel packs: refresh + per-pack install rows.
+                rows.push_back({ItemKind::Action, "Refresh manifest", "fetch",
+                    "Pulls the latest foyer-bezels release listing.",
+                    OpRefreshBezelsManifest});
+
+                const auto& bmc = bezels_manifest_cache();
+                if (bmc.loaded && !bmc.data.packs.empty()) {
+                    rows.push_back({ItemKind::Static,
+                        std::string{"Bezel packs (manifest "}
+                            + bmc.data.version + ")",
+                        "", "", 0});
+                    for (const auto& p : bmc.data.packs) {
+                        Item it;
+                        it.kind  = ItemKind::Action;
+                        it.label = p.name;
+                        it.data  = p.name;
+                        const auto local_v =
+                            library::installed_bezel_version(p.name);
+                        if (local_v.empty()) {
+                            it.value = "download";
+                        } else if (local_v == p.version) {
+                            it.value = "installed - reinstall";
+                        } else {
+                            it.value = "update available";
+                        }
+                        it.payload = OpInstallSingleBezelPack;
+                        rows.push_back(std::move(it));
+                    }
+                    rows.push_back({ItemKind::Action,
+                        "Install all bezel packs", "run",
+                        "Walks every pack above; skips ones already at "
+                        "the manifest's version.",
+                        OpInstallBezelPacks});
+                } else {
+                    rows.push_back({ItemKind::Static,
+                        "Loading catalog...", "", "", 0});
+                }
+                break;
+            }
+
+            if (s.settings_subpage == 4) {
+                // Cheat packs: refresh + per-pack install rows.
+                rows.push_back({ItemKind::Action, "Refresh manifest", "fetch",
+                    "Pulls the latest foyer-cheats release listing.",
+                    OpRefreshCheatsManifest});
+
+                const auto& cmc = cheats_manifest_cache();
+                if (cmc.loaded && !cmc.data.packs.empty()) {
+                    rows.push_back({ItemKind::Static,
+                        std::string{"Cheat packs (manifest "}
+                            + cmc.data.version + ")",
+                        "", "", 0});
+                    for (const auto& p : cmc.data.packs) {
+                        Item it;
+                        it.kind  = ItemKind::Action;
+                        it.label = p.name;
+                        it.data  = p.name;
+                        const auto local_v =
+                            library::installed_cheat_version(p.name);
+                        if (local_v.empty()) {
+                            it.value = "download";
+                        } else if (local_v == p.version) {
+                            it.value = "installed - reinstall";
+                        } else {
+                            it.value = "update available";
+                        }
+                        it.payload = OpInstallSingleCheatPack;
+                        rows.push_back(std::move(it));
+                    }
+                    rows.push_back({ItemKind::Action,
+                        "Install all cheat packs", "run",
+                        "Walks every pack above; skips ones already at "
+                        "the manifest's version.",
+                        OpInstallCheatPacks});
+                } else {
+                    rows.push_back({ItemKind::Static,
+                        "Loading catalog...", "", "", 0});
+                }
+                break;
+            }
+
+            if (s.settings_subpage == 5) {
+                // Shader presets: single install-all action (per-preset
+                // picker can land later if the catalog grows further).
+                rows.push_back({ItemKind::Action, "Install shader presets",
+                    "run",
+                    "Downloads the foyer-shaders catalogue into "
+                    "/foyer/shaders/.",
+                    OpInstallShaderPresets});
+                break;
+            }
+
+            if (s.settings_subpage == 6) {
+                // External standalones — read-only status list per
+                // configured external_cores entry.
                 rows.push_back({ItemKind::Static,
                     "External standalone emulators", "", "", 0});
-                for (const auto& ec : library::config().external_cores) {
-                    struct stat sst{};
-                    const bool present =
-                        ::stat(ec.nro_path.c_str(), &sst) == 0;
-                    Item it;
-                    it.kind  = ItemKind::Static;
-                    it.label = std::string{"  "} + ec.folder;
-                    it.value = present ? "installed" : "not installed";
-                    it.hint  = ec.nro_path;
-                    it.payload = 0;
-                    rows.push_back(std::move(it));
+                if (library::config().external_cores.empty()) {
+                    rows.push_back({ItemKind::Static,
+                        "(none configured — edit "
+                        "/foyer/config/general.jsonc)", "", "", 0});
+                } else {
+                    for (const auto& ec : library::config().external_cores) {
+                        struct stat sst{};
+                        const bool present =
+                            ::stat(ec.nro_path.c_str(), &sst) == 0;
+                        Item it;
+                        it.kind  = ItemKind::Static;
+                        it.label = ec.folder;
+                        it.value = present ? "installed" : "not installed";
+                        it.hint  = ec.nro_path;
+                        rows.push_back(std::move(it));
+                    }
                 }
-            }
-
-            // Per-system default core picker. Listed for every system in
-            // system_db (even those that currently have only one core)
-            // so it stays a stable place to pick once more land.
-            rows.push_back({ItemKind::Static, "Default core per system", "", "", 0});
-            for (const auto& sys : library::all_systems()) {
-                if (sys.cores.empty()) continue;
-                // Resolve the current default: explicit per-system override
-                // wins, else the system's first declared core.
-                std::string current = std::string{sys.cores.front().name};
-                if (auto* over = library::config().default_core_for(sys.folder_name)) {
-                    current = over;
-                }
-                Item it{ItemKind::Cycle,
-                        std::string{"  "} + std::string{sys.short_name},
-                        current,
-                        "",
-                        OpEmuSysCore};
-                it.data = sys.folder_name;
-                rows.push_back(std::move(it));
+                break;
             }
             break;
         }
@@ -1468,8 +1594,19 @@ std::vector<Item> build_items(Category cat, const State& s) {
             break;
         }
         case Category::Updates: {
-            // Surface in-flight background work at the top, with a
-            // single Cancel action that aborts the running job.
+            // Updates is the "needs your attention" page. Anything
+            // already up to date or not installed is hidden — those
+            // browse / install flows live under Emulator subpages.
+            //
+            // Layout in priority order:
+            //   1. Active background job (Cancel)
+            //   2. Foyer self-update (Check / Install)
+            //   3. Scrape all systems (always available)
+            //   4. Pending core updates (only the outdated ones)
+            //   5. Pending bezel-pack updates
+            //   6. Pending cheat-pack updates
+            //   7. "Everything up to date" if nothing pending
+
             const bool any_job_active = s.install_job.active()
                                      || s.foyer_job.active()
                                      || s.scrape_job.active()
@@ -1482,9 +1619,7 @@ std::vector<Item> build_items(Category cat, const State& s) {
                     OpUpdCancelJob});
             }
 
-            // Foyer self-update entry — prominent at the top so a returning
-            // user sees the alert before hunting through the rest. When a
-            // new version is detected, show the install action instead.
+            // Foyer self-update — install when known, check otherwise.
             if (s.foyer_update_available && !s.foyer_update_version.empty()) {
                 rows.push_back({ItemKind::Action,
                     std::string{"Update foyer to v"} + s.foyer_update_version,
@@ -1498,142 +1633,93 @@ std::vector<Item> build_items(Category cat, const State& s) {
                     "Compares this build against the foyer-frontend release.",
                     OpUpdCheckFoyer});
             }
+
             rows.push_back({ItemKind::Action, "Scrape all systems", "run",
-                "Walks every system using the preferred scraper.",   OpUpdScrapeAll});
-            rows.push_back({ItemKind::Action, "Refresh manifest", "fetch",
-                "Pulls the latest foyer-cores release listing.",     OpUpdRefreshManifest});
-            rows.push_back({ItemKind::Action, "Install shader presets", "run",
-                "Downloads the foyer-shaders catalogue into "
-                "/foyer/shaders/.",                                  OpInstallShaderPresets});
-            rows.push_back({ItemKind::Action, "Refresh cheats manifest",   "fetch",
-                "Pulls the per-system cheat-pack listing from "
-                "foyer-cheats. Pick rows below to install or update "
-                "individual systems.",                                OpRefreshCheatsManifest});
+                "Walks every system using the preferred scraper.",
+                OpUpdScrapeAll});
 
-            // Per-pack rows for cheats. Mirrors the cores catalogue
-            // pattern: shows current install state + verb action per
-            // system. Sized to /foyer/cheats/<system>/.version sidecar.
-            const auto& cmc = cheats_manifest_cache();
-            if (cmc.loaded && !cmc.data.packs.empty()) {
-                rows.push_back({ItemKind::Static,
-                    std::string{"Cheat packs (manifest "}
-                        + cmc.data.version + ")",
-                    "", "", 0});
-                for (const auto& p : cmc.data.packs) {
-                    Item it;
-                    it.kind  = ItemKind::Action;
-                    it.label = std::string{"  "} + p.name;
-                    it.data  = p.name;
-                    const auto local_v =
-                        library::installed_cheat_version(p.name);
-                    if (local_v.empty()) {
-                        it.value   = "download";
-                        it.payload = OpInstallSingleCheatPack;
-                    } else if (local_v == p.version) {
-                        it.value   = "installed - reinstall";
-                        it.payload = OpInstallSingleCheatPack;
-                    } else {
-                        it.value   = "update available";
-                        it.payload = OpInstallSingleCheatPack;
-                    }
-                    rows.push_back(std::move(it));
-                }
-                rows.push_back({ItemKind::Action,
-                    "  Install all cheat packs", "run",
-                    "Walks every pack above; skips any already at the "
-                    "manifest's version.",                          OpInstallCheatPacks});
-            } else {
-                rows.push_back({ItemKind::Static,
-                    "Press 'Refresh cheats manifest' to load the catalog.",
-                    "", "", 0});
-            }
-
-            rows.push_back({ItemKind::Action, "Refresh bezels manifest",   "fetch",
-                "Pulls the per-system bezel-pack listing from "
-                "foyer-bezels. Pick rows below to install or update "
-                "individual systems.",                                OpRefreshBezelsManifest});
-
-            const auto& bmc = bezels_manifest_cache();
-            if (bmc.loaded && !bmc.data.packs.empty()) {
-                rows.push_back({ItemKind::Static,
-                    std::string{"Bezel packs (manifest "}
-                        + bmc.data.version + ")",
-                    "", "", 0});
-                for (const auto& p : bmc.data.packs) {
-                    Item it;
-                    it.kind  = ItemKind::Action;
-                    it.label = std::string{"  "} + p.name;
-                    it.data  = p.name;
-                    const auto local_v =
-                        library::installed_bezel_version(p.name);
-                    if (local_v.empty()) {
-                        it.value   = "download";
-                        it.payload = OpInstallSingleBezelPack;
-                    } else if (local_v == p.version) {
-                        it.value   = "installed - reinstall";
-                        it.payload = OpInstallSingleBezelPack;
-                    } else {
-                        it.value   = "update available";
-                        it.payload = OpInstallSingleBezelPack;
-                    }
-                    rows.push_back(std::move(it));
-                }
-                rows.push_back({ItemKind::Action,
-                    "  Install all bezel packs", "run",
-                    "Walks every pack above; skips any already at the "
-                    "manifest's version.",                          OpInstallBezelPacks});
-            } else {
-                rows.push_back({ItemKind::Static,
-                    "Press 'Refresh bezels manifest' to load the catalog.",
-                    "", "", 0});
-            }
-
-            // Show only INSTALLED cores whose recorded version differs
-            // from the manifest — i.e. a real release-tag update is
-            // pending. Compare against the `<nro>.version` sidecar
-            // (written at install time). Size compare is unreliable
-            // (recompiles can shift bytes for no functional change, and
-            // genuine fixes can preserve byte counts).
             auto file_present = [](const std::string& path) -> bool {
                 struct stat st{};
                 return ::stat(path.c_str(), &st) == 0 && st.st_size > 0;
             };
 
+            // Pending core updates — only outdated entries surface.
             const auto& mc = manifest_cache();
-            int outdated_count = 0;
+            int pending_total = 0;
+            int pending_cores = 0;
             if (mc.loaded && !mc.data.cores.empty()) {
                 for (const auto& c : mc.data.cores) {
                     if (!file_present(std::string{"/foyer/cores/"} + c.nro))
-                        continue;                                   // not installed → Emulator
-                    const auto local_v = library::installed_core_version(c.nro);
-                    // Up to date when the sidecar matches exactly.
-                    // Sidecar empty = legacy install, no recorded version
-                    // — surface as "update available" to migrate.
-                    if (!local_v.empty() && local_v == c.version)
                         continue;
-                    if (outdated_count == 0) {
-                        rows.push_back({ItemKind::Static, "Pending core updates", "", "", 0});
+                    const auto local_v = library::installed_core_version(c.nro);
+                    if (!local_v.empty() && local_v == c.version) continue;
+                    if (pending_cores == 0) {
+                        rows.push_back({ItemKind::Static,
+                            "Pending core updates", "", "", 0});
                         rows.push_back({ItemKind::Action,
-                            "Update all", "run",
+                            "Update all cores", "run",
                             "", OpUpdInstallCores});
                     }
-                    Item it{ItemKind::Action,
-                            std::string{"  "} + c.name,
-                            "update",
-                            "",
+                    Item it{ItemKind::Action, c.name, "update", "",
                             OpUpdInstallSingleCore};
                     it.data = c.name;
                     rows.push_back(std::move(it));
-                    outdated_count++;
+                    pending_cores++;
                 }
-                if (outdated_count == 0) {
-                    rows.push_back({ItemKind::Static,
-                        "All installed cores are up to date.", "", "", 0});
+            }
+            pending_total += pending_cores;
+
+            // Pending bezel-pack updates.
+            const auto& bmc = bezels_manifest_cache();
+            int pending_bezels = 0;
+            if (bmc.loaded && !bmc.data.packs.empty()) {
+                for (const auto& p : bmc.data.packs) {
+                    const auto local_v = library::installed_bezel_version(p.name);
+                    if (local_v.empty()) continue;          // never installed
+                    if (local_v == p.version) continue;     // up to date
+                    if (pending_bezels == 0) {
+                        rows.push_back({ItemKind::Static,
+                            "Pending bezel-pack updates", "", "", 0});
+                        rows.push_back({ItemKind::Action,
+                            "Update all bezel packs", "run",
+                            "", OpInstallBezelPacks});
+                    }
+                    Item it{ItemKind::Action, p.name, "update", "",
+                            OpInstallSingleBezelPack};
+                    it.data = p.name;
+                    rows.push_back(std::move(it));
+                    pending_bezels++;
                 }
-            } else {
+            }
+            pending_total += pending_bezels;
+
+            // Pending cheat-pack updates.
+            const auto& cmc = cheats_manifest_cache();
+            int pending_cheats = 0;
+            if (cmc.loaded && !cmc.data.packs.empty()) {
+                for (const auto& p : cmc.data.packs) {
+                    const auto local_v = library::installed_cheat_version(p.name);
+                    if (local_v.empty()) continue;
+                    if (local_v == p.version) continue;
+                    if (pending_cheats == 0) {
+                        rows.push_back({ItemKind::Static,
+                            "Pending cheat-pack updates", "", "", 0});
+                        rows.push_back({ItemKind::Action,
+                            "Update all cheat packs", "run",
+                            "", OpInstallCheatPacks});
+                    }
+                    Item it{ItemKind::Action, p.name, "update", "",
+                            OpInstallSingleCheatPack};
+                    it.data = p.name;
+                    rows.push_back(std::move(it));
+                    pending_cheats++;
+                }
+            }
+            pending_total += pending_cheats;
+
+            if (pending_total == 0) {
                 rows.push_back({ItemKind::Static,
-                    "Press 'Refresh manifest' to check for core updates.",
-                    "", "", 0});
+                    "Everything is up to date.", "", "", 0});
             }
             break;
         }
@@ -2874,11 +2960,13 @@ void update(State& s, const Library& lib,
             }
             if (down & HidNpadButton_AnyDown) {
                 s.settings_category = (s.settings_category + 1) % (int)Category::Count_;
-                s.settings_row = 0;
+                s.settings_row     = 0;
+                s.settings_subpage = 0;
             } else if (down & HidNpadButton_AnyUp) {
                 s.settings_category = (s.settings_category - 1 + (int)Category::Count_)
                                     % (int)Category::Count_;
-                s.settings_row = 0;
+                s.settings_row     = 0;
+                s.settings_subpage = 0;
             }
             if ((down & (HidNpadButton_A | HidNpadButton_AnyRight)) && row_count > 0) {
                 s.settings_in_content = true;
@@ -2887,6 +2975,15 @@ void update(State& s, const Library& lib,
         } else {
             // Content focus.
             if (down & HidNpadButton_B) {
+                // From a subpage, B returns to the top-level page of
+                // the active category (not all the way out to the
+                // sidebar) so users can hop between subpages without
+                // losing their place.
+                if (s.settings_subpage != 0) {
+                    s.settings_subpage = 0;
+                    s.settings_row     = 0;
+                    return;
+                }
                 s.settings_in_content = false;
                 return;
             }
@@ -3114,6 +3211,41 @@ void update(State& s, const Library& lib,
                         } else {
                             s.banner_text = "Drill-down view comes in the next pass";
                             s.banner_ttl  = 180;
+                        }
+                        break;
+                    }
+                    case settings::ItemKind::Subpage: {
+                        // Navigate into the subpage. Reset the row
+                        // cursor so we land on the first entry of the
+                        // sub-list instead of wherever we were on the
+                        // top-level page.
+                        s.settings_subpage = it.subpage;
+                        s.settings_row     = 0;
+                        // Auto-fetch the relevant manifest if it's not
+                        // loaded yet — Cores subpage triggers cores
+                        // refresh, Bezels subpage triggers bezels, etc.
+                        // Single-shot per subpage entry; the user can
+                        // still hit "Refresh manifest" to force-reload.
+                        switch (it.subpage) {
+                            case 2: { // Cores catalog
+                                if (!settings::manifest_cache().loaded) {
+                                    s.request_refresh_manifest = true;
+                                }
+                                break;
+                            }
+                            case 3: { // Bezel packs
+                                if (!settings::bezels_manifest_cache().loaded) {
+                                    s.request_refresh_bezels_manifest = true;
+                                }
+                                break;
+                            }
+                            case 4: { // Cheat packs
+                                if (!settings::cheats_manifest_cache().loaded) {
+                                    s.request_refresh_cheats_manifest = true;
+                                }
+                                break;
+                            }
+                            default: break;
                         }
                         break;
                     }

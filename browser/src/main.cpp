@@ -246,6 +246,31 @@ int main(int /*argc*/, char** /*argv*/) {
         // -on-Switch quirk where the third-or-later worker thread's
         // perform call can hang for ~90 s. The big nro download still
         // happens on the worker, where blocking the UI matters.
+        // Drain a finished-but-not-yet-finalised install job so a
+        // user click in the same frame as worker exit doesn't get a
+        // misleading "Download already in progress" toast — the
+        // worker IS done, we just hadn't claimed the result yet.
+        if (state.install_job.active() && state.install_job.done()) {
+            const auto totals = state.install_job.finish();
+            if (totals.failed == 0
+                && (totals.installed + totals.updated + totals.skipped) == 0) {
+                // Worker ran but produced no result rows — usually
+                // means manifest narrow wiped the list (bad
+                // install_only_core) or the worker exited before
+                // doing any work. Surface to the log so future runs
+                // are easier to diagnose.
+                foyer::log::write(
+                    "[install_job] drained empty totals (race on "
+                    "request_install_cores)\n");
+            }
+        }
+        if (state.foyer_job.active() && state.foyer_job.done()) {
+            // Same race-drain for the foyer self-update job.
+            // foyer_job's status_snapshot still holds its final
+            // banner; finish() is what we need to free m_active.
+            state.foyer_job.finish();
+        }
+
         if (state.request_install_cores && !state.install_job.active()) {
             state.request_install_cores = false;
             std::string only = std::move(state.install_only_core);
