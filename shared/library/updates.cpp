@@ -36,17 +36,25 @@ UpdateBuckets compute_pending_updates(
     }
 
     // Cores — iterate every manifest entry and compare against the
-    // <nro>.version sidecar. Items not yet installed (empty sidecar)
-    // belong in the Catalog view, not here.
+    // <nro>.version sidecar. Both new (never installed) and outdated
+    // entries surface here; the row's empty installed_ver tells the
+    // UI to render an "install" action instead of "update". This
+    // keeps Updates as the one place a user goes for "anything I
+    // should consider doing about cores", instead of having to bounce
+    // between Updates and the Catalog subpage.
+    //
+    // Bezels + cheats stay strict (installed-but-outdated only) below
+    // because their catalogs are 70+ packs each — flooding Updates
+    // with all of them would defeat the whole point of the screen.
     for (const auto& c : cores_m.cores) {
         const auto installed = installed_core_version(c.nro);
-        if (installed.empty() || installed == c.version) continue;
+        if (!installed.empty() && installed == c.version) continue;
         if (!not_skipped(SkipKind::Core, c.name, c.version)) continue;
         UpdateItem it;
         it.kind          = UpdateKind::Core;
         it.id            = c.name;
         it.display       = c.name;
-        it.installed_ver = installed;
+        it.installed_ver = installed;          // "" => not yet installed
         it.available_ver = c.version;
         it.download_size = c.size;
         out.cores.push_back(std::move(it));

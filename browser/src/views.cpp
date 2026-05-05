@@ -1718,21 +1718,70 @@ std::vector<Item> build_items(Category cat, const State& s) {
             }
 
             // Bucket renderer — section header with count, then one
-            // Action row per item showing `installed → available`.
-            // `kind_for_data` is a stable tag the OpUpdSingleItem
-            // dispatcher parses to route the install action.
+            // Action row per item. The value column distinguishes
+            // "outdated" (installed_ver -> available_ver) from "new"
+            // (just the available_ver + a download-size hint), so
+            // both shapes can live in one bucket without conflating
+            // the verbs. `kind_for_data` is the stable tag the
+            // OpUpdSingleItem dispatcher parses to route the action.
+            auto fmt_size = [](std::uint64_t b) -> std::string {
+                char buf[32];
+                if (b >= (1ull << 20))
+                    std::snprintf(buf, sizeof(buf), "%.0f MB",
+                        (double)b / (1ull << 20));
+                else if (b >= (1ull << 10))
+                    std::snprintf(buf, sizeof(buf), "%.0f KB",
+                        (double)b / (1ull << 10));
+                else
+                    std::snprintf(buf, sizeof(buf), "%llu B",
+                        (unsigned long long)b);
+                return std::string{buf};
+            };
+
             auto render_bucket = [&](const char* kind_label,
                                      const std::vector<library::UpdateItem>& items,
                                      const char* kind_for_data) {
                 if (items.empty()) return;
-                char hdr[80];
-                std::snprintf(hdr, sizeof(hdr), "%s   %zu update%s",
-                    kind_label, items.size(),
-                    items.size() == 1 ? "" : "s");
-                rows.push_back({ItemKind::Static, hdr, "", "", 0});
+
+                // Count split — pulls the eye to the more important
+                // outdated case when both are present.
+                std::size_t outdated = 0, fresh = 0;
                 for (const auto& it : items) {
+                    if (it.installed_ver.empty()) fresh++;
+                    else                          outdated++;
+                }
+
+                char hdr[120];
+                if (outdated > 0 && fresh > 0)
+                    std::snprintf(hdr, sizeof(hdr),
+                        "%s   %zu update%s, %zu new",
+                        kind_label, outdated, outdated == 1 ? "" : "s", fresh);
+                else if (outdated > 0)
+                    std::snprintf(hdr, sizeof(hdr),
+                        "%s   %zu update%s",
+                        kind_label, outdated, outdated == 1 ? "" : "s");
+                else
+                    std::snprintf(hdr, sizeof(hdr),
+                        "%s   %zu new",
+                        kind_label, fresh);
+                rows.push_back({ItemKind::Static, hdr, "", "", 0});
+
+                // Outdated rows first, then "new" rows — outdated
+                // items are usually what the user came for.
+                for (const auto& it : items) {
+                    if (it.installed_ver.empty()) continue;
                     const std::string vlabel =
                         it.installed_ver + "  ->  " + it.available_ver;
+                    Item r{ItemKind::Action, it.display, vlabel, "",
+                           OpUpdSingleItem};
+                    r.data = std::string{kind_for_data} + ":" + it.id;
+                    rows.push_back(std::move(r));
+                }
+                for (const auto& it : items) {
+                    if (!it.installed_ver.empty()) continue;
+                    std::string vlabel = "install  ·  v" + it.available_ver;
+                    if (it.download_size > 0)
+                        vlabel += "  ·  " + fmt_size(it.download_size);
                     Item r{ItemKind::Action, it.display, vlabel, "",
                            OpUpdSingleItem};
                     r.data = std::string{kind_for_data} + ":" + it.id;
@@ -2147,19 +2196,40 @@ OptionList build_option_list(int op, const std::string& data) {
             break;
         }
         case OpUpdSingleItem: {
-            // data is "<kind>:<id>" — the Updates page row encoded
-            // it. Build the action menu around the kind: foyer can't
-            // be re-installed (we can only download a newer version
-            // since the running build is authoritative), so it gets
-            // a 2-action menu vs. the 3-action menu for the rest.
+            // data is "<kind>:<id>". The action menu varies by kind
+            // *and* by whether the item is currently installed —
+            // a fresh install gets "Install / Skip", an outdated
+            // install gets "Update / Re-install / Skip", and Foyer
+            // itself can only be updated (the running build is
+            // authoritative; "re-install same version" doesn't apply).
             const auto colon = data.find(':');
             const std::string kind = (colon == std::string::npos)
                 ? std::string{} : data.substr(0, colon);
             const std::string id = (colon == std::string::npos)
                 ? data : data.substr(colon + 1);
-            o.title = id.empty() ? std::string{"Update"}
-                                 : (std::string{"Update "} + id);
+
+            // Probe the on-disk install state for this item.
+            bool installed = false;
             if (kind == "foyer") {
+                installed = true;
+            } else if (kind == "core") {
+                for (const auto& c : manifest_cache().data.cores) {
+                    if (c.name != id) continue;
+                    installed = !library::installed_core_version(c.nro).empty();
+                    break;
+                }
+            } else if (kind == "bezel") {
+                installed = !library::installed_bezel_version(id).empty();
+            } else if (kind == "cheat") {
+                installed = !library::installed_cheat_version(id).empty();
+            }
+
+            o.title = id.empty() ? std::string{"Action"}
+                                 : ((installed ? std::string{"Update "}
+                                              : std::string{"Install "}) + id);
+            if (!installed) {
+                o.options = { "Install", "Skip this version" };
+            } else if (kind == "foyer") {
                 o.options = { "Update now", "Skip this version" };
             } else {
                 o.options = { "Update now", "Re-install",
@@ -2264,8 +2334,11 @@ std::string apply_option(int op, const std::string& data,
                 s.request_install_cheats = true;
                 s.install_only_cheat     = id;
             }
-            return (force ? std::string{"Re-installing "}
-                          : std::string{"Updating "}) + id;
+            const char* prefix =
+                (verb == "Install")    ? "Installing "    :
+                (verb == "Re-install") ? "Re-installing " :
+                                         "Updating ";
+            return std::string{prefix} + id;
         }
         default: return {};
     }

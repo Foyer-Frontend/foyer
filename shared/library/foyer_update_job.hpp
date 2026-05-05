@@ -40,6 +40,11 @@ public:
     const FoyerManifest& manifest()           const { return m_manifest; }
     const std::string&   downloaded_version() const { return m_downloaded; }
     bool                 manifest_ok()        const { return m_manifest_ok; }
+    // True iff the most recent run was started via
+    // start_check_and_download(). Lets the UI distinguish a silent
+    // boot check (where "no download" is normal) from a user-driven
+    // install attempt (where empty downloaded_version() means failure).
+    bool                 download_mode()      const { return m_download_mode; }
 
     void finish();
 
@@ -47,7 +52,8 @@ private:
     Worker         m_worker;
     FoyerManifest  m_manifest;
     std::string    m_downloaded;
-    bool           m_manifest_ok = false;
+    bool           m_manifest_ok   = false;
+    bool           m_download_mode = false;
 };
 
 } // namespace foyer::library

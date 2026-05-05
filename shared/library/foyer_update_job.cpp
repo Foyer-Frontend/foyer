@@ -5,6 +5,7 @@
 namespace foyer::library {
 
 bool FoyerUpdateJob::start_check(std::string manifest_url) {
+    m_download_mode = false;
     return m_worker.start(
         [this, url = std::move(manifest_url)](Worker& w) {
             w.set_status("Checking for updates...");
@@ -19,6 +20,7 @@ bool FoyerUpdateJob::start_check(std::string manifest_url) {
 bool FoyerUpdateJob::start_check_and_download(std::string manifest_url,
                                               std::string current_version,
                                               std::string nro_path) {
+    m_download_mode = true;
     return m_worker.start(
         [this, url = std::move(manifest_url),
                cur = std::move(current_version),

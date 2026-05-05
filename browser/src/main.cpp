@@ -223,7 +223,16 @@ int main(int argc, char** argv) {
             state.request_install_foyer_update = false;
         }
 
-        // Mirror foyer_job progress + finalise.
+        // Mirror foyer_job progress + finalise. The polling block has
+        // to be careful to distinguish three end states:
+        //   - boot check that found a newer version → "available"
+        //     banner pointing the user at the Updates page
+        //   - user-driven install that succeeded → "ready, restart"
+        //   - user-driven install that failed → an explicit failure
+        //     banner, *not* a silent fall-through to "available"
+        //     (which previously made a failed download look like "no
+        //     update happened" since the banner just said "available"
+        //     again instead of "download failed")
         if (state.foyer_job.active()) {
             const auto status = state.foyer_job.status_snapshot();
             if (!status.empty()) {
@@ -231,24 +240,35 @@ int main(int argc, char** argv) {
                 state.banner_ttl  = 60;
             }
             if (state.foyer_job.done()) {
-                const auto& m = state.foyer_job.manifest();
-                const auto downloaded = state.foyer_job.downloaded_version();
+                const auto& m          = state.foyer_job.manifest();
+                const auto  downloaded = state.foyer_job.downloaded_version();
+                const bool  was_install = state.foyer_job.download_mode();
                 state.foyer_job.finish();
-                if (!m.version.empty() &&
-                    foyer::library::is_newer_version(FOYER_VERSION, m.version)) {
+                const bool newer = !m.version.empty() &&
+                    foyer::library::is_newer_version(FOYER_VERSION, m.version);
+                if (newer) {
                     state.foyer_update_available = true;
                     state.foyer_update_version   = m.version;
-                    if (!downloaded.empty()) {
-                        state.banner_text =
-                            "Update v" + downloaded +
-                            " downloaded - restart foyer to apply";
-                        state.banner_ttl = 600;
-                    } else {
-                        state.banner_text =
-                            "Foyer update available: v" + m.version
-                            + " - Settings -> Updates -> Update foyer";
-                        state.banner_ttl = 360;
-                    }
+                }
+                if (was_install && newer && downloaded.empty()) {
+                    // User asked for an install but the staged .new
+                    // never landed. Surface the failure verbatim
+                    // instead of looping back to "available".
+                    state.banner_text =
+                        "Foyer update download failed - check Wi-Fi / log";
+                    state.banner_ttl = 360;
+                } else if (was_install && !downloaded.empty()) {
+                    state.banner_text =
+                        "Update v" + downloaded +
+                        " downloaded - restart foyer to apply";
+                    state.banner_ttl = 600;
+                } else if (newer) {
+                    // Silent boot check found something — point the
+                    // user at the actionable surface.
+                    state.banner_text =
+                        "Foyer update available: v" + m.version
+                        + " - open Settings -> Updates";
+                    state.banner_ttl = 360;
                 } else if (!m.version.empty()) {
                     state.foyer_update_available = false;
                     state.foyer_update_version.clear();
