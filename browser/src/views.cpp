@@ -521,26 +521,6 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
         const bool centre = (offset == 0);
 
         nvgSave(vg);
-        // Soft parallelogram drop shadow behind every tile. Offset
-        // by a few px and feather via a black-fill that's a hair
-        // larger than the tile itself, so the splash sits visually
-        // detached from the wallpaper.
-        if (centre) {
-            constexpr float kShadowDy   = 8.0f;
-            constexpr float kShadowGrow = 6.0f;
-            nvgBeginPath(vg);
-            nvgMoveTo(vg, x + kSlant - kShadowGrow,
-                          y - kShadowGrow + kShadowDy);
-            nvgLineTo(vg, x + tw      + kShadowGrow,
-                          y - kShadowGrow + kShadowDy);
-            nvgLineTo(vg, x + tw - kSlant + kShadowGrow,
-                          y + thh + kShadowGrow + kShadowDy);
-            nvgLineTo(vg, x           - kShadowGrow,
-                          y + thh + kShadowGrow + kShadowDy);
-            nvgClosePath(vg);
-            nvgFillColor(vg, nvgRGBA(0, 0, 0, 110));
-            nvgFill(vg);
-        }
         const int strip_h = system_splash_cache().get_or_load(vg,
             system_splash_path(sys.def->folder_name));
         if (strip_h > 0) {
@@ -2621,6 +2601,12 @@ void update(State& s, const Library& lib,
                     auto& g2 = sys2.games[s.game_index];
                     g2.favorite = !g2.favorite;
                     library::set_per_game_favorite(g2.path, g2.favorite);
+                    // Trigger a library re-scan so the Favorites
+                    // virtual tile appears / disappears immediately
+                    // — without this the user has to restart foyer
+                    // before a freshly-added favorite shows up on
+                    // the Home carousel.
+                    s.request_rescan = true;
                     s.banner_text = g2.favorite ? "Added to favorites"
                                                 : "Removed from favorites";
                     s.banner_ttl  = 120;
