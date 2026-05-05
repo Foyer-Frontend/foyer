@@ -237,16 +237,22 @@ void blit_aspect_fit(NVGcontext* vg, int handle,
     nvgFill(vg);
 }
 
-// Same as blit_aspect_fit but with a soft outer shadow drawn behind
-// the image — gives logos visual separation from busy wallpapers.
-// shadow_offset shifts the shadow downward; shadow_blur is the
-// feather distance; shadow_alpha is the inner darkness.
+// Same as blit_aspect_fit but with a true silhouette drop shadow:
+// renders the same image again, offset down-right, with its
+// pixels tinted to a translucent black via the NVGpaint's
+// innerColor field. nvgImagePattern doesn't expose a tint
+// parameter publicly, but the fragment shader multiplies the
+// sampled texel by innerColor — so swapping innerColor on the
+// returned paint gives us a silhouette shape that follows the
+// logo's alpha mask, rather than a rectangle behind its bounding
+// box.
 void blit_aspect_fit_with_shadow(NVGcontext* vg, int handle,
                                  float x, float y, float w, float h,
                                  float radius, float alpha = 1.0f,
-                                 float shadow_offset = 6.0f,
-                                 float shadow_blur   = 18.0f,
-                                 int   shadow_alpha  = 160) {
+                                 float shadow_dx = 4.0f,
+                                 float shadow_dy = 6.0f,
+                                 NVGcolor shadow_tint =
+                                    {{{ 0, 0, 0, 0.55f }}}) {
     if (handle <= 0) return;
     int iw = 0, ih = 0;
     nvgImageSize(vg, handle, &iw, &ih);
@@ -259,21 +265,19 @@ void blit_aspect_fit_with_shadow(NVGcontext* vg, int handle,
     const float dx = x + (w - dw) * 0.5f;
     const float dy = y + (h - dh) * 0.5f;
 
-    auto shadow = nvgBoxGradient(vg,
-        dx, dy + shadow_offset, dw, dh,
-        radius + 4, shadow_blur,
-        nvgRGBA(0, 0, 0, shadow_alpha),
-        nvgRGBA(0, 0, 0, 0));
+    // Silhouette shadow — image rendered offset, tinted black via
+    // innerColor. The image's transparent pixels stay transparent;
+    // opaque pixels render as the tint color.
+    NVGpaint shadow = nvgImagePattern(vg,
+        dx + shadow_dx, dy + shadow_dy, dw, dh, 0.0f, handle, 1.0f);
+    shadow.innerColor = shadow_tint;
     nvgBeginPath(vg);
-    nvgRect(vg,
-        dx - shadow_blur, dy + shadow_offset - shadow_blur,
-        dw + 2 * shadow_blur, dh + 2 * shadow_blur);
-    nvgRoundedRect(vg, dx, dy, dw, dh, radius);
-    nvgPathWinding(vg, NVG_HOLE);
+    nvgRoundedRect(vg, dx + shadow_dx, dy + shadow_dy, dw, dh, radius);
     nvgFillPaint(vg, shadow);
     nvgFill(vg);
 
-    auto pat = nvgImagePattern(vg, dx, dy, dw, dh, 0.f, handle, alpha);
+    // Real logo on top.
+    NVGpaint pat = nvgImagePattern(vg, dx, dy, dw, dh, 0.0f, handle, alpha);
     nvgBeginPath(vg);
     nvgRoundedRect(vg, dx, dy, dw, dh, radius);
     nvgFillPaint(vg, pat);
@@ -580,13 +584,11 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
         const auto logo_path = system_logo_path(sys.def->folder_name);
         const int  logo_h    = system_logo_cache().get_or_load(vg, logo_path);
         if (logo_h > 0) {
-            // Logo without a drop shadow — nanovg can't tint image
-            // patterns, so any "shadow" we'd draw here would be a
-            // rectangle behind the logo's bounding box rather than
-            // following the silhouette, and that reads worse than
-            // no shadow at all. The parallelogram tile shadow below
-            // already gives the centre slot visual lift.
-            blit_aspect_fit(vg, logo_h,
+            // True silhouette drop shadow: re-renders the logo
+            // offset down-right with its pixels tinted black via
+            // an innerColor hack on the returned NVGpaint. Follows
+            // the logo's alpha mask instead of its bounding box.
+            blit_aspect_fit_with_shadow(vg, logo_h,
                 x, y + thh * 0.20f,
                 tw, thh * 0.60f,
                 0.0f, 1.0f);
