@@ -110,6 +110,9 @@ struct State {
     bool        request_refresh_manifest  = false;
     bool        request_refresh_cheats_manifest = false;
     bool        request_refresh_bezels_manifest = false;
+    // Set by the Updates page "Update everything" footer. main.cpp
+    // chains the per-kind install paths once and clears the flag.
+    bool        request_update_all        = false;
     // Set true on first Settings entry per app run so the cores /
     // cheats / bezels manifests start auto-fetching in the background.
     // Stays false thereafter so the user can still trigger a manual

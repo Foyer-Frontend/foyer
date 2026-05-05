@@ -300,6 +300,29 @@ int main(int argc, char** argv) {
             state.foyer_job.finish();
         }
 
+        // "Update everything" footer from the Updates page. Fans
+        // out to the existing per-kind request flags so the install
+        // handlers below pick them up sequentially. We don't try to
+        // run them in parallel — libcurl on Switch is synchronous on
+        // this thread and the install handlers all pump app.tick()
+        // between rows.
+        if (state.request_update_all) {
+            state.request_update_all = false;
+            state.install_only_core.clear();
+            state.install_only_bezel.clear();
+            state.install_only_cheat.clear();
+            state.install_force = false;
+            state.request_install_cores  = true;
+            state.request_install_bezels = true;
+            state.request_install_cheats = true;
+            // Chain in foyer self-update if a check already flagged
+            // a newer version. Skipped versions are honoured by the
+            // install path itself.
+            if (state.foyer_update_available) {
+                state.request_install_foyer_update = true;
+            }
+        }
+
         // Cores install. Synchronous on the main thread — the
         // earlier worker-thread path didn't reliably finish on Switch
         // (libcurl-on-Switch quirks + Worker lifecycle races). Same

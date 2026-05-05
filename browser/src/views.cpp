@@ -6,6 +6,8 @@
 #include "library/config.hpp"
 #include "library/per_game.hpp"
 #include "library/game_meta.hpp"
+#include "library/skipped_versions.hpp"
+#include "library/updates.hpp"
 #include "net/http.hpp"
 #include "platform/log.hpp"
 #include "scrapers/accounts.hpp"
@@ -1265,6 +1267,14 @@ BezelsManifestCache& bezels_manifest_cache() {
     return c;
 }
 
+// Wall-clock of the most recent successful manifest fetch. Bumped by
+// each set_*_manifest_cache(); read by the Updates page footer for
+// the "Last: 2 min ago" hint. 0 = never scraped this run.
+std::time_t& last_scrape_at() {
+    static std::time_t t = 0;
+    return t;
+}
+
 const char* scraper_label(library::Config::Scraper sc) {
     switch (sc) {
         case library::Config::Scraper::ScreenScraper: return "ScreenScraper";
@@ -1293,6 +1303,13 @@ enum : int {
     OpInstallSingleCheatPack,    // Per-row install for one cheat pack
     OpInstallSingleBezelPack,    // Per-row install for one bezel pack
     OpUpdCheckFoyer, OpUpdInstallFoyer,
+    // Unified Updates page. Replaces the per-kind
+    // Install/Refresh/Update Foyer chain on the Updates subpage —
+    // those still exist for the per-Catalog subpages but the Updates
+    // top-level entry now uses these three:
+    OpUpdSingleItem,   // A on a pending row → picker (Update / Reinstall / Skip)
+    OpUpdAll,          // "Update everything" footer
+    OpUpdRescrape,     // "Re-scrape now" footer
     OpEmuSysCore,    // Cycle through available cores for one system.
     OpExpMtp, OpExpMtpAutostart, OpExpDebugLog,
     // Account fields opened via on-screen keyboard.
@@ -1659,19 +1676,35 @@ std::vector<Item> build_items(Category cat, const State& s) {
             break;
         }
         case Category::Updates: {
-            // Updates is the "needs your attention" page. Anything
-            // already up to date or not installed is hidden — those
-            // browse / install flows live under Emulator subpages.
-            //
-            // Layout in priority order:
-            //   1. Active background job (Cancel)
-            //   2. Foyer self-update (Check / Install)
-            //   3. Scrape all systems (always available)
-            //   4. Pending core updates (only the outdated ones)
-            //   5. Pending bezel-pack updates
-            //   6. Pending cheat-pack updates
-            //   7. "Everything up to date" if nothing pending
+            // Unified pending-changes view. Reads from the manifest
+            // caches that auto-scraped at boot + the on-disk version
+            // sidecars, hides anything already up-to-date or never
+            // installed (those browse / discover flows live in the
+            // Catalog subpages under Emulator). Three ops drive the
+            // page: OpUpdSingleItem (per-row picker), OpUpdAll
+            // (footer bulk install), OpUpdRescrape (footer manual
+            // refresh).
+            const auto& mc  = manifest_cache();
+            const auto& bmc = bezels_manifest_cache();
+            const auto& cmc = cheats_manifest_cache();
 
+            // Foyer self — fold into compute_pending_updates by
+            // synthesising a FoyerManifest from what foyer_job
+            // surfaced. We only know the available version when the
+            // boot-time check already succeeded.
+            library::FoyerManifest fm;
+            if (s.foyer_update_available) {
+                fm.version = s.foyer_update_version;
+            }
+
+            const auto pending = library::compute_pending_updates(
+                fm, FOYER_VERSION,
+                mc.loaded  ? mc.data  : library::CoreManifest{},
+                bmc.loaded ? bmc.data : library::BezelManifest{},
+                cmc.loaded ? cmc.data : library::CheatManifest{});
+
+            // Active job sticky row stays — gives the user a Cancel
+            // for the in-flight transfer.
             const bool any_job_active = s.install_job.active()
                                      || s.foyer_job.active()
                                      || s.scrape_job.active()
@@ -1684,108 +1717,97 @@ std::vector<Item> build_items(Category cat, const State& s) {
                     OpUpdCancelJob});
             }
 
-            // Foyer self-update — install when known, check otherwise.
-            if (s.foyer_update_available && !s.foyer_update_version.empty()) {
-                rows.push_back({ItemKind::Action,
-                    std::string{"Update foyer to v"} + s.foyer_update_version,
-                    "install",
-                    "Downloads foyer.nro to /switch/foyer/foyer.nro.new — "
-                    "applied on next boot.",
-                    OpUpdInstallFoyer});
-            } else {
-                rows.push_back({ItemKind::Action, "Check for foyer update",
-                    "check",
-                    "Compares this build against the foyer-frontend release.",
-                    OpUpdCheckFoyer});
-            }
-
-            rows.push_back({ItemKind::Action, "Scrape all systems", "run",
-                "Walks every system using the preferred scraper.",
-                OpUpdScrapeAll});
-
-            auto file_present = [](const std::string& path) -> bool {
-                struct stat st{};
-                return ::stat(path.c_str(), &st) == 0 && st.st_size > 0;
+            // Bucket renderer — section header with count, then one
+            // Action row per item showing `installed → available`.
+            // `kind_for_data` is a stable tag the OpUpdSingleItem
+            // dispatcher parses to route the install action.
+            auto render_bucket = [&](const char* kind_label,
+                                     const std::vector<library::UpdateItem>& items,
+                                     const char* kind_for_data) {
+                if (items.empty()) return;
+                char hdr[80];
+                std::snprintf(hdr, sizeof(hdr), "%s   %zu update%s",
+                    kind_label, items.size(),
+                    items.size() == 1 ? "" : "s");
+                rows.push_back({ItemKind::Static, hdr, "", "", 0});
+                for (const auto& it : items) {
+                    const std::string vlabel =
+                        it.installed_ver + "  ->  " + it.available_ver;
+                    Item r{ItemKind::Action, it.display, vlabel, "",
+                           OpUpdSingleItem};
+                    r.data = std::string{kind_for_data} + ":" + it.id;
+                    rows.push_back(std::move(r));
+                }
             };
 
-            // Pending core updates — only outdated entries surface.
-            const auto& mc = manifest_cache();
-            int pending_total = 0;
-            int pending_cores = 0;
-            if (mc.loaded && !mc.data.cores.empty()) {
-                for (const auto& c : mc.data.cores) {
-                    if (!file_present(std::string{"/foyer/cores/"} + c.nro))
-                        continue;
-                    const auto local_v = library::installed_core_version(c.nro);
-                    if (!local_v.empty() && local_v == c.version) continue;
-                    if (pending_cores == 0) {
-                        rows.push_back({ItemKind::Static,
-                            "Pending core updates", "", "", 0});
-                        rows.push_back({ItemKind::Action,
-                            "Update all cores", "run",
-                            "", OpUpdInstallCores});
-                    }
-                    Item it{ItemKind::Action, c.name, "update", "",
-                            OpUpdInstallSingleCore};
-                    it.data = c.name;
-                    rows.push_back(std::move(it));
-                    pending_cores++;
-                }
-            }
-            pending_total += pending_cores;
+            render_bucket("Foyer",  pending.foyer,  "foyer");
+            render_bucket("Cores",  pending.cores,  "core");
+            render_bucket("Bezels", pending.bezels, "bezel");
+            render_bucket("Cheats", pending.cheats, "cheat");
 
-            // Pending bezel-pack updates.
-            const auto& bmc = bezels_manifest_cache();
-            int pending_bezels = 0;
-            if (bmc.loaded && !bmc.data.packs.empty()) {
-                for (const auto& p : bmc.data.packs) {
-                    const auto local_v = library::installed_bezel_version(p.name);
-                    if (local_v.empty()) continue;          // never installed
-                    if (local_v == p.version) continue;     // up to date
-                    if (pending_bezels == 0) {
-                        rows.push_back({ItemKind::Static,
-                            "Pending bezel-pack updates", "", "", 0});
-                        rows.push_back({ItemKind::Action,
-                            "Update all bezel packs", "run",
-                            "", OpInstallBezelPacks});
-                    }
-                    Item it{ItemKind::Action, p.name, "update", "",
-                            OpInstallSingleBezelPack};
-                    it.data = p.name;
-                    rows.push_back(std::move(it));
-                    pending_bezels++;
-                }
-            }
-            pending_total += pending_bezels;
-
-            // Pending cheat-pack updates.
-            const auto& cmc = cheats_manifest_cache();
-            int pending_cheats = 0;
-            if (cmc.loaded && !cmc.data.packs.empty()) {
-                for (const auto& p : cmc.data.packs) {
-                    const auto local_v = library::installed_cheat_version(p.name);
-                    if (local_v.empty()) continue;
-                    if (local_v == p.version) continue;
-                    if (pending_cheats == 0) {
-                        rows.push_back({ItemKind::Static,
-                            "Pending cheat-pack updates", "", "", 0});
-                        rows.push_back({ItemKind::Action,
-                            "Update all cheat packs", "run",
-                            "", OpInstallCheatPacks});
-                    }
-                    Item it{ItemKind::Action, p.name, "update", "",
-                            OpInstallSingleCheatPack};
-                    it.data = p.name;
-                    rows.push_back(std::move(it));
-                    pending_cheats++;
-                }
-            }
-            pending_total += pending_cheats;
-
-            if (pending_total == 0) {
+            if (pending.total() == 0 && !any_job_active) {
                 rows.push_back({ItemKind::Static,
-                    "Everything is up to date.", "", "", 0});
+                    "Everything is up to date", "", "", 0});
             }
+
+            // Footer actions — visual gap, then "Update everything"
+            // (only when we actually have something pending) and the
+            // "Re-scrape now" / Last-fetched stamp.
+            rows.push_back({ItemKind::Static, "", "", "", 0});
+
+            if (pending.total() > 0) {
+                std::uint64_t total_bytes = 0;
+                for (const auto& v : { &pending.foyer, &pending.cores,
+                                       &pending.bezels, &pending.cheats }) {
+                    for (const auto& it : *v) total_bytes += it.download_size;
+                }
+                char val[80];
+                if (total_bytes >= (1ull << 20))
+                    std::snprintf(val, sizeof(val),
+                        "%zu items   ~%.0f MB",
+                        pending.total(),
+                        (double)total_bytes / (1ull << 20));
+                else if (total_bytes > 0)
+                    std::snprintf(val, sizeof(val),
+                        "%zu items   ~%llu KB",
+                        pending.total(),
+                        (unsigned long long)(total_bytes / 1024));
+                else
+                    std::snprintf(val, sizeof(val), "%zu items",
+                        pending.total());
+                rows.push_back({ItemKind::Action, "Update everything",
+                    val, "", OpUpdAll});
+            }
+
+            // Re-scrape footer with "Last: …" hint built from
+            // last_scrape_at(). 0 = never scraped this run.
+            char rescrape_hint[80] = {};
+            const auto t0 = last_scrape_at();
+            if (t0 > 0) {
+                const auto secs = std::time(nullptr) - t0;
+                if (secs < 60)
+                    std::snprintf(rescrape_hint, sizeof(rescrape_hint),
+                        "Last: just now");
+                else if (secs < 3600)
+                    std::snprintf(rescrape_hint, sizeof(rescrape_hint),
+                        "Last: %lld min ago",
+                        static_cast<long long>(secs / 60));
+                else
+                    std::snprintf(rescrape_hint, sizeof(rescrape_hint),
+                        "Last: %lld hr ago",
+                        static_cast<long long>(secs / 3600));
+            }
+            rows.push_back({ItemKind::Action, "Re-scrape now",
+                rescrape_hint,
+                "Refreshes the cores / bezels / cheats manifests.",
+                OpUpdRescrape});
+
+            // Bulk scrape (game metadata) is conceptually different
+            // from manifest scrape — keep it but tuck it at the end.
+            rows.push_back({ItemKind::Action, "Scrape all systems",
+                "metadata",
+                "Walks every system using the preferred scraper.",
+                OpUpdScrapeAll});
             break;
         }
         case Category::Experimental:
@@ -2124,6 +2146,28 @@ OptionList build_option_list(int op, const std::string& data) {
             o.current_index = cur;
             break;
         }
+        case OpUpdSingleItem: {
+            // data is "<kind>:<id>" — the Updates page row encoded
+            // it. Build the action menu around the kind: foyer can't
+            // be re-installed (we can only download a newer version
+            // since the running build is authoritative), so it gets
+            // a 2-action menu vs. the 3-action menu for the rest.
+            const auto colon = data.find(':');
+            const std::string kind = (colon == std::string::npos)
+                ? std::string{} : data.substr(0, colon);
+            const std::string id = (colon == std::string::npos)
+                ? data : data.substr(colon + 1);
+            o.title = id.empty() ? std::string{"Update"}
+                                 : (std::string{"Update "} + id);
+            if (kind == "foyer") {
+                o.options = { "Update now", "Skip this version" };
+            } else {
+                o.options = { "Update now", "Re-install",
+                              "Skip this version" };
+            }
+            o.current_index = -1;  // no "current" badge for actions
+            break;
+        }
         default: break;
     }
     return o;
@@ -2166,6 +2210,62 @@ std::string apply_option(int op, const std::string& data,
         case OpRunahead: {
             library::set_runahead_frames(chosen_index);
             break;
+        }
+        case OpUpdSingleItem: {
+            // Parse "kind:id" out of `data` and dispatch the chosen
+            // verb. Routing for "Update" / "Re-install" reuses the
+            // existing per-kind request flags so the heavy lifting
+            // (download + unzip + version sidecar) doesn't change.
+            const auto colon = data.find(':');
+            if (colon == std::string::npos) return {};
+            const std::string kind = data.substr(0, colon);
+            const std::string id   = data.substr(colon + 1);
+            const std::string& verb = chosen;
+
+            // "Skip this version" — record the skip for whichever
+            // version the manifest currently advertises and let the
+            // Updates page hide the row on the next rebuild. We have
+            // to re-derive the version since apply_option doesn't
+            // carry it; cheap lookup against the cache.
+            if (verb == "Skip this version") {
+                std::string ver;
+                if      (kind == "foyer") ver = s.foyer_update_version;
+                else if (kind == "core") {
+                    for (const auto& c : settings::manifest_cache().data.cores)
+                        if (c.name == id) { ver = c.version; break; }
+                } else if (kind == "bezel") {
+                    for (const auto& p : settings::bezels_manifest_cache().data.packs)
+                        if (p.name == id) { ver = p.version; break; }
+                } else if (kind == "cheat") {
+                    for (const auto& p : settings::cheats_manifest_cache().data.packs)
+                        if (p.name == id) { ver = p.version; break; }
+                }
+                if (!ver.empty()) {
+                    library::SkipKind sk = library::SkipKind::Core;
+                    if      (kind == "foyer") sk = library::SkipKind::Foyer;
+                    else if (kind == "bezel") sk = library::SkipKind::Bezel;
+                    else if (kind == "cheat") sk = library::SkipKind::Cheat;
+                    library::skip_version(sk, id, ver);
+                }
+                return std::string{"Skipped "} + id;
+            }
+
+            const bool force = (verb == "Re-install");
+            if (kind == "foyer") {
+                s.request_install_foyer_update = true;
+            } else if (kind == "core") {
+                s.request_install_cores = true;
+                s.install_only_core     = id;
+                s.install_force         = force;
+            } else if (kind == "bezel") {
+                s.request_install_bezels = true;
+                s.install_only_bezel     = id;
+            } else if (kind == "cheat") {
+                s.request_install_cheats = true;
+                s.install_only_cheat     = id;
+            }
+            return (force ? std::string{"Re-installing "}
+                          : std::string{"Updating "}) + id;
         }
         default: return {};
     }
@@ -3575,6 +3675,34 @@ void update(State& s, const Library& lib,
                             s.refresh_job.cancel();
                             s.banner_text = "Cancelling...";
                             s.banner_ttl  = 180;
+                        } else if (it.payload == settings::OpUpdSingleItem) {
+                            // Surface the per-row picker (Update /
+                            // Re-install / Skip). build_option_list
+                            // parses the "kind:id" stored in data.
+                            auto list = settings::build_option_list(
+                                it.payload, it.data);
+                            if (!list.options.empty()) {
+                                s.option_picker.open    = true;
+                                s.option_picker.title   = std::move(list.title);
+                                s.option_picker.options = std::move(list.options);
+                                s.option_picker.current = list.current_index;
+                                s.option_picker.cursor  = 0;
+                                s.option_picker.op      = it.payload;
+                                s.option_picker.data    = it.data;
+                            }
+                        } else if (it.payload == settings::OpUpdAll) {
+                            // Bulk update everything pending —
+                            // main.cpp sequences the kinds.
+                            s.request_update_all = true;
+                            s.banner_text = "Updating everything...";
+                            s.banner_ttl  = 180;
+                        } else if (it.payload == settings::OpUpdRescrape) {
+                            s.request_refresh_manifest         = true;
+                            s.request_refresh_cheats_manifest  = true;
+                            s.request_refresh_bezels_manifest  = true;
+                            s.request_check_foyer_update       = true;
+                            s.banner_text = "Re-scraping manifests...";
+                            s.banner_ttl  = 180;
                         }
                         break;
                     case settings::ItemKind::Drill: {
@@ -3725,18 +3853,21 @@ void set_manifest_cache(library::CoreManifest manifest) {
     auto& mc = settings::manifest_cache();
     mc.data   = std::move(manifest);
     mc.loaded = true;
+    settings::last_scrape_at() = std::time(nullptr);
 }
 
 void set_cheats_manifest_cache(library::CheatManifest manifest) {
     auto& mc = settings::cheats_manifest_cache();
     mc.data   = std::move(manifest);
     mc.loaded = true;
+    settings::last_scrape_at() = std::time(nullptr);
 }
 
 void set_bezels_manifest_cache(library::BezelManifest manifest) {
     auto& mc = settings::bezels_manifest_cache();
     mc.data   = std::move(manifest);
     mc.loaded = true;
+    settings::last_scrape_at() = std::time(nullptr);
 }
 
 void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) {

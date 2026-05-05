@@ -26,6 +26,8 @@ add_library(foyer_shared STATIC
     library/foyer_updater.cpp
     library/foyer_update_job.cpp
     library/scrape_job.cpp
+    library/skipped_versions.cpp
+    library/updates.cpp
     net/http.cpp
     scrapers/cache.cpp
     scrapers/accounts.cpp
