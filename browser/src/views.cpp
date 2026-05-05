@@ -2274,12 +2274,14 @@ std::string apply_option(int op, const std::string& data,
 
 void draw_option_picker(NVGcontext* vg, float w, float h, const State& s) {
     if (!s.option_picker.open) return;
-    const auto& p = s.option_picker;
+    const auto& p  = s.option_picker;
+    const auto& th = theme();
 
-    // Dim everything behind.
+    // Dim everything behind. Same intensity as the popup so the two
+    // modals feel like the same family.
     nvgBeginPath(vg);
     nvgRect(vg, 0, 0, w, h);
-    nvgFillColor(vg, nvgRGBAf(0, 0, 0, 0.55f));
+    nvgFillColor(vg, nvgRGBAf(0, 0, 0, 0.45f));
     nvgFill(vg);
 
     constexpr int   kVisible = 5;
@@ -2292,31 +2294,29 @@ void draw_option_picker(NVGcontext* vg, float w, float h, const State& s) {
     const float px = (w - pw) * 0.5f;
     const float py = (h - ph) * 0.5f;
 
-    // Card.
-    nvgBeginPath(vg);
-    nvgRoundedRect(vg, px, py, pw, ph, 18.0f);
-    nvgFillColor(vg, nvgRGBA(0x1A, 0x12, 0x32, 0xF2));
-    nvgFill(vg);
-    nvgStrokeColor(vg, nvgRGBA(0xFF, 0xFF, 0xFF, 0x14));
-    nvgStrokeWidth(vg, 1.0f);
-    nvgStroke(vg);
+    // Card. Match the popup: th.bg_panel fill + th.border outline,
+    // same corner radius family as everything else in the app.
+    rrect        (vg, px, py, pw, ph, 14.0f, th.bg_panel);
+    rrect_outline(vg, px, py, pw, ph, 14.0f, th.border, 1.0f);
 
-    // Title.
-    nvgFontSize(vg, 26.0f);
-    nvgFillColor(vg, nvgRGBA(0xFF, 0xFF, 0xFF, 0xFF));
+    // Title strip + thin divider underneath, theme-coloured.
+    nvgFontSize(vg, th.head_size);
+    nvgFillColor(vg, th.text_strong);
     nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
     nvgText(vg, px + 24.0f, py + kPad + 18.0f, p.title.c_str(), nullptr);
 
-    // Item count badge ("3 / 12") in the top-right.
     if (!p.options.empty()) {
         char counter[32];
         std::snprintf(counter, sizeof(counter), "%d / %zu",
             p.cursor + 1, p.options.size());
-        nvgFontSize(vg, 18.0f);
-        nvgFillColor(vg, nvgRGBA(0xAA, 0xA0, 0xC8, 0xFF));
+        nvgFontSize(vg, th.label_size);
+        nvgFillColor(vg, th.text_dim);
         nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
         nvgText(vg, px + pw - 24.0f, py + kPad + 18.0f, counter, nullptr);
     }
+
+    rrect(vg, px + 16.0f, py + kPad + kHeader - 8.0f,
+          pw - 32.0f, 1.0f, 0.0f, th.border);
 
     // Visible row window. Centre the cursor in the strip and clamp.
     const int n = (int)p.options.size();
@@ -2325,7 +2325,7 @@ void draw_option_picker(NVGcontext* vg, float w, float h, const State& s) {
     if (top < 0) top = 0;
 
     const float rows_top = py + kPad + kHeader;
-    nvgFontSize(vg, 22.0f);
+    nvgFontSize(vg, th.body_size);
     nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
     for (int i = 0; i < kVisible && top + i < n; i++) {
         const int   idx = top + i;
@@ -2333,49 +2333,46 @@ void draw_option_picker(NVGcontext* vg, float w, float h, const State& s) {
 
         const bool focused = (idx == p.cursor);
         if (focused) {
-            nvgBeginPath(vg);
-            nvgRoundedRect(vg, px + 12.0f, ry + 4.0f,
-                pw - 24.0f, kRowH - 8.0f, 10.0f);
-            nvgFillColor(vg, nvgRGBA(0x4C, 0x36, 0xB0, 0xCC));
-            nvgFill(vg);
+            // Match the popup row highlight: bg_panel_hi rounded box.
+            rrect(vg, px + 12.0f, ry + 4.0f,
+                  pw - 24.0f, kRowH - 8.0f, 10.0f, th.bg_panel_hi);
         }
 
-        nvgFillColor(vg, nvgRGBA(0xFF, 0xFF, 0xFF,
-            focused ? 0xFF : 0xCC));
+        nvgFillColor(vg, focused ? th.text_strong : th.text);
         nvgText(vg, px + 32.0f, ry + kRowH * 0.5f,
             p.options[idx].c_str(), nullptr);
 
         if (idx == p.current) {
-            // "Current" badge so the user can see what's set without
-            // having to scroll back.
-            nvgFontSize(vg, 14.0f);
-            nvgFillColor(vg, nvgRGBA(0x88, 0xCF, 0xFF, 0xFF));
+            // "Current" badge — accent colour so it picks up the
+            // theme's signature hue (yellow on default, etc.).
+            nvgFontSize(vg, th.label_size);
+            nvgFillColor(vg, th.accent);
             nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
             nvgText(vg, px + pw - 32.0f, ry + kRowH * 0.5f,
                 "● current", nullptr);
-            nvgFontSize(vg, 22.0f);
+            nvgFontSize(vg, th.body_size);
             nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
         }
     }
 
     // Up / down chevrons when the list spills past the visible window.
+    nvgFontSize(vg, th.label_size);
+    nvgFillColor(vg, th.text_dim);
     if (top > 0) {
-        nvgFontSize(vg, 18.0f);
-        nvgFillColor(vg, nvgRGBA(0xCF, 0xC9, 0xE7, 0xC0));
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
         nvgText(vg, px + pw * 0.5f, rows_top - 22.0f, "▲", nullptr);
     }
     if (top + kVisible < n) {
-        nvgFontSize(vg, 18.0f);
-        nvgFillColor(vg, nvgRGBA(0xCF, 0xC9, 0xE7, 0xC0));
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM);
         nvgText(vg, px + pw * 0.5f,
             rows_top + kVisible * kRowH + 22.0f, "▼", nullptr);
     }
 
-    // Hint footer.
-    nvgFontSize(vg, 16.0f);
-    nvgFillColor(vg, nvgRGBA(0xAA, 0xA0, 0xC8, 0xFF));
+    // Hint footer above the rounded bottom edge.
+    rrect(vg, px + 16.0f, py + ph - kPad - kFooter + 4.0f,
+          pw - 32.0f, 1.0f, 0.0f, th.border);
+    nvgFontSize(vg, th.label_size);
+    nvgFillColor(vg, th.text_dim);
     nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM);
     nvgText(vg, px + pw * 0.5f, py + ph - kPad,
         "DPad navigate     A select     B cancel", nullptr);
