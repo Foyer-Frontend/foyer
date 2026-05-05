@@ -142,6 +142,17 @@ MetaCache& meta_cache() {
 //   3. /foyer/assets/systems/<folder>.jpg        — legacy SD JPG
 //   4. romfs:/systems/<folder>-splash.png        — bundled artwork
 // PNG used so the parallelogram alpha in the bundled art is preserved.
+// Virtual-system folder names start with "__" to distinguish them
+// from real-on-SD system folders. The bundled tile art lives under
+// auto-* names because __-prefixed filenames look weird in a file
+// browser, so map between the two before resolving.
+std::string_view tile_asset_folder(std::string_view folder) {
+    if (folder == "__recent")    return "auto-lastplayed";
+    if (folder == "__favorites") return "auto-favorites";
+    if (folder == "__unknown")   return "auto-allgames";
+    return folder;
+}
+
 std::string system_splash_path(std::string_view folder) {
     auto exists = [](const std::string& p) {
         struct stat st{};
@@ -149,6 +160,7 @@ std::string system_splash_path(std::string_view folder) {
         std::ifstream f{p};
         return (bool)f;
     };
+    folder = tile_asset_folder(folder);
     const auto& th = theme();
     if (!th.pack_dir.empty()) {
         std::string p = th.pack_dir + "/systems/" + std::string{folder} + "/splash.png";
@@ -179,6 +191,7 @@ std::string system_logo_path(std::string_view folder) {
         std::ifstream f{p};
         return (bool)f;
     };
+    folder = tile_asset_folder(folder);
     const auto& th = theme();
     if (!th.pack_dir.empty()) {
         std::string p = th.pack_dir + "/systems/" + std::string{folder} + "/logo.png";
@@ -217,6 +230,49 @@ void blit_aspect_fit(NVGcontext* vg, int handle,
     else                 dw = h * ar_img;
     const float dx = x + (w - dw) * 0.5f;
     const float dy = y + (h - dh) * 0.5f;
+    auto pat = nvgImagePattern(vg, dx, dy, dw, dh, 0.f, handle, alpha);
+    nvgBeginPath(vg);
+    nvgRoundedRect(vg, dx, dy, dw, dh, radius);
+    nvgFillPaint(vg, pat);
+    nvgFill(vg);
+}
+
+// Same as blit_aspect_fit but with a soft outer shadow drawn behind
+// the image — gives logos visual separation from busy wallpapers.
+// shadow_offset shifts the shadow downward; shadow_blur is the
+// feather distance; shadow_alpha is the inner darkness.
+void blit_aspect_fit_with_shadow(NVGcontext* vg, int handle,
+                                 float x, float y, float w, float h,
+                                 float radius, float alpha = 1.0f,
+                                 float shadow_offset = 6.0f,
+                                 float shadow_blur   = 18.0f,
+                                 int   shadow_alpha  = 160) {
+    if (handle <= 0) return;
+    int iw = 0, ih = 0;
+    nvgImageSize(vg, handle, &iw, &ih);
+    if (iw <= 0 || ih <= 0) return;
+    const float ar_img = (float)iw / (float)ih;
+    const float ar_box = w / h;
+    float dw = w, dh = h;
+    if (ar_img > ar_box) dh = w / ar_img;
+    else                 dw = h * ar_img;
+    const float dx = x + (w - dw) * 0.5f;
+    const float dy = y + (h - dh) * 0.5f;
+
+    auto shadow = nvgBoxGradient(vg,
+        dx, dy + shadow_offset, dw, dh,
+        radius + 4, shadow_blur,
+        nvgRGBA(0, 0, 0, shadow_alpha),
+        nvgRGBA(0, 0, 0, 0));
+    nvgBeginPath(vg);
+    nvgRect(vg,
+        dx - shadow_blur, dy + shadow_offset - shadow_blur,
+        dw + 2 * shadow_blur, dh + 2 * shadow_blur);
+    nvgRoundedRect(vg, dx, dy, dw, dh, radius);
+    nvgPathWinding(vg, NVG_HOLE);
+    nvgFillPaint(vg, shadow);
+    nvgFill(vg);
+
     auto pat = nvgImagePattern(vg, dx, dy, dw, dh, 0.f, handle, alpha);
     nvgBeginPath(vg);
     nvgRoundedRect(vg, dx, dy, dw, dh, radius);
@@ -461,6 +517,26 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
         const bool centre = (offset == 0);
 
         nvgSave(vg);
+        // Soft parallelogram drop shadow behind every tile. Offset
+        // by a few px and feather via a black-fill that's a hair
+        // larger than the tile itself, so the splash sits visually
+        // detached from the wallpaper.
+        if (centre) {
+            constexpr float kShadowDy   = 8.0f;
+            constexpr float kShadowGrow = 6.0f;
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, x + kSlant - kShadowGrow,
+                          y - kShadowGrow + kShadowDy);
+            nvgLineTo(vg, x + tw      + kShadowGrow,
+                          y - kShadowGrow + kShadowDy);
+            nvgLineTo(vg, x + tw - kSlant + kShadowGrow,
+                          y + thh + kShadowGrow + kShadowDy);
+            nvgLineTo(vg, x           - kShadowGrow,
+                          y + thh + kShadowGrow + kShadowDy);
+            nvgClosePath(vg);
+            nvgFillColor(vg, nvgRGBA(0, 0, 0, 110));
+            nvgFill(vg);
+        }
         const int strip_h = system_splash_cache().get_or_load(vg,
             system_splash_path(sys.def->folder_name));
         if (strip_h > 0) {
@@ -504,7 +580,7 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
         const auto logo_path = system_logo_path(sys.def->folder_name);
         const int  logo_h    = system_logo_cache().get_or_load(vg, logo_path);
         if (logo_h > 0) {
-            blit_aspect_fit(vg, logo_h,
+            blit_aspect_fit_with_shadow(vg, logo_h,
                 x, y + thh * 0.20f,
                 tw, thh * 0.60f,
                 0.0f, 1.0f);

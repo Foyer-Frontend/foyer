@@ -61,10 +61,40 @@ int main(int /*argc*/, char** /*argv*/) {
 
     foyer::platform::App app;
 
+    // Loading screen — paint immediately so the user sees something
+    // while the (potentially multi-second) scan/init sequence runs.
+    // The closure captures a pointer to a status string we update
+    // between init phases; tick() between updates flushes a fresh
+    // frame so the user gets feedback rather than a frozen logo.
+    std::string boot_status = "Starting...";
+    app.set_draw_fn([&boot_status](NVGcontext* vg, float w, float h) {
+        nvgBeginPath(vg);
+        nvgRect(vg, 0, 0, w, h);
+        nvgFillColor(vg, nvgRGBA(0x05, 0x05, 0x06, 0xFF));
+        nvgFill(vg);
+
+        nvgFontSize(vg, 96.0f);
+        nvgFillColor(vg, nvgRGBA(0xEE, 0xEE, 0xEE, 0xFF));
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+        nvgText(vg, w / 2.0f, h / 2.0f - 40.0f, "foyer", nullptr);
+
+        nvgFontSize(vg, 24.0f);
+        nvgFillColor(vg, nvgRGBA(0x88, 0x88, 0x88, 0xFF));
+        nvgText(vg, w / 2.0f, h / 2.0f + 40.0f, boot_status.c_str(), nullptr);
+
+        nvgFontSize(vg, 18.0f);
+        nvgFillColor(vg, nvgRGBA(0x55, 0x55, 0x55, 0xFF));
+        nvgText(vg, w / 2.0f, h - 32.0f, FOYER_DISPLAY_VERSION, nullptr);
+    });
+    boot_status = "Seeding assets...";
+    app.tick();
+
     // Seed bundled bezels + cheats from romfs into the SD tree on
     // first boot (and every boot a NEW system / cheat ships in the
     // browser's romfs). User-installed files are never overwritten.
     foyer::browser::seed_assets_if_missing();
+    boot_status = "Initialising network...";
+    app.tick();
 
     // Initialise curl on the main thread BEFORE any worker spawns
     // one. curl_global_init must run single-threaded; if a worker
@@ -73,6 +103,8 @@ int main(int /*argc*/, char** /*argv*/) {
     // hangs at "Fetching manifest...". Boot-time foyer manifest
     // check is the trigger.
     foyer::net::init();
+    boot_status = "Loading theme...";
+    app.tick();
 
     foyer::browser::load_theme(foyer::library::config().theme_name);
 
@@ -83,11 +115,16 @@ int main(int /*argc*/, char** /*argv*/) {
     //     foyer::browser::mtp_start();
     // }
 
+    boot_status = "Scanning library...";
+    app.tick();
+
     foyer::library::ScanOptions opts;
     opts.rom_root = foyer::library::config().rom_root;
     opts.recurse  = foyer::library::config().scan_subfolders;
     foyer::browser::Library lib;
     lib.systems = foyer::library::scan_library(opts);
+    boot_status = "Ready";
+    app.tick();
 
     foyer::browser::State state;
 
