@@ -71,6 +71,31 @@ std::string detect_foyer_nro_path() {
 std::string g_foyer_nro_path;
 std::string g_foyer_nro_new_path;
 
+// One-shot scrub of the bundled CRT-TV bezel that v0.2.x shipped as
+// `/foyer/bezels/default.png`. The new resolve_path() in bezel.cpp
+// stopped consulting it in v0.2.52 — but player nros built before
+// that still ride the old path, and their fallback chain happily
+// finds default.png on disk. Nuking the file makes the OLD players'
+// fallback chain return "" too, which short-circuits draw_bezel to
+// a no-op for systems the user hasn't picked a bezel for.
+//
+// Marker file at /foyer/data/.bezel_default_cleared makes this a
+// one-shot on first boot of v0.2.53+. A user who DOES want a
+// per-system "default" bezel back can drop one onto SD via the
+// picker (or just file-paste); we don't second-guess them after the
+// initial scrub.
+void scrub_legacy_default_bezel_once() {
+    constexpr const char* kMarker = "/foyer/data/.bezel_default_cleared";
+    struct stat st{};
+    if (::stat(kMarker, &st) == 0) return;
+    if (::unlink("/foyer/bezels/default.png") == 0) {
+        foyer::log::write(
+            "[bezel] scrubbed legacy /foyer/bezels/default.png\n");
+    }
+    std::FILE* m = std::fopen(kMarker, "wb");
+    if (m) std::fclose(m);
+}
+
 // If the previous run staged an update, swap it in before we boot the
 // rest of the app. We're not the loaded-into-memory image; renaming the
 // SD-side file is safe — the next launch picks up the new bytes.
@@ -96,6 +121,7 @@ int main(int argc, char** argv) {
         g_foyer_nro_path.c_str());
 
     apply_staged_update_if_present();
+    scrub_legacy_default_bezel_once();
 
     foyer::platform::App app;
 
