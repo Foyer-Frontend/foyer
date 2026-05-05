@@ -1965,39 +1965,61 @@ void draw_settings(NVGcontext* vg, float w, float h, const State& s, const Libra
             nvgRGBA(0xC2, 0x86, 0xFF, 0xFF));
     }
 
-    constexpr float kRowH = 60.0f;
+    // Two row sizes: compact for label-only rows, tall for rows with
+    // a subtitle hint. Heights are chosen so the rhythm of an
+    // alternating list still reads consistent — the title baseline
+    // lands at the same vertical offset within both row variants.
+    constexpr float kRowH      = 60.0f;
+    constexpr float kRowH_Tall = 80.0f;
+
     const float inner_x = card_x + kCardPad;
     const float inner_w = card_w - kCardPad * 2.0f;
 
-    // Scroll window: keep the focused row visible. Same first/visible
-    // pattern the System view uses for the game list.
-    const int  total   = (int)rows.size();
-    const int  visible = std::max(1,
+    auto row_height = [&](const Item& it) {
+        return it.hint.empty() ? kRowH : kRowH_Tall;
+    };
+
+    // Scroll window keeping focused row visible. Visible count is
+    // approximate (rows can vary in height); use compact height for
+    // the page-size estimate, the loop below stops once we run out
+    // of card_h either way.
+    const int  total = (int)rows.size();
+    const int  visible_est = std::max(1,
         (int)((card_h - kCardPad * 2.0f) / kRowH));
-    int first = s.settings_row - visible / 2;
+    int first = s.settings_row - visible_est / 2;
     if (first < 0) first = 0;
-    if (first + visible > total) first = std::max(0, total - visible);
+    if (first + visible_est > total) first = std::max(0, total - visible_est);
 
     nvgSave(vg);
     nvgIntersectScissor(vg, card_x, card_y, card_w, card_h);
 
     float ry = card_y + kCardPad;
-    for (int row = 0; row < visible && first + row < total; row++) {
-        const int  i    = first + row;
+    for (int i = first; i < total; i++) {
         const auto& it  = rows[i];
-        const bool sel  = s.settings_in_content && (i == s.settings_row);
+        const float rh  = row_height(it);
+        if (ry + rh > card_y + card_h - kCardPad) break;
+
+        const bool sel = s.settings_in_content && (i == s.settings_row);
 
         if (sel) {
-            rrect(vg, inner_x - 4, ry - 2, inner_w + 8, kRowH - 8, 8.0f, th.bg_panel_hi);
+            // Highlight covers the FULL row including the hint band so
+            // the selection rectangle doesn't clip the subtitle. Inset
+            // a few px on each side for a softer look.
+            rrect(vg, inner_x - 4, ry - 2, inner_w + 8, rh - 6,
+                  8.0f, th.bg_panel_hi);
         }
+
+        const float title_y = it.hint.empty()
+            ? ry + (rh - 12) * 0.5f
+            : ry + 24.0f;
 
         nvgFontSize(vg, th.body_size);
         nvgFillColor(vg, sel ? th.text_strong : th.text);
         nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
-        nvgText(vg, inner_x + 8, ry + (kRowH - 12) * 0.5f, it.label.c_str(), nullptr);
+        nvgText(vg, inner_x + 8, title_y, it.label.c_str(), nullptr);
 
         const float vx = inner_x + inner_w - 8;
-        const float vy = ry + (kRowH - 12) * 0.5f;
+        const float vy = title_y;
 
         switch (it.kind) {
             case ItemKind::Toggle: {
@@ -2017,12 +2039,11 @@ void draw_settings(NVGcontext* vg, float w, float h, const State& s, const Libra
             }
             case ItemKind::Action: {
                 // Verb (e.g. "run") lives in it.value but is shown in
-                // the bottom bar — not duplicated on the row. We
-                // could render a glyph here too, but the bottom-bar
-                // hint already conveys the action.
+                // the bottom bar — not duplicated on the row.
                 break;
             }
-            case ItemKind::Drill: {
+            case ItemKind::Drill:
+            case ItemKind::Subpage: {
                 nvgFontSize(vg, th.body_size);
                 nvgFillColor(vg, th.text_dim);
                 nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
@@ -2036,9 +2057,9 @@ void draw_settings(NVGcontext* vg, float w, float h, const State& s, const Libra
             nvgFontSize(vg, th.label_size);
             nvgFillColor(vg, th.text_dim);
             nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_TOP);
-            nvgText(vg, inner_x + 8, ry + kRowH - 18, it.hint.c_str(), nullptr);
+            nvgText(vg, inner_x + 8, ry + 48.0f, it.hint.c_str(), nullptr);
         }
-        ry += kRowH;
+        ry += rh;
     }
     nvgRestore(vg);
 }
@@ -3061,6 +3082,20 @@ void update(State& s, const Library& lib,
                     return;
                 }
                 s.settings_in_content = false;
+                return;
+            }
+            // Left d-pad / stick also exits content focus back to
+            // the sidebar — natural gesture for "go back to the
+            // category list" without reaching for B. From a
+            // subpage, Left first backs out to the top-level page
+            // (matches the B-back behaviour above).
+            if (down & HidNpadButton_AnyLeft) {
+                if (s.settings_subpage != 0) {
+                    s.settings_subpage = 0;
+                    s.settings_row     = 0;
+                } else {
+                    s.settings_in_content = false;
+                }
                 return;
             }
             if (down & HidNpadButton_AnyDown && row_count > 0) {

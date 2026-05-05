@@ -5,6 +5,10 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <sstream>
+
+#include <yyjson.h>
 
 namespace foyer::libretro {
 namespace {
@@ -53,14 +57,138 @@ constexpr AspectMode kAspectValues[] = {
 };
 constexpr int kAspectCount = (int)(sizeof(kAspectValues) / sizeof(kAspectValues[0]));
 
-constexpr NVGcolor kAccent      = { { { 0xF6/255.f, 0xC1/255.f, 0x42/255.f, 1.0f } } };
-constexpr NVGcolor kPanel       = { { { 0x18/255.f, 0x1B/255.f, 0x21/255.f, 0.96f } } };
-constexpr NVGcolor kRow         = { { { 0x21/255.f, 0x25/255.f, 0x2D/255.f, 1.0f } } };
-constexpr NVGcolor kBg          = { { { 0x10/255.f, 0x12/255.f, 0x16/255.f, 1.0f } } };
-constexpr NVGcolor kTextStrong  = { { { 0xF2/255.f, 0xF2/255.f, 0xF2/255.f, 1.0f } } };
-constexpr NVGcolor kText        = { { { 0xCB/255.f, 0xCD/255.f, 0xD2/255.f, 1.0f } } };
-constexpr NVGcolor kTextDim     = { { { 0x82/255.f, 0x86/255.f, 0x8E/255.f, 1.0f } } };
-constexpr NVGcolor kBorder      = { { { 0x2D/255.f, 0x32/255.f, 0x3A/255.f, 1.0f } } };
+// Mutable globals lazy-loaded from /foyer/config/themes/<name>.jsonc
+// at first draw — keeps the overlay visually in sync with foyer's
+// browser-side theme picker without requiring extra plumbing
+// between the browser and player. Defaults match the bundled "dark"
+// theme so a player launched against a missing or malformed JSONC
+// still renders correctly.
+NVGcolor kAccent      = { { { 0xF6/255.f, 0xC1/255.f, 0x42/255.f, 1.0f } } };
+NVGcolor kPanel       = { { { 0x18/255.f, 0x1B/255.f, 0x21/255.f, 0.96f } } };
+NVGcolor kRow         = { { { 0x21/255.f, 0x25/255.f, 0x2D/255.f, 1.0f } } };
+NVGcolor kBg          = { { { 0x10/255.f, 0x12/255.f, 0x16/255.f, 1.0f } } };
+NVGcolor kTextStrong  = { { { 0xF2/255.f, 0xF2/255.f, 0xF2/255.f, 1.0f } } };
+NVGcolor kText        = { { { 0xCB/255.f, 0xCD/255.f, 0xD2/255.f, 1.0f } } };
+NVGcolor kTextDim     = { { { 0x82/255.f, 0x86/255.f, 0x8E/255.f, 1.0f } } };
+NVGcolor kBorder      = { { { 0x2D/255.f, 0x32/255.f, 0x3A/255.f, 1.0f } } };
+
+bool g_palette_loaded = false;
+
+NVGcolor parse_hex_color(const char* s) {
+    // Accept "#RRGGBB" or "#RRGGBBAA". Returns a default-ish gray on
+    // any parse failure so the overlay stays visible even with
+    // malformed input.
+    NVGcolor out{ { { 0.5f, 0.5f, 0.5f, 1.0f } } };
+    if (!s || s[0] != '#') return out;
+    auto hexd = [](char c) -> int {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        return -1;
+    };
+    const std::size_t n = std::strlen(s + 1);
+    if (n != 6 && n != 8) return out;
+    int v[8]{};
+    for (std::size_t i = 0; i < n; i++) {
+        v[i] = hexd(s[1 + i]);
+        if (v[i] < 0) return out;
+    }
+    out.r = (v[0] * 16 + v[1]) / 255.f;
+    out.g = (v[2] * 16 + v[3]) / 255.f;
+    out.b = (v[4] * 16 + v[5]) / 255.f;
+    out.a = (n == 8) ? (v[6] * 16 + v[7]) / 255.f : 1.0f;
+    return out;
+}
+
+std::string strip_jsonc_comments(const std::string& in) {
+    std::string out;
+    out.reserve(in.size());
+    bool in_str = false, escape = false;
+    for (std::size_t i = 0; i < in.size(); i++) {
+        char c = in[i];
+        if (in_str) {
+            out.push_back(c);
+            if (escape)         escape = false;
+            else if (c == '\\') escape = true;
+            else if (c == '"')  in_str = false;
+            continue;
+        }
+        if (c == '"') { in_str = true; out.push_back(c); continue; }
+        if (c == '/' && i + 1 < in.size() && in[i + 1] == '/') {
+            while (i < in.size() && in[i] != '\n') i++;
+            if (i < in.size()) out.push_back(in[i]);
+            continue;
+        }
+        out.push_back(c);
+    }
+    return out;
+}
+
+void load_theme_palette() {
+    if (g_palette_loaded) return;
+    g_palette_loaded = true;
+
+    // Resolve the active theme name from /foyer/config/general.jsonc.
+    // Anything other than a successful read leaves the default palette
+    // in place.
+    std::string theme_name = "dark";
+    {
+        std::ifstream gf{"/foyer/config/general.jsonc"};
+        if (gf) {
+            std::stringstream ss; ss << gf.rdbuf();
+            const auto txt = strip_jsonc_comments(ss.str());
+            if (auto* doc = yyjson_read(txt.data(), txt.size(), 0)) {
+                if (auto* root = yyjson_doc_get_root(doc);
+                    yyjson_is_obj(root)) {
+                    if (auto* v = yyjson_obj_get(root, "theme");
+                        v && yyjson_is_str(v))
+                        theme_name = yyjson_get_str(v);
+                }
+                yyjson_doc_free(doc);
+            }
+        }
+    }
+
+    // Try SD override first, then bundled romfs. Either path may fail
+    // (missing file, malformed JSON) — defaults already in the
+    // globals carry the day in those cases.
+    auto try_load = [&](const std::string& path) -> bool {
+        std::ifstream tf{path};
+        if (!tf) return false;
+        std::stringstream ss; ss << tf.rdbuf();
+        const auto txt = strip_jsonc_comments(ss.str());
+        auto* doc = yyjson_read(txt.data(), txt.size(), 0);
+        if (!doc) return false;
+        bool ok = false;
+        if (auto* root = yyjson_doc_get_root(doc); yyjson_is_obj(root)) {
+            ok = true;
+            auto pull = [&](const char* k, NVGcolor& dst) {
+                if (auto* v = yyjson_obj_get(root, k);
+                    v && yyjson_is_str(v))
+                    dst = parse_hex_color(yyjson_get_str(v));
+            };
+            pull("accent",      kAccent);
+            pull("bg_panel",    kPanel);
+            pull("bg_panel_hi", kRow);
+            pull("bg",          kBg);
+            pull("text_strong", kTextStrong);
+            pull("text",        kText);
+            pull("text_dim",    kTextDim);
+            pull("border",      kBorder);
+            // Panel keeps the alpha=0.96 the overlay was designed
+            // around — real theme JSONs use opaque hex but the
+            // overlay's pause-menu sits over a live framebuffer so a
+            // sliver of transparency reads better.
+            kPanel.a = 0.96f;
+        }
+        yyjson_doc_free(doc);
+        return ok;
+    };
+
+    const std::string sd  = "/foyer/config/themes/" + theme_name + ".jsonc";
+    const std::string rom = "romfs:/themes/"        + theme_name + ".jsonc";
+    if (!try_load(sd)) try_load(rom);
+}
 
 void rrect(NVGcontext* vg, float x, float y, float w, float h, float r, NVGcolor c) {
     nvgBeginPath(vg);
@@ -337,6 +465,7 @@ void Overlay::draw_panel(NVGcontext* vg, float w, float h, const char* title) {
 }
 
 void Overlay::draw(NVGcontext* vg, float w, float h) {
+    load_theme_palette();
     if (m_state == State::Hidden && m_toast_ttl <= 0) return;
 
     if (m_toast_ttl > 0) {
