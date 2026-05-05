@@ -112,6 +112,16 @@ struct Frontend {
     // Used by retro_environment dispatcher to query the negotiated pixel format.
     retro_pixel_format pixel_format() const { return m_pixel_format; }
 
+    // System directory the core sees via
+    // RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY. Most cores happily share
+    // /foyer/system/, but PPSSPP libretro reads asset files (atlases,
+    // fonts, language inis) directly out of system_dir and would
+    // collide with other cores' BIOS files there. The player main.cpp
+    // sets this before init() to a per-core path when the core needs
+    // its own scoped directory.
+    void set_system_directory(std::string path) { m_system_dir = std::move(path); }
+    const std::string& system_directory() const { return m_system_dir; }
+
 private:
     Frontend() = default;
     Frontend(const Frontend&) = delete;
@@ -124,6 +134,7 @@ private:
     retro_pixel_format           m_pixel_format = RETRO_PIXEL_FORMAT_0RGB1555;
     std::vector<std::uint8_t>    m_rom_buffer;     // when need_fullpath==false
     InputState                   m_input{};
+    std::string                  m_system_dir   = "/foyer/system";
 
     VideoSink                    m_video_sink = nullptr;
     AudioSink                    m_audio_sink = nullptr;

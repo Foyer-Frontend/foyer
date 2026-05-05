@@ -138,6 +138,44 @@ void draw_idle(NVGcontext* vg, float w, float h, const char* msg) {
     nvgText(vg, w / 2.0f, h / 2.0f, msg, nullptr);
 }
 
+// Recursive copy from `src` (typically a romfs:/ path) onto `dst` on
+// SD. Preserves directory structure. Existing files at `dst` are
+// skipped untouched, so this is cheap on subsequent boots and only
+// pays the IO cost the first time. Returns the count of files
+// actually written, mostly for the log.
+int seed_tree(const std::string& src, const std::string& dst) {
+    auto* dir = ::opendir(src.c_str());
+    if (!dir) return 0;
+    ::mkdir(dst.c_str(), 0777);
+    int copied = 0;
+    while (auto* e = ::readdir(dir)) {
+        if (!e->d_name[0] || e->d_name[0] == '.') continue;
+        const std::string s = src + "/" + e->d_name;
+        const std::string d = dst + "/" + e->d_name;
+        if (e->d_type == DT_DIR) {
+            copied += seed_tree(s, d);
+            continue;
+        }
+        if (e->d_type != DT_REG) continue;
+        struct stat st{};
+        if (::stat(d.c_str(), &st) == 0) continue; // already on SD
+        std::FILE* in  = std::fopen(s.c_str(), "rb");
+        if (!in) continue;
+        std::FILE* out = std::fopen(d.c_str(), "wb");
+        if (!out) { std::fclose(in); continue; }
+        char buf[64 * 1024];
+        std::size_t n;
+        while ((n = std::fread(buf, 1, sizeof(buf), in)) > 0) {
+            std::fwrite(buf, 1, n, out);
+        }
+        std::fclose(in);
+        std::fclose(out);
+        copied++;
+    }
+    ::closedir(dir);
+    return copied;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -146,6 +184,29 @@ int main(int argc, char** argv) {
 
     // Hook the platform's draw callback to render core output.
     foyer::libretro::VideoSinkImpl::instance().init(app.vg());
+
+    // Per-core asset seed + system_directory override. PPSSPP needs
+    // its `assets/` tree (ppge_atlas.zim, lang/, flash0/, compat.ini,
+    // ...) at the libretro system directory; without it tico's init
+    // logs "Core system files missing" and crashes when the missing
+    // atlas is first dereferenced. The recipe stages the tree into
+    // romfs:/ppsspp_assets/; here we copy any new files onto SD and
+    // point Frontend at the per-core scoped directory.
+#if defined(FOYER_CORE_NAME)
+#  define FOYER_STR2(x) #x
+#  define FOYER_STR(x)  FOYER_STR2(x)
+    if (std::string_view{FOYER_STR(FOYER_CORE_NAME)} == "ppsspp") {
+        constexpr const char* kSysDir = "/foyer/system/ppsspp";
+        ::mkdir("/foyer/system", 0777);
+        ::mkdir(kSysDir, 0777);
+        const int seeded = seed_tree("romfs:/ppsspp_assets", kSysDir);
+        foyer::log::write("[player] ppsspp assets seeded=%d (sys=%s)\n",
+            seeded, kSysDir);
+        fe.set_system_directory(kSysDir);
+    }
+#  undef FOYER_STR
+#  undef FOYER_STR2
+#endif
 
     if (!fe.init()) {
         foyer::log::write("[player] frontend init failed\n");

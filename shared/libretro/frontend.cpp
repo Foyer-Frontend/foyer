@@ -111,9 +111,12 @@ bool env_cb(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS:
             return true;
         case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY: {
-            // BIOS/firmware/system files for the core.
-            static const char* path = "/foyer/system";
-            *static_cast<const char**>(data) = path;
+            // BIOS/firmware/system files for the core. Path can be
+            // overridden per-core via set_system_directory() — PPSSPP
+            // for instance points it at /foyer/system/ppsspp/ where
+            // its assets/fonts get seeded on first boot.
+            *static_cast<const char**>(data) =
+                Frontend::instance().system_directory().c_str();
             return true;
         }
         case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY: {
