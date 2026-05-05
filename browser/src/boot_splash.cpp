@@ -6,27 +6,32 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <sys/stat.h>
 
 namespace foyer::browser {
 namespace {
 
-// Curated tile lineup. Mixes well-known systems across generations so
-// the mosaic feels recognisable even at low alpha. Order matters —
-// the first N where N = grid cells get drawn; the rest are unused if
-// the romfs file is missing. Splash filenames live at
-// romfs:/systems/<slug>-splash.png.
-constexpr const char* kTileSlugs[] = {
-    "snes",      "genesis",   "nes",        "psx",
-    "n64",       "gba",       "dreamcast",  "saturn",
-    "gb",        "neogeo",    "pcengine",   "atari2600",
-    "gc",        "ps2",       "psp",        "atarilynx",
-    "wonderswan","mastersystem","3do",      "amiga",
+// Splash background lookup order — first hit wins. The SD-side
+// override lets users drop a custom 1920x1080 .png or .jpg at
+// /foyer/assets/splash.<ext> without needing to rebuild the .nro.
+// Fallback is the bundled default copied into romfs at build time
+// (assets/romfs/splash.jpg).
+constexpr const char* kSplashCandidates[] = {
+    "/foyer/assets/splash.png",
+    "/foyer/assets/splash.jpg",
+    "romfs:/splash.png",
+    "romfs:/splash.jpg",
 };
 
-// Read a file under romfs:/ into a buffer + nvg image handle. Same
-// shape as views.cpp's CoverCache::get_or_load: libnx's romfs devoptab
-// doesn't play well with stb's fopen path, so we read bytes ourselves
-// and feed nvgCreateImageMem.
+bool exists(const char* path) {
+    struct stat st{};
+    return ::stat(path, &st) == 0 && S_ISREG(st.st_mode);
+}
+
+// Read a file (regular SD path or romfs:/) into nvgCreateImageMem,
+// matching CoverCache::get_or_load over in views.cpp. We keep this
+// inline rather than reusing CoverCache because BootSplash runs
+// before any of the browser's caches exist.
 int load_image_from_path(NVGcontext* vg, const char* path) {
     std::FILE* fp = std::fopen(path, "rb");
     if (!fp) return 0;
@@ -41,18 +46,14 @@ int load_image_from_path(NVGcontext* vg, const char* path) {
     return nvgCreateImageMem(vg, 0, buf.data(), static_cast<int>(buf.size()));
 }
 
-// Foyer wordmark + small controller glyph. Hand-drawn vector so we
-// don't need to ship a PNG just for the splash, and so it scales
-// crisply at 4K. Colours mirror assets/icon.jpg — purple gradient
-// background, white wordmark, white rounded-rect controller body.
 void draw_wordmark(NVGcontext* vg, float cx, float cy) {
-    // "foyer" — bold lowercase, matches the icon's typography.
     nvgFontSize(vg, 132.0f);
-    nvgFontBlur(vg, 0.0f);
     nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
 
-    // Soft drop shadow so the wordmark separates from the mosaic.
-    nvgFillColor(vg, nvgRGBA(0, 0, 0, 0xB0));
+    // Soft drop shadow so the wordmark separates from any backdrop —
+    // the bundled splash is dark but a user-supplied override could
+    // be light, so the shadow protects legibility on either.
+    nvgFillColor(vg, nvgRGBA(0, 0, 0, 0xC0));
     nvgFontBlur(vg, 6.0f);
     nvgText(vg, cx + 2.0f, cy + 4.0f, "foyer", nullptr);
 
@@ -61,57 +62,6 @@ void draw_wordmark(NVGcontext* vg, float cx, float cy) {
     nvgText(vg, cx, cy, "foyer", nullptr);
 }
 
-// Friendly rounded-rect gamepad mirroring the controller silhouette
-// in the app icon. Drawn at a fixed scale beneath the wordmark.
-void draw_controller(NVGcontext* vg, float cx, float cy) {
-    constexpr float w = 220.0f;
-    constexpr float h = 100.0f;
-    const float x = cx - w * 0.5f;
-    const float y = cy - h * 0.5f;
-    const NVGcolor white = nvgRGBA(0xFF, 0xFF, 0xFF, 0xE0);
-
-    // Body
-    nvgBeginPath(vg);
-    nvgRoundedRect(vg, x, y, w, h, 28.0f);
-    nvgFillColor(vg, white);
-    nvgFill(vg);
-
-    // D-pad (cross)
-    const float dpx = x + 38.0f;
-    const float dpy = cy;
-    const NVGcolor body_bg = nvgRGBA(0x6A, 0x4E, 0xC2, 0xFF);
-    nvgBeginPath(vg);
-    nvgRoundedRect(vg, dpx - 22.0f, dpy - 7.0f, 44.0f, 14.0f, 3.0f);
-    nvgRoundedRect(vg, dpx - 7.0f,  dpy - 22.0f, 14.0f, 44.0f, 3.0f);
-    nvgFillColor(vg, body_bg);
-    nvgFill(vg);
-
-    // Three stacked dots (centre)
-    for (int i = -1; i <= 1; i++) {
-        nvgBeginPath(vg);
-        nvgCircle(vg, cx + i * 12.0f, cy, 3.0f);
-        nvgFillColor(vg, body_bg);
-        nvgFill(vg);
-    }
-
-    // Face buttons (right cluster: + cross pattern, simplified to 4
-    // dots like a SNES diamond)
-    const float fbx = x + w - 38.0f;
-    const float fby = cy;
-    constexpr float r  = 8.0f;
-    constexpr float dx = 18.0f;
-    nvgBeginPath(vg);
-    nvgCircle(vg, fbx,        fby - dx, r);
-    nvgCircle(vg, fbx,        fby + dx, r);
-    nvgCircle(vg, fbx - dx,   fby,      r);
-    nvgCircle(vg, fbx + dx,   fby,      r);
-    nvgFillColor(vg, body_bg);
-    nvgFill(vg);
-}
-
-// Indeterminate progress strip below the status line. Wraps a single
-// pip across a rounded track based on the frame counter so the user
-// can tell the app is alive even when no banner is updating.
 void draw_progress_strip(NVGcontext* vg, float cx, float cy, float frame) {
     constexpr float W = 320.0f;
     constexpr float H = 4.0f;
@@ -122,7 +72,6 @@ void draw_progress_strip(NVGcontext* vg, float cx, float cy, float frame) {
     nvgFillColor(vg, nvgRGBA(0xFF, 0xFF, 0xFF, 0x22));
     nvgFill(vg);
 
-    // Sliding pip. Period ≈ 90 frames (1.5s @ 60fps).
     constexpr float kPipW   = 80.0f;
     constexpr float kPeriod = 90.0f;
     const float t = std::fmod(frame, kPeriod) / kPeriod;
@@ -136,14 +85,23 @@ void draw_progress_strip(NVGcontext* vg, float cx, float cy, float frame) {
 } // namespace
 
 BootSplash::BootSplash(NVGcontext* vg) {
-    char path[128];
-    for (const auto* slug : kTileSlugs) {
-        std::snprintf(path, sizeof(path),
-            "romfs:/systems/%s-splash.png", slug);
-        const int h = load_image_from_path(vg, path);
-        if (h > 0) m_tiles.push_back(h);
+    int handle = 0;
+    const char* used = nullptr;
+    for (const auto* path : kSplashCandidates) {
+        // exists() only handles SD paths; for romfs:/ we just try
+        // the load and fall through on failure. Same shape either way.
+        const bool on_sd = (std::strncmp(path, "romfs:/", 7) != 0);
+        if (on_sd && !exists(path)) continue;
+        handle = load_image_from_path(vg, path);
+        if (handle > 0) { used = path; break; }
     }
-    foyer::log::write("[boot_splash] loaded %zu tile(s)\n", m_tiles.size());
+    m_tiles.clear();
+    if (handle > 0) {
+        m_tiles.push_back(handle);
+        foyer::log::write("[boot_splash] backdrop = %s\n", used);
+    } else {
+        foyer::log::write("[boot_splash] no backdrop image found, using gradient\n");
+    }
 }
 
 void BootSplash::draw(NVGcontext* vg, float w, float h,
@@ -152,73 +110,60 @@ void BootSplash::draw(NVGcontext* vg, float w, float h,
     static std::uint32_t frame = 0;
     frame++;
 
-    // Background — vertical gradient from indigo to deep purple. Same
-    // family as the app icon's purple-violet palette so the splash
-    // and home screen feel like one product.
-    const NVGcolor top    = nvgRGB(0x3F, 0x2D, 0x8C);
-    const NVGcolor bottom = nvgRGB(0x12, 0x0B, 0x2A);
-    NVGpaint bg = nvgLinearGradient(vg, 0, 0, 0, h, top, bottom);
-    nvgBeginPath(vg);
-    nvgRect(vg, 0, 0, w, h);
-    nvgFillPaint(vg, bg);
-    nvgFill(vg);
-
-    // Tile mosaic. 5 columns × 4 rows = 20 cells, with a small gap.
-    // Tiles are drawn at low alpha so the wordmark stays the focal
-    // point. If we loaded fewer than 20 tiles, we just leave the
-    // empty cells transparent — the gradient fills the gap.
-    if (!m_tiles.empty()) {
-        constexpr int kCols = 5;
-        constexpr int kRows = 4;
-        constexpr float kGap = 16.0f;
-        const float cellW = (w - kGap * (kCols + 1)) / kCols;
-        const float cellH = (h - kGap * (kRows + 1)) / kRows;
-
-        for (int r = 0; r < kRows; r++) {
-            for (int c = 0; c < kCols; c++) {
-                const int idx = r * kCols + c;
-                if (idx >= static_cast<int>(m_tiles.size())) break;
-                const int img = m_tiles[idx];
-                if (img <= 0) continue;
-                const float x = kGap + c * (cellW + kGap);
-                const float y = kGap + r * (cellH + kGap);
-                NVGpaint pat = nvgImagePattern(
-                    vg, x, y, cellW, cellH, 0.0f, img, 0.18f);
-                nvgBeginPath(vg);
-                nvgRoundedRect(vg, x, y, cellW, cellH, 12.0f);
-                nvgFillPaint(vg, pat);
-                nvgFill(vg);
-            }
+    // Backdrop. If the splash image loaded, draw it full-bleed
+    // aspect-fit (cover); otherwise fall back to the indigo→purple
+    // gradient from the original implementation so the boot screen
+    // never paints a black void.
+    if (!m_tiles.empty() && m_tiles.front() > 0) {
+        const int img = m_tiles.front();
+        int iw = 0, ih = 0;
+        nvgImageSize(vg, img, &iw, &ih);
+        if (iw > 0 && ih > 0) {
+            // Cover-fit: scale so the image fills the whole frame,
+            // cropping the side that overflows. Looks closer to a
+            // proper splash than a stretched fit.
+            const float scale = std::max(w / (float)iw, h / (float)ih);
+            const float dw = iw * scale;
+            const float dh = ih * scale;
+            const float dx = (w - dw) * 0.5f;
+            const float dy = (h - dh) * 0.5f;
+            NVGpaint pat = nvgImagePattern(vg, dx, dy, dw, dh, 0.0f, img, 1.0f);
+            nvgBeginPath(vg);
+            nvgRect(vg, 0, 0, w, h);
+            nvgFillPaint(vg, pat);
+            nvgFill(vg);
         }
+        // Subtle dimming overlay so text on top stays legible
+        // regardless of how bright the user's custom splash is.
+        nvgBeginPath(vg);
+        nvgRect(vg, 0, 0, w, h);
+        nvgFillColor(vg, nvgRGBA(0, 0, 0, 0x55));
+        nvgFill(vg);
+    } else {
+        const NVGcolor top    = nvgRGB(0x3F, 0x2D, 0x8C);
+        const NVGcolor bottom = nvgRGB(0x12, 0x0B, 0x2A);
+        NVGpaint bg = nvgLinearGradient(vg, 0, 0, 0, h, top, bottom);
+        nvgBeginPath(vg);
+        nvgRect(vg, 0, 0, w, h);
+        nvgFillPaint(vg, bg);
+        nvgFill(vg);
     }
 
-    // Centre vignette behind the wordmark to lift it off the mosaic.
     const float cx = w * 0.5f;
     const float cy = h * 0.5f;
-    NVGpaint vignette = nvgRadialGradient(
-        vg, cx, cy, 60.0f, 360.0f,
-        nvgRGBA(0x10, 0x08, 0x24, 0xC8),
-        nvgRGBA(0x10, 0x08, 0x24, 0x00));
-    nvgBeginPath(vg);
-    nvgRect(vg, 0, 0, w, h);
-    nvgFillPaint(vg, vignette);
-    nvgFill(vg);
 
-    // Wordmark + controller (centre).
-    draw_wordmark  (vg, cx, cy - 60.0f);
-    draw_controller(vg, cx, cy + 50.0f);
+    draw_wordmark(vg, cx, cy - 30.0f);
 
-    // Status text + indeterminate progress strip + version footer.
     nvgFontSize(vg, 22.0f);
-    nvgFillColor(vg, nvgRGBA(0xCF, 0xC9, 0xE7, 0xE0));
+    nvgFillColor(vg, nvgRGBA(0xE6, 0xE3, 0xF2, 0xFF));
     nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-    nvgText(vg, cx, cy + 130.0f, status.c_str(), nullptr);
+    nvgText(vg, cx, cy + 80.0f, status.c_str(), nullptr);
 
-    draw_progress_strip(vg, cx, cy + 168.0f,
+    draw_progress_strip(vg, cx, cy + 118.0f,
                         static_cast<float>(frame));
 
     nvgFontSize(vg, 16.0f);
-    nvgFillColor(vg, nvgRGBA(0x9A, 0x90, 0xC2, 0xC0));
+    nvgFillColor(vg, nvgRGBA(0xC8, 0xC1, 0xE0, 0xC0));
     nvgText(vg, cx, h - 28.0f, version, nullptr);
 }
 

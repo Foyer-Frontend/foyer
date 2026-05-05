@@ -102,22 +102,60 @@ bool HwContext::ensure_context(unsigned width, unsigned height) {
             return false;
         }
 
-        const EGLint cfg_attribs[] = {
-            EGL_RENDERABLE_TYPE,   EGL_OPENGL_ES3_BIT,
-            EGL_SURFACE_TYPE,      EGL_PBUFFER_BIT,
-            EGL_RED_SIZE,          8,
-            EGL_GREEN_SIZE,        8,
-            EGL_BLUE_SIZE,         8,
-            EGL_ALPHA_SIZE,        8,
-            EGL_DEPTH_SIZE,        24,
-            EGL_STENCIL_SIZE,      8,
-            EGL_NONE
+        // Match the core's declared depth/stencil needs instead of
+        // hard-coding DEPTH=24 STENCIL=8 (which Switch's mesa doesn't
+        // always have a matching config for — eglChooseConfig
+        // returned 0 with EGL_SUCCESS in the v0.2.28 hardware run).
+        // Build a list of progressively-relaxed attrib sets and try
+        // each until one matches. The first slot mirrors what the
+        // core asked for; later slots drop the optional features so
+        // we still get *some* GL context even if mesa's config space
+        // is sparse.
+        const EGLint want_depth   = m_callback->depth   ? 24 : 0;
+        const EGLint want_stencil = m_callback->stencil ? 8  : 0;
+        const EGLint renderable   =
+            (m_callback->context_type == RETRO_HW_CONTEXT_OPENGLES3 ||
+             m_callback->version_major >= 3)
+                ? EGL_OPENGL_ES3_BIT : EGL_OPENGL_ES2_BIT;
+
+        struct AttribProbe { EGLint depth; EGLint stencil; EGLint renderable; };
+        const AttribProbe probes[] = {
+            { want_depth, want_stencil, renderable },          // exact ask
+            { want_depth, 0,            renderable },          // drop stencil
+            { 16,         0,            renderable },          // depth16, no stencil
+            { 0,          0,            renderable },          // colour only
+            { 0,          0,            EGL_OPENGL_ES2_BIT },  // GLES2 fallback
         };
+
         EGLConfig config{};
         EGLint    n_configs = 0;
-        if (!eglChooseConfig((EGLDisplay)m_egl_display, cfg_attribs,
-                             &config, 1, &n_configs) || n_configs < 1) {
-            foyer::log::write("[hw_render] eglChooseConfig failed: %s\n",
+        bool      picked    = false;
+        for (const auto& p : probes) {
+            const EGLint cfg_attribs[] = {
+                EGL_RENDERABLE_TYPE,   p.renderable,
+                EGL_SURFACE_TYPE,      EGL_PBUFFER_BIT,
+                EGL_RED_SIZE,          8,
+                EGL_GREEN_SIZE,        8,
+                EGL_BLUE_SIZE,         8,
+                EGL_ALPHA_SIZE,        8,
+                EGL_DEPTH_SIZE,        p.depth,
+                EGL_STENCIL_SIZE,      p.stencil,
+                EGL_NONE
+            };
+            if (eglChooseConfig((EGLDisplay)m_egl_display, cfg_attribs,
+                                &config, 1, &n_configs) && n_configs >= 1) {
+                foyer::log::write(
+                    "[hw_render] config picked: depth=%d stencil=%d gles=%s\n",
+                    (int)p.depth, (int)p.stencil,
+                    p.renderable == EGL_OPENGL_ES3_BIT ? "3" : "2");
+                picked = true;
+                break;
+            }
+        }
+        if (!picked) {
+            foyer::log::write("[hw_render] eglChooseConfig: no matching config "
+                "after %zu probes (last egl err=%s)\n",
+                sizeof(probes) / sizeof(probes[0]),
                 egl_err_str(eglGetError()));
             return false;
         }

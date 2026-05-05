@@ -149,6 +149,15 @@ bool env_cb(unsigned cmd, void* data) {
 void video_refresh_cb(const void* data, unsigned w, unsigned h, std::size_t pitch) {
     auto& fe = Frontend::instance();
     if (!fe.m_video_sink || !data) return;
+    // RETRO_HW_FRAME_BUFFER_VALID = (void*)-1 is a sentinel the core
+    // passes when it rendered to our HW FBO instead of a CPU buffer.
+    // HwContext::end_frame() (called from Frontend::run_frame after
+    // retro_run returns) glReadPixels()'s the FBO and pushes a real
+    // CPU frame through; ignoring the sentinel here just suppresses
+    // the duplicate signal — the alternative is dereferencing
+    // (void*)-1 as a pixel pointer, which is the data abort the
+    // PPSSPP GLES2 build hit on the first frame.
+    if (data == reinterpret_cast<const void*>(static_cast<std::intptr_t>(-1))) return;
     Frontend::VideoFrame frame{ data, w, h, pitch, fe.m_pixel_format };
     fe.m_video_sink(frame);
 }
