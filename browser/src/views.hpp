@@ -83,6 +83,13 @@ struct State {
         bool                     open    = false;
         std::string              title;
         std::vector<std::string> options;
+        // Optional thumbnail per option. When non-empty AND parallel
+        // to `options` (same size, possibly empty strings), the
+        // picker draws a small image preview to the left of the
+        // label. Used by OpBezelForSystem and OpTheme to surface
+        // visuals next to each choice. Empty string for a row → no
+        // thumbnail for that row only ("(none)" entries etc.).
+        std::vector<std::string> image_paths;
         int                      current = 0;     // currently-set value (badge)
         int                      cursor  = 0;     // focused row in the picker
         int                      op      = 0;     // settings opcode

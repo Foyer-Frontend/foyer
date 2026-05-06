@@ -2231,6 +2231,9 @@ void draw_settings(NVGcontext* vg, float w, float h, const State& s, const Libra
 struct OptionList {
     std::string              title;
     std::vector<std::string> options;
+    // Optional 1:1 thumbnail paths — same shape as
+    // State::OptionPicker::image_paths. Empty vector => text-only.
+    std::vector<std::string> image_paths;
     int                      current_index = 0;
 };
 
@@ -2246,6 +2249,20 @@ OptionList build_option_list(int op, const std::string& data) {
         case OpTheme: {
             o.title   = "Theme";
             o.options = list_themes();
+            o.image_paths.reserve(o.options.size());
+            for (auto& name : o.options) {
+                // SD wallpaper override wins; fall back to bundled
+                // romfs:/themes/<name>.jpg. Both the picker draw and
+                // load_image_via_path() handle missing paths cleanly
+                // (image_handle <= 0 → text-only row).
+                struct stat st{};
+                std::string p_sd = "/foyer/config/themes/" + name + ".jpg";
+                std::string p_rf = "romfs:/themes/" + name + ".jpg";
+                if (::stat(p_sd.c_str(), &st) == 0 && st.st_size > 0)
+                    o.image_paths.push_back(std::move(p_sd));
+                else
+                    o.image_paths.push_back(std::move(p_rf));
+            }
             const auto& cur = library::config().theme_name;
             for (std::size_t i = 0; i < o.options.size(); i++) {
                 if (o.options[i] == cur) { o.current_index = (int)i; break; }
@@ -2322,7 +2339,14 @@ OptionList build_option_list(int op, const std::string& data) {
                 ::closedir(dir);
             }
             std::sort(names.begin(), names.end());
-            for (auto& n : names) o.options.push_back(std::move(n));
+            // First option ("(none)") gets an empty image path so it
+            // renders text-only; the rest map 1:1 to their PNG file.
+            o.image_paths.assign(o.options.size(), std::string{});
+            for (auto& n : names) {
+                const std::string p = "/foyer/bezels/" + n + ".png";
+                o.options.push_back(n);
+                o.image_paths.push_back(p);
+            }
             o.current_index = -1;  // no "current" badge — file copy is fire-and-forget
             break;
         }
@@ -2565,6 +2589,17 @@ void draw_option_picker(NVGcontext* vg, float w, float h, const State& s) {
     if (top < 0) top = 0;
 
     const float rows_top = py + kPad + kHeader;
+    // When any row carries a thumbnail path, we shift the text right
+    // to make room. Same offset used for every row so labels stay
+    // column-aligned even when some images are missing.
+    const bool has_thumbs = !p.image_paths.empty()
+        && std::any_of(p.image_paths.begin(), p.image_paths.end(),
+                       [](const std::string& s) { return !s.empty(); });
+    constexpr float kThumbW = 72.0f;
+    constexpr float kThumbH = 40.0f;
+    const float text_x = has_thumbs ? (px + 24.0f + kThumbW + 16.0f)
+                                    : (px + 32.0f);
+
     nvgFontSize(vg, th.body_size);
     nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
     for (int i = 0; i < kVisible && top + i < n; i++) {
@@ -2578,8 +2613,42 @@ void draw_option_picker(NVGcontext* vg, float w, float h, const State& s) {
                   pw - 24.0f, kRowH - 8.0f, 10.0f, th.bg_panel_hi);
         }
 
+        // Thumbnail (only if image_paths has a non-empty entry for
+        // this row). cover_cache lazy-loads via fopen+nvgCreateImageMem
+        // and caches by absolute path, so paging the picker re-uses
+        // already-decoded handles.
+        if (has_thumbs && idx < (int)p.image_paths.size()
+                       && !p.image_paths[idx].empty()) {
+            const int img = cover_cache().get_or_load(vg, p.image_paths[idx]);
+            if (img > 0) {
+                int iw = 0, ih = 0;
+                nvgImageSize(vg, img, &iw, &ih);
+                if (iw > 0 && ih > 0) {
+                    const float tx = px + 24.0f;
+                    const float ty = ry + (kRowH - kThumbH) * 0.5f;
+                    // Aspect-fit cover: scale so the image fully fills
+                    // the slot, cropping the longer side.
+                    const float scale = std::max(kThumbW / (float)iw,
+                                                 kThumbH / (float)ih);
+                    const float dw = iw * scale;
+                    const float dh = ih * scale;
+                    const float dx = tx + (kThumbW - dw) * 0.5f;
+                    const float dy = ty + (kThumbH - dh) * 0.5f;
+                    nvgSave(vg);
+                    nvgScissor(vg, tx, ty, kThumbW, kThumbH);
+                    NVGpaint pat = nvgImagePattern(vg, dx, dy, dw, dh,
+                                                   0.0f, img, 1.0f);
+                    nvgBeginPath(vg);
+                    nvgRoundedRect(vg, tx, ty, kThumbW, kThumbH, 6.0f);
+                    nvgFillPaint(vg, pat);
+                    nvgFill(vg);
+                    nvgRestore(vg);
+                }
+            }
+        }
+
         nvgFillColor(vg, focused ? th.text_strong : th.text);
-        nvgText(vg, px + 32.0f, ry + kRowH * 0.5f,
+        nvgText(vg, text_x, ry + kRowH * 0.5f,
             p.options[idx].c_str(), nullptr);
 
         if (idx == p.current) {
@@ -4059,13 +4128,14 @@ void update(State& s, const Library& lib,
                         auto list = settings::build_option_list(
                             it.payload, it.data);
                         if (!list.options.empty()) {
-                            s.option_picker.open    = true;
-                            s.option_picker.title   = std::move(list.title);
-                            s.option_picker.options = std::move(list.options);
-                            s.option_picker.current = list.current_index;
-                            s.option_picker.cursor  = list.current_index;
-                            s.option_picker.op      = it.payload;
-                            s.option_picker.data    = it.data;
+                            s.option_picker.open        = true;
+                            s.option_picker.title       = std::move(list.title);
+                            s.option_picker.options     = std::move(list.options);
+                            s.option_picker.image_paths = std::move(list.image_paths);
+                            s.option_picker.current     = list.current_index;
+                            s.option_picker.cursor      = list.current_index;
+                            s.option_picker.op          = it.payload;
+                            s.option_picker.data        = it.data;
                         }
                         break;
                     }
@@ -4166,13 +4236,14 @@ void update(State& s, const Library& lib,
                             auto list = settings::build_option_list(
                                 it.payload, it.data);
                             if (!list.options.empty()) {
-                                s.option_picker.open    = true;
-                                s.option_picker.title   = std::move(list.title);
-                                s.option_picker.options = std::move(list.options);
-                                s.option_picker.current = list.current_index;
-                                s.option_picker.cursor  = 0;
-                                s.option_picker.op      = it.payload;
-                                s.option_picker.data    = it.data;
+                                s.option_picker.open        = true;
+                                s.option_picker.title       = std::move(list.title);
+                                s.option_picker.options     = std::move(list.options);
+                                s.option_picker.image_paths = std::move(list.image_paths);
+                                s.option_picker.current     = list.current_index;
+                                s.option_picker.cursor      = 0;
+                                s.option_picker.op          = it.payload;
+                                s.option_picker.data        = it.data;
                             }
                         } else if (it.payload == settings::OpUpdAll) {
                             // Bulk update everything pending —
