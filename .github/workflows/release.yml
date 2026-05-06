@@ -11,12 +11,22 @@ on:
 
 permissions:
   contents: write
+  packages: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: devkitpro/devkita64:latest
+      # Same pre-baked builder image as foyer-cores. Dodges
+      # pkg.devkitpro.org's CDN, which sustained a 403 outage during
+      # v0.3.0 and burnt through all 10 prior `dkp-pacman -Syu`
+      # retry attempts. The image bakes switch-portlibs + switch-sdl2
+      # + switch-sdl2-libs at image-build time; rebuilt by
+      # foyer-cores/.github/workflows/build-image.yml.
+      image: ghcr.io/foyer-frontend/foyer-cores-builder:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout foyer
         uses: actions/checkout@v4
@@ -25,25 +35,6 @@ jobs:
 
       - name: Trust the workspace inside container
         run: git config --global --add safe.directory '*'
-
-      - name: Install Switch portlibs
-        # 10 attempts × widening backoff. Foyer's a single browser nro,
-        # so a CDN flake costs at most one rerun — not worth the
-        # cross-repo GHCR auth dance the cores matrix needs.
-        run: |
-          delay=10
-          for attempt in $(seq 1 10); do
-              if dkp-pacman -Syu --needed --noconfirm \
-                  switch-portlibs switch-sdl2 switch-sdl2-libs; then
-                  exit 0
-              fi
-              echo "dkp-pacman attempt $attempt failed; sleeping ${delay}s..."
-              sleep "$delay"
-              delay=$(( delay + 10 ))
-              [ "$delay" -gt 60 ] && delay=60
-          done
-          echo "dkp-pacman failed after 10 attempts" >&2
-          exit 1
 
       - name: Configure
         env:
