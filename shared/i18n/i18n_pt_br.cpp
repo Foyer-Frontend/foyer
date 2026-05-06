@@ -136,6 +136,127 @@ const std::array<const char*, kCount> kPortugueseBrazilStrings = [] {
     a[(std::size_t)StringId::SettingsLanguage]           = "Idioma";
     a[(std::size_t)StringId::SettingsLanguageHint]       =
         "Substitui o idioma do sistema. Reinicie para efeito completo.";
+
+    a[(std::size_t)StringId::DisplayShowBackgrounds]     = "Mostrar planos de fundo";
+    a[(std::size_t)StringId::DisplayShowBackgroundsHint] = "Plano de fundo por jogo na visão do sistema.";
+    a[(std::size_t)StringId::DisplayShowCovers]          = "Mostrar capas";
+    a[(std::size_t)StringId::DisplayShowCoversHint]      = "Capas na grade de jogos.";
+    a[(std::size_t)StringId::DisplayShowBezels]          = "Mostrar molduras";
+    a[(std::size_t)StringId::DisplayShowBezelsHint]      = "Sobrepõe um PNG por sistema ao redor da imagem.";
+    a[(std::size_t)StringId::DisplayShader]              = "Shader";
+    a[(std::size_t)StringId::DisplayShaderHint]          = "Filtro pós-processamento aplicado por quadro.";
+    a[(std::size_t)StringId::DisplayRunahead]            = "Run-ahead";
+    a[(std::size_t)StringId::DisplayRunaheadHint]        = "Reduz a latência emulando quadros adiantados.";
+    a[(std::size_t)StringId::ShaderNone]                 = "Nenhum";
+    a[(std::size_t)StringId::ShaderScanlines]            = "Linhas de varredura";
+    a[(std::size_t)StringId::ShaderCrtSimple]            = "CRT (simples)";
+    a[(std::size_t)StringId::ShaderLcdGrid]              = "Grade LCD";
+    a[(std::size_t)StringId::ShaderGbDmg]                = "Game Boy DMG";
+    a[(std::size_t)StringId::ShaderGbaCorrect]           = "Correção GBA";
+    a[(std::size_t)StringId::RunaheadOff]                = "Desligado";
+    a[(std::size_t)StringId::RunaheadOneFrame]           = "1 quadro";
+    a[(std::size_t)StringId::RunaheadNFrames]            = "%d quadros";
+
+    a[(std::size_t)StringId::AudioSystemNote]            =
+        "O volume do sistema é ajustado pelo menu Home do Switch";
+    a[(std::size_t)StringId::AudioSystemNoteHint]        =
+        "As opções de áudio por core ficam no menu de pausa do jogo.";
+
+    a[(std::size_t)StringId::LibraryRescan]              = "Re-escanear biblioteca";
+    a[(std::size_t)StringId::LibraryRescanHint]          = "Percorre /foyer/roms/ e refaz o cache.";
+    a[(std::size_t)StringId::LibraryInvalidateCovers]    = "Invalidar cache de capas";
+    a[(std::size_t)StringId::LibraryInvalidateCoversHint] = "Recarrega as capas a partir do disco.";
+    a[(std::size_t)StringId::LibrarySortGames]           = "Ordenar jogos por";
+    a[(std::size_t)StringId::LibrarySortGamesHint]       = "Ordem da grade de jogos por sistema.";
+    a[(std::size_t)StringId::LibrarySortSystems]         = "Ordenar sistemas por";
+    a[(std::size_t)StringId::LibrarySortSystemsHint]     = "Ordem dos blocos do carrossel inicial.";
+    a[(std::size_t)StringId::SortByName]                 = "Nome";
+    a[(std::size_t)StringId::SortByRecent]               = "Jogados recentemente";
+    a[(std::size_t)StringId::SortByPlaytime]             = "Tempo de jogo";
+    a[(std::size_t)StringId::SortByFavoritesFirst]       = "Favoritos primeiro";
+    a[(std::size_t)StringId::SystemSortScannerOrder]     = "Ordem do scanner";
+    a[(std::size_t)StringId::SystemSortAlphabetical]     = "Alfabética";
+    a[(std::size_t)StringId::SystemSortGameCount]        = "Quantidade de jogos";
+    a[(std::size_t)StringId::SystemSortCustom]           = "Personalizada";
+
+    a[(std::size_t)StringId::EmuDefaultCore]             = "Core padrão por sistema";
+    a[(std::size_t)StringId::EmuDefaultCoreHint]         = "configurar";
+    a[(std::size_t)StringId::EmuCoresCatalog]            = "Catálogo de cores";
+    a[(std::size_t)StringId::EmuBezelPacks]              = "Pacotes de molduras";
+    a[(std::size_t)StringId::EmuCheatPacks]              = "Pacotes de cheats";
+    a[(std::size_t)StringId::EmuShaderPresets]           = "Presets de shaders";
+    a[(std::size_t)StringId::EmuStandalones]             = "Emuladores standalone externos";
+    a[(std::size_t)StringId::EmuStandalonesHint]         = "Status PSP / GC";
+    a[(std::size_t)StringId::EmuBezelPerSystem]          = "Moldura por sistema";
+    a[(std::size_t)StringId::EmuBezelPerSystemHint]      = "escolher ou limpar";
+    a[(std::size_t)StringId::EmuRefreshManifest]         = "Atualizar manifesto";
+    a[(std::size_t)StringId::EmuLoadingCatalog]          = "Carregando catálogo...";
+    a[(std::size_t)StringId::EmuInstallAllBezels]        = "Instalar todos os pacotes de molduras";
+    a[(std::size_t)StringId::EmuInstallAllBezelsHint]    =
+        "Percorre cada pacote; pula os que já estão na versão do manifesto.";
+    a[(std::size_t)StringId::EmuRefreshHintCores]        =
+        "Baixa a última lista da release foyer-cores do GitHub.";
+    a[(std::size_t)StringId::EmuRefreshHintBezels]       = "Baixa a última lista de foyer-bezels.";
+    a[(std::size_t)StringId::EmuRefreshHintCheats]       = "Baixa a última lista de foyer-cheats.";
+    a[(std::size_t)StringId::EmuRefreshHintShaders]      = "Baixa a última lista de foyer-shaders.";
+
+    a[(std::size_t)StringId::VerbDownload]               = "baixar";
+    a[(std::size_t)StringId::VerbInstalled]              = "instalado";
+    a[(std::size_t)StringId::VerbInstalledReinstall]     = "instalado - reinstalar";
+    a[(std::size_t)StringId::VerbUpdateAvailable]        = "atualização disponível";
+    a[(std::size_t)StringId::VerbFetch]                  = "buscar";
+    a[(std::size_t)StringId::VerbRun]                    = "executar";
+    a[(std::size_t)StringId::VerbRefresh]                = "atualizar";
+    a[(std::size_t)StringId::VerbConfigure]              = "configurar";
+    a[(std::size_t)StringId::VerbBrowseInstall]          = "ver / instalar";
+    a[(std::size_t)StringId::VerbPickOrClear]            = "escolher ou limpar";
+    a[(std::size_t)StringId::VerbStatusInfo]             = "Status PSP / GC";
+
+    a[(std::size_t)StringId::UpdatesFoyerSelf]           = "foyer";
+    a[(std::size_t)StringId::UpdatesCores]               = "Cores";
+    a[(std::size_t)StringId::UpdatesBezels]              = "Molduras";
+    a[(std::size_t)StringId::UpdatesCheats]              = "Cheats";
+    a[(std::size_t)StringId::UpdatesShaders]             = "Shaders";
+    a[(std::size_t)StringId::UpdatesCheckAll]            = "Verificar atualizações";
+    a[(std::size_t)StringId::UpdatesCheckAllHint]        = "Atualiza todos os manifestos numa só varredura.";
+    a[(std::size_t)StringId::UpdatesUpToDateCores]       = "Todos os cores estão atualizados";
+    a[(std::size_t)StringId::UpdatesNewCores]            = "%d novos";
+    a[(std::size_t)StringId::UpdatesUpdatedCores]        = "%d atualizados";
+    a[(std::size_t)StringId::UpdatesFailedCores]         = "%d falharam";
+    a[(std::size_t)StringId::UpdatesInstalling]          = "Instalando %s...";
+    a[(std::size_t)StringId::UpdatesScanning]            = "Escaneando...";
+    a[(std::size_t)StringId::UpdatesNoData]              = "Sem dados — atualize primeiro";
+    a[(std::size_t)StringId::UpdatesFetchManifest]       = "Buscando manifesto...";
+
+    a[(std::size_t)StringId::AccScreenscraperDevId]      = "ID dev do ScreenScraper";
+    a[(std::size_t)StringId::AccScreenscraperDevPwd]     = "Senha dev do ScreenScraper";
+    a[(std::size_t)StringId::AccScreenscraperUser]       = "Usuário do ScreenScraper";
+    a[(std::size_t)StringId::AccScreenscraperPwd]        = "Senha do ScreenScraper";
+    a[(std::size_t)StringId::AccSteamgriddbApiKey]       = "Chave API do SteamGridDB";
+    a[(std::size_t)StringId::AccRetroachUser]            = "Usuário do RetroAchievements";
+    a[(std::size_t)StringId::AccRetroachToken]           = "Token API do RetroAchievements";
+    a[(std::size_t)StringId::AccLoginRequired]           = "Necessário para usar este scraper";
+    a[(std::size_t)StringId::AccCleared]                 = "Limpo";
+
+    a[(std::size_t)StringId::PickCoverTitle]             = "Escolher capa";
+    a[(std::size_t)StringId::PickCoverHint]              = "A escolher   B cancelar   Direcional navegar";
+    a[(std::size_t)StringId::PickerCancel]               = "Cancelar";
+    a[(std::size_t)StringId::PickerNoResults]            = "Sem capas";
+    a[(std::size_t)StringId::PickerLoading]              = "Carregando...";
+
+    a[(std::size_t)StringId::BannerInstalling]           = "Instalando %s...";
+    a[(std::size_t)StringId::BannerDone]                 = "%s pronto";
+    a[(std::size_t)StringId::BannerFailed]               = "%s falhou";
+    a[(std::size_t)StringId::BannerCancelled]            = "%s cancelado";
+
+    a[(std::size_t)StringId::SearchPlaceholder]          = "Buscar...";
+    a[(std::size_t)StringId::SearchEmptyHint]            = "Digite para filtrar a biblioteca";
+    a[(std::size_t)StringId::SearchNoResults]            = "Sem resultados";
+
+    a[(std::size_t)StringId::LangEnglish]                = "Inglês";
+    a[(std::size_t)StringId::LangSpanish]                = "Espanhol";
+    a[(std::size_t)StringId::LangPortugueseBrazil]       = "Português (Brasil)";
+    a[(std::size_t)StringId::LangSystemDefault]          = "Padrão do sistema";
     return a;
 }();
 

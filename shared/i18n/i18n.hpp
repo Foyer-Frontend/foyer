@@ -149,6 +149,134 @@ enum class StringId : std::uint16_t {
     SettingsLanguage,
     SettingsLanguageHint,
 
+    // ----- Display extras -----
+    DisplayShowBackgrounds,
+    DisplayShowBackgroundsHint,
+    DisplayShowCovers,
+    DisplayShowCoversHint,
+    DisplayShowBezels,
+    DisplayShowBezelsHint,
+    DisplayShader,
+    DisplayShaderHint,
+    DisplayRunahead,
+    DisplayRunaheadHint,
+    ShaderNone,
+    ShaderScanlines,
+    ShaderCrtSimple,
+    ShaderLcdGrid,
+    ShaderGbDmg,
+    ShaderGbaCorrect,
+    RunaheadOff,
+    RunaheadOneFrame,
+    RunaheadNFrames,        // "%d frames"
+
+    // ----- Audio info -----
+    AudioSystemNote,
+    AudioSystemNoteHint,
+
+    // ----- Library tab -----
+    LibraryRescan,
+    LibraryRescanHint,
+    LibraryInvalidateCovers,
+    LibraryInvalidateCoversHint,
+    LibrarySortGames,
+    LibrarySortGamesHint,
+    LibrarySortSystems,
+    LibrarySortSystemsHint,
+    SortByName,
+    SortByRecent,
+    SortByPlaytime,
+    SortByFavoritesFirst,
+    SystemSortScannerOrder,
+    SystemSortAlphabetical,
+    SystemSortGameCount,
+    SystemSortCustom,
+
+    // ----- Emulator subpages (top-level Drill rows) -----
+    EmuDefaultCore,
+    EmuDefaultCoreHint,
+    EmuCoresCatalog,
+    EmuBezelPacks,
+    EmuCheatPacks,
+    EmuShaderPresets,
+    EmuStandalones,
+    EmuStandalonesHint,
+    EmuBezelPerSystem,
+    EmuBezelPerSystemHint,
+    EmuRefreshManifest,
+    EmuLoadingCatalog,
+    EmuInstallAllBezels,
+    EmuInstallAllBezelsHint,
+    EmuRefreshHintCores,
+    EmuRefreshHintBezels,
+    EmuRefreshHintCheats,
+    EmuRefreshHintShaders,
+
+    // ----- Per-row verbs (cycle/action values) -----
+    VerbDownload,
+    VerbInstalled,
+    VerbInstalledReinstall,
+    VerbUpdateAvailable,
+    VerbFetch,
+    VerbRun,
+    VerbRefresh,
+    VerbConfigure,
+    VerbBrowseInstall,
+    VerbPickOrClear,
+    VerbStatusInfo,
+
+    // ----- Updates page -----
+    UpdatesFoyerSelf,
+    UpdatesCores,
+    UpdatesBezels,
+    UpdatesCheats,
+    UpdatesShaders,
+    UpdatesCheckAll,
+    UpdatesCheckAllHint,
+    UpdatesUpToDateCores,
+    UpdatesNewCores,
+    UpdatesUpdatedCores,
+    UpdatesFailedCores,
+    UpdatesInstalling,
+    UpdatesScanning,
+    UpdatesNoData,
+    UpdatesFetchManifest,
+
+    // ----- Accounts -----
+    AccScreenscraperDevId,
+    AccScreenscraperDevPwd,
+    AccScreenscraperUser,
+    AccScreenscraperPwd,
+    AccSteamgriddbApiKey,
+    AccRetroachUser,
+    AccRetroachToken,
+    AccLoginRequired,
+    AccCleared,
+
+    // ----- Picker dialogs -----
+    PickCoverTitle,
+    PickCoverHint,
+    PickerCancel,
+    PickerNoResults,
+    PickerLoading,
+
+    // ----- Bezels / shaders / cheats banners -----
+    BannerInstalling,
+    BannerDone,
+    BannerFailed,
+    BannerCancelled,
+
+    // ----- Search view -----
+    SearchPlaceholder,
+    SearchEmptyHint,
+    SearchNoResults,
+
+    // ----- Languages (for the picker UI) -----
+    LangEnglish,
+    LangSpanish,
+    LangPortugueseBrazil,
+    LangSystemDefault,
+
     // Sentinel — keep last.
     kStringIdCount,
 };

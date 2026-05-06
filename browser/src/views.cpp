@@ -1126,20 +1126,25 @@ enum class Category : int {
 };
 
 struct CategoryEntry {
-    const char* label;
-    const char* hint;       // glyph stand-in (kept as a fallback for logs)
+    foyer::i18n::StringId label_id;  // resolved through tr() at access
+    const char* hint;                // glyph stand-in (kept as a fallback for logs)
 };
 
 constexpr CategoryEntry kCategories[(int)Category::Count_] = {
-    { "General",      "GEN" },
-    { "Display",      "DIS" },
-    { "Audio",        "AUD" },
-    { "Library",      "LIB" },
-    { "Emulator",     "EMU" },
-    { "Accounts",     "ACC" },
-    { "Updates",      "UPD" },
-    { "Experimental", "EXP" },
+    { foyer::i18n::StringId::SettingsGeneral,      "GEN" },
+    { foyer::i18n::StringId::SettingsDisplay,      "DIS" },
+    { foyer::i18n::StringId::SettingsAudio,        "AUD" },
+    { foyer::i18n::StringId::SettingsLibrary,      "LIB" },
+    { foyer::i18n::StringId::SettingsEmulator,     "EMU" },
+    { foyer::i18n::StringId::SettingsAccounts,     "ACC" },
+    { foyer::i18n::StringId::Updates,              "UPD" },
+    { foyer::i18n::StringId::SettingsExperimental, "EXP" },
 };
+
+// Helper to read the localised label out of a CategoryEntry.
+inline const char* category_label(const CategoryEntry& e) {
+    return foyer::i18n::tr(e.label_id);
+}
 
 // Vector icons drawn into the sidebar slot. Each draws a small glyph centered
 // on (cx, cy) at the given size. Color follows accent-vs-dim of the row.
@@ -1463,94 +1468,95 @@ std::vector<Item> build_items(Category cat, const State& s) {
     const auto& cfg = library::config();
     switch (cat) {
         case Category::General:
-            rows.push_back({ItemKind::Cycle,  "Preferred scraper", scraper_label(cfg.preferred_scraper),
-                "Provider used when Y scrapes a game.",
+            rows.push_back({ItemKind::Cycle,  _(SId::SettingsPreferredScraper), scraper_label(cfg.preferred_scraper),
+                _(SId::SettingsPreferredScraperHint),
                 OpScraper});
-            rows.push_back({ItemKind::Static, "Rom root",          cfg.rom_root,
-                "Where foyer scans for roms.",
+            rows.push_back({ItemKind::Static, _(SId::SettingsRomRoot),          cfg.rom_root,
+                _(SId::SettingsRomRootHint),
                 OpRomRoot});
-            rows.push_back({ItemKind::Toggle, "Scan subfolders",   "",
-                "Walk subdirectories on scan.",
+            rows.push_back({ItemKind::Toggle, _(SId::SettingsScanSubfolders),   "",
+                _(SId::SettingsScanSubfoldersHint),
                 OpScanSub});
             break;
         case Category::Display: {
-            rows.push_back({ItemKind::Cycle,  "Theme",        cfg.theme_name,
-                "Active palette + wallpaper.",
+            rows.push_back({ItemKind::Cycle,  _(SId::SettingsTheme),        cfg.theme_name,
+                _(SId::SettingsThemeHint),
                 OpTheme});
-            rows.push_back({ItemKind::Toggle, "Show clock",       "",
-                "Top-bar clock.",
+            rows.push_back({ItemKind::Toggle, _(SId::SettingsShowClock),       "",
+                _(SId::SettingsShowClockHint),
                 OpShowClock});
-            rows.push_back({ItemKind::Toggle, "Show backgrounds", "",
-                "Per-game backdrop in System view.",
+            rows.push_back({ItemKind::Toggle, _(SId::DisplayShowBackgrounds), "",
+                _(SId::DisplayShowBackgroundsHint),
                 OpShowBg});
-            rows.push_back({ItemKind::Toggle, "Show covers",      "",
-                "Box-art tiles in the game grid.",
+            rows.push_back({ItemKind::Toggle, _(SId::DisplayShowCovers),      "",
+                _(SId::DisplayShowCoversHint),
                 OpShowCovers});
-            rows.push_back({ItemKind::Toggle, "Show bezels",      "",
-                "Overlay per-system PNG around output.",
+            rows.push_back({ItemKind::Toggle, _(SId::DisplayShowBezels),      "",
+                _(SId::DisplayShowBezelsHint),
                 OpShowBezels});
             // Post-process shader, applied per-frame in every player.
             // Built-in presets ship with the player binary; users can
             // also drop their own /foyer/shaders/<name>.glsl files.
             const char* shader_label = cfg.shader_name.c_str();
             if (cfg.shader_name == "none"        || cfg.shader_name.empty())
-                shader_label = "None";
-            else if (cfg.shader_name == "scanlines")   shader_label = "Scanlines";
-            else if (cfg.shader_name == "crt_simple")  shader_label = "CRT (simple)";
-            else if (cfg.shader_name == "lcd_grid")    shader_label = "LCD grid";
-            else if (cfg.shader_name == "gb_dmg")      shader_label = "Game Boy DMG";
-            else if (cfg.shader_name == "gba_correct") shader_label = "GBA correction";
-            rows.push_back({ItemKind::Cycle, "Shader", shader_label,
-                "Post-process pass applied per frame.",
+                shader_label = _(SId::ShaderNone);
+            else if (cfg.shader_name == "scanlines")   shader_label = _(SId::ShaderScanlines);
+            else if (cfg.shader_name == "crt_simple")  shader_label = _(SId::ShaderCrtSimple);
+            else if (cfg.shader_name == "lcd_grid")    shader_label = _(SId::ShaderLcdGrid);
+            else if (cfg.shader_name == "gb_dmg")      shader_label = _(SId::ShaderGbDmg);
+            else if (cfg.shader_name == "gba_correct") shader_label = _(SId::ShaderGbaCorrect);
+            rows.push_back({ItemKind::Cycle, _(SId::DisplayShader), shader_label,
+                _(SId::DisplayShaderHint),
                 OpShader});
             // Run-ahead trades CPU for visible input-lag reduction.
             // Each enabled frame adds one extra retro_run() per
             // displayed frame, so K=1 ~= 2x core load.
-            const char* ra_label = "Off";
+            const char* ra_label = _(SId::RunaheadOff);
             char ra_buf[16];
             if (cfg.runahead_frames > 0) {
                 std::snprintf(ra_buf, sizeof(ra_buf),
-                    cfg.runahead_frames == 1 ? "%d frame" : "%d frames",
+                    cfg.runahead_frames == 1 ? _(SId::RunaheadOneFrame)
+                                             : _(SId::RunaheadNFrames),
                     cfg.runahead_frames);
                 ra_label = ra_buf;
             }
-            rows.push_back({ItemKind::Cycle, "Run-ahead", ra_label,
-                "Reduce input lag by emulating ahead.",
+            rows.push_back({ItemKind::Cycle, _(SId::DisplayRunahead), ra_label,
+                _(SId::DisplayRunaheadHint),
                 OpRunahead});
             break;
         }
         case Category::Audio:
-            rows.push_back({ItemKind::Static, "System volume controls live in the Switch home menu",
-                "", "Per-core audio settings are exposed in the in-game pause overlay.", 0});
+            rows.push_back({ItemKind::Static, _(SId::AudioSystemNote),
+                "", _(SId::AudioSystemNoteHint), 0});
             break;
         case Category::Library: {
-            rows.push_back({ItemKind::Action, "Rescan library",         "run",
-                "Walks /foyer/roms/ + rebuilds cache.",
+            rows.push_back({ItemKind::Action, _(SId::LibraryRescan),         _(SId::VerbRun),
+                _(SId::LibraryRescanHint),
                 OpRescan});
-            rows.push_back({ItemKind::Action, "Invalidate cover cache", "refresh",
-                "Reload box-art from disk.",
+            rows.push_back({ItemKind::Action, _(SId::LibraryInvalidateCovers), _(SId::VerbRefresh),
+                _(SId::LibraryInvalidateCoversHint),
                 OpInvalidateCovers});
             // Sort cycle. Cycling triggers a rescan so the new order
             // takes effect immediately.
-            const char* sort_label = "Name";
+            const char* sort_label = _(SId::SortByName);
             switch (library::config().sort_mode) {
-                case library::Config::SortMode::Recent:    sort_label = "Recently played"; break;
-                case library::Config::SortMode::Playtime:  sort_label = "Playtime";        break;
-                case library::Config::SortMode::Favorites: sort_label = "Favorites first"; break;
-                case library::Config::SortMode::Name:      sort_label = "Name";            break;
+                case library::Config::SortMode::Recent:    sort_label = _(SId::SortByRecent);          break;
+                case library::Config::SortMode::Playtime:  sort_label = _(SId::SortByPlaytime);        break;
+                case library::Config::SortMode::Favorites: sort_label = _(SId::SortByFavoritesFirst);  break;
+                case library::Config::SortMode::Name:      sort_label = _(SId::SortByName);            break;
             }
-            rows.push_back({ItemKind::Cycle, "Sort games by", sort_label,
-                "Order of the per-system game grid.",
+            rows.push_back({ItemKind::Cycle, _(SId::LibrarySortGames), sort_label,
+                _(SId::LibrarySortGamesHint),
                 OpSortMode});
-            const char* sys_sort_label = "Scanner order";
+            const char* sys_sort_label = _(SId::SystemSortScannerOrder);
             switch (library::config().system_sort_mode) {
-                case library::Config::SystemSortMode::ScannerOrder: sys_sort_label = "Scanner order"; break;
-                case library::Config::SystemSortMode::Alphabetical: sys_sort_label = "Alphabetical";  break;
-                case library::Config::SystemSortMode::GameCount:    sys_sort_label = "Game count";    break;
-                case library::Config::SystemSortMode::Custom:       sys_sort_label = "Custom";        break;
+                case library::Config::SystemSortMode::ScannerOrder: sys_sort_label = _(SId::SystemSortScannerOrder); break;
+                case library::Config::SystemSortMode::Alphabetical: sys_sort_label = _(SId::SystemSortAlphabetical); break;
+                case library::Config::SystemSortMode::GameCount:    sys_sort_label = _(SId::SystemSortGameCount);    break;
+                case library::Config::SystemSortMode::Custom:       sys_sort_label = _(SId::SystemSortCustom);       break;
             }
-            rows.push_back({ItemKind::Cycle, "Sort systems by", sys_sort_label,
-                "Order of the Home carousel tiles.",
+            rows.push_back({ItemKind::Cycle, _(SId::LibrarySortSystems), sys_sort_label,
+                _(SId::LibrarySortSystemsHint),
                 OpSystemSortMode});
             break;
         }
@@ -1576,20 +1582,20 @@ std::vector<Item> build_items(Category cat, const State& s) {
 
             if (s.settings_subpage == 0) {
                 // Top-level: navigate-only Drill rows.
-                Item r1{ItemKind::Subpage, "Default core per system",
-                        "configure", "", 0};            r1.subpage = 1;
-                Item r2{ItemKind::Subpage, "Cores catalog",
-                        "browse / install", "", 0};     r2.subpage = 2;
-                Item r3{ItemKind::Subpage, "Bezel packs",
-                        "browse / install", "", 0};     r3.subpage = 3;
-                Item r4{ItemKind::Subpage, "Cheat packs",
-                        "browse / install", "", 0};     r4.subpage = 4;
-                Item r5{ItemKind::Subpage, "Shader presets",
-                        "browse / install", "", 0};     r5.subpage = 5;
-                Item r6{ItemKind::Subpage, "External standalone emulators",
-                        "PSP / GC status", "", 0};      r6.subpage = 6;
-                Item r7{ItemKind::Subpage, "Bezel per system",
-                        "pick or clear", "", 0};        r7.subpage = 7;
+                Item r1{ItemKind::Subpage, _(SId::EmuDefaultCore),
+                        _(SId::VerbConfigure), "", 0};      r1.subpage = 1;
+                Item r2{ItemKind::Subpage, _(SId::EmuCoresCatalog),
+                        _(SId::VerbBrowseInstall), "", 0};  r2.subpage = 2;
+                Item r3{ItemKind::Subpage, _(SId::EmuBezelPacks),
+                        _(SId::VerbBrowseInstall), "", 0};  r3.subpage = 3;
+                Item r4{ItemKind::Subpage, _(SId::EmuCheatPacks),
+                        _(SId::VerbBrowseInstall), "", 0};  r4.subpage = 4;
+                Item r5{ItemKind::Subpage, _(SId::EmuShaderPresets),
+                        _(SId::VerbBrowseInstall), "", 0};  r5.subpage = 5;
+                Item r6{ItemKind::Subpage, _(SId::EmuStandalones),
+                        _(SId::VerbStatusInfo), "", 0};     r6.subpage = 6;
+                Item r7{ItemKind::Subpage, _(SId::EmuBezelPerSystem),
+                        _(SId::VerbPickOrClear), "", 0};    r7.subpage = 7;
                 rows.push_back(std::move(r1));
                 rows.push_back(std::move(r2));
                 rows.push_back(std::move(r3));
@@ -1623,7 +1629,7 @@ std::vector<Item> build_items(Category cat, const State& s) {
 
             if (s.settings_subpage == 2) {
                 // Cores catalog: refresh + per-core install rows.
-                rows.push_back({ItemKind::Action, "Refresh manifest", "fetch",
+                rows.push_back({ItemKind::Action, _(SId::EmuRefreshManifest), _(SId::VerbFetch),
                     "Pulls the latest foyer-cores release listing from GitHub.",
                     OpUpdRefreshManifest});
 
@@ -1637,7 +1643,7 @@ std::vector<Item> build_items(Category cat, const State& s) {
                         it.label = c.name;
                         it.data  = c.name;
                         if (!installed) {
-                            it.value   = "download";
+                            it.value   = _(SId::VerbDownload);
                             it.payload = OpUpdInstallSingleCore;
                         } else {
                             const auto local_v =
@@ -1645,10 +1651,10 @@ std::vector<Item> build_items(Category cat, const State& s) {
                             const bool up_to_date =
                                 !local_v.empty() && local_v == c.version;
                             if (up_to_date) {
-                                it.value   = "installed - reinstall";
+                                it.value   = _(SId::VerbInstalledReinstall);
                                 it.payload = OpUpdReinstallSingleCore;
                             } else {
-                                it.value   = "update available";
+                                it.value   = _(SId::VerbUpdateAvailable);
                                 it.payload = OpUpdInstallSingleCore;
                             }
                         }
@@ -1656,14 +1662,14 @@ std::vector<Item> build_items(Category cat, const State& s) {
                     }
                 } else {
                     rows.push_back({ItemKind::Static,
-                        "Loading catalog...", "", "", 0});
+                        _(SId::EmuLoadingCatalog), "", "", 0});
                 }
                 break;
             }
 
             if (s.settings_subpage == 3) {
                 // Bezel packs: refresh + per-pack install rows.
-                rows.push_back({ItemKind::Action, "Refresh manifest", "fetch",
+                rows.push_back({ItemKind::Action, _(SId::EmuRefreshManifest), _(SId::VerbFetch),
                     "Pulls the latest foyer-bezels release listing.",
                     OpRefreshBezelsManifest});
 
@@ -1677,11 +1683,11 @@ std::vector<Item> build_items(Category cat, const State& s) {
                         const auto local_v =
                             library::installed_bezel_version(p.name);
                         if (local_v.empty()) {
-                            it.value = "download";
+                            it.value = _(SId::VerbDownload);
                         } else if (local_v == p.version) {
-                            it.value = "installed - reinstall";
+                            it.value = _(SId::VerbInstalledReinstall);
                         } else {
-                            it.value = "update available";
+                            it.value = _(SId::VerbUpdateAvailable);
                         }
                         it.payload = OpInstallSingleBezelPack;
                         rows.push_back(std::move(it));
@@ -1693,14 +1699,14 @@ std::vector<Item> build_items(Category cat, const State& s) {
                         OpInstallBezelPacks});
                 } else {
                     rows.push_back({ItemKind::Static,
-                        "Loading catalog...", "", "", 0});
+                        _(SId::EmuLoadingCatalog), "", "", 0});
                 }
                 break;
             }
 
             if (s.settings_subpage == 4) {
                 // Cheat packs: refresh + per-pack install rows.
-                rows.push_back({ItemKind::Action, "Refresh manifest", "fetch",
+                rows.push_back({ItemKind::Action, _(SId::EmuRefreshManifest), _(SId::VerbFetch),
                     "Pulls the latest foyer-cheats release listing.",
                     OpRefreshCheatsManifest});
 
@@ -1714,11 +1720,11 @@ std::vector<Item> build_items(Category cat, const State& s) {
                         const auto local_v =
                             library::installed_cheat_version(p.name);
                         if (local_v.empty()) {
-                            it.value = "download";
+                            it.value = _(SId::VerbDownload);
                         } else if (local_v == p.version) {
-                            it.value = "installed - reinstall";
+                            it.value = _(SId::VerbInstalledReinstall);
                         } else {
-                            it.value = "update available";
+                            it.value = _(SId::VerbUpdateAvailable);
                         }
                         it.payload = OpInstallSingleCheatPack;
                         rows.push_back(std::move(it));
@@ -1730,7 +1736,7 @@ std::vector<Item> build_items(Category cat, const State& s) {
                         OpInstallCheatPacks});
                 } else {
                     rows.push_back({ItemKind::Static,
-                        "Loading catalog...", "", "", 0});
+                        _(SId::EmuLoadingCatalog), "", "", 0});
                 }
                 break;
             }
@@ -2158,7 +2164,7 @@ void draw_settings(NVGcontext* vg, float w, float h, const State& s, const Libra
         nvgFillColor(vg, sel ? th.text_strong : th.text);
         nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
         nvgText(vg, rx + 64, ry + (kSideRowH - 8) * 0.5f,
-                kCategories[i].label, nullptr);
+                category_label(kCategories[i]), nullptr);
     }
 
     // Content panel. Page-title text used to draw above the card
@@ -4789,10 +4795,16 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
             break;
         }
         case View::Settings: {
-            const auto cat = (s.settings_category < (int)settings::Category::Count_)
-                ? settings::kCategories[s.settings_category].label : "";
+            const char* cat = (s.settings_category < (int)settings::Category::Count_)
+                ? settings::category_label(
+                      settings::kCategories[s.settings_category])
+                : "";
             char buf[160];
-            std::snprintf(buf, sizeof(buf), "foyer  >  Settings  >  %s", cat);
+            // "foyer" is the brand name — left untranslated; the
+            // category and the static "Settings" word both go
+            // through the i18n catalogue.
+            std::snprintf(buf, sizeof(buf), "foyer  >  %s  >  %s",
+                _(SId::Settings), cat);
             title = buf;
             // Hint composes from the focused row's kind + (for Action
             // rows) the row's value field, which holds the verb
