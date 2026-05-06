@@ -19,6 +19,9 @@ std::mutex        g_init_mu;
 
 // Singleton download counters — see DownloadStatus in http.hpp.
 DownloadStatus    g_download;
+// Optional UI pump invoked from inside xferinfo (main thread). nullptr
+// means no-op — the progress globals still update either way.
+PumpCallback      g_pump;
 
 std::size_t mem_writer(void* ptr, std::size_t sz, std::size_t n, void* userdata) {
     auto* out = static_cast<std::vector<char>*>(userdata);
@@ -49,6 +52,11 @@ int xferinfo_cancel(void* userdata, curl_off_t dltotal, curl_off_t dlnow,
                     curl_off_t, curl_off_t) {
     g_download.now.store  (static_cast<std::uint64_t>(dlnow),   std::memory_order_relaxed);
     g_download.total.store(static_cast<std::uint64_t>(dltotal), std::memory_order_relaxed);
+    // Drive the UI pump from inside curl so the byte progress bar
+    // animates during a single multi-MB transfer (we're blocked in
+    // curl_easy_perform on the main thread until the download
+    // completes; without this hook the bar is frozen).
+    if (g_pump) g_pump();
     auto* hook = static_cast<CancelHook*>(userdata);
     return (hook && *hook && (*hook)()) ? 1 : 0;
 }
@@ -103,6 +111,8 @@ void apply_common(CURL* curl, const std::string& url, curl_slist* hdrs,
 } // namespace
 
 DownloadStatus& current_download() { return g_download; }
+
+void set_pump_callback(PumpCallback cb) { g_pump = std::move(cb); }
 
 void init() {
     // Double-checked under a mutex so a second thread can't race past

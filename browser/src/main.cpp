@@ -176,6 +176,22 @@ int main(int argc, char** argv) {
     // hangs at "Fetching manifest...". Boot-time foyer manifest
     // check is the trigger.
     foyer::net::init();
+    // Wire the per-byte UI pump. xferinfo (called from inside curl_-
+    // easy_perform on this thread) hits this every ~200ms; we
+    // throttle to ~30 fps so the progress bar redraws without us
+    // blowing the frame budget on every single curl tick.
+    {
+        static auto last_pump = std::chrono::steady_clock::now()
+            - std::chrono::milliseconds(100);
+        foyer::net::set_pump_callback([&app]() {
+            const auto now = std::chrono::steady_clock::now();
+            if (now - last_pump >=
+                std::chrono::milliseconds(33)) {
+                last_pump = now;
+                app.tick();
+            }
+        });
+    }
     tick_phase("net::init done");
     boot_status = "Loading theme...";
     app.tick();
@@ -262,6 +278,24 @@ int main(int argc, char** argv) {
             continue;
         }
 
+        // "Restart now" from the post-download confirm modal. Apply
+        // the staged .new -> .nro swap right here, then chain-launch
+        // the freshly-renamed binary via libnx's envSetNextLoad — the
+        // hbloader picks it up on our exit and runs the new bytes.
+        // No-op fallback if the rename fails (rare; we still apply
+        // on exit via apply_staged_update_if_present below).
+        if (state.request_restart_now) {
+            state.request_restart_now = false;
+            foyer::browser::mtp_stop();
+            apply_staged_update_if_present();
+            const std::string load_path = std::string{"sdmc:"} + g_foyer_nro_path;
+            envSetNextLoad(load_path.c_str(), "\"foyer-restart\"");
+            foyer::log::write("[foyer_update] chain-launching %s\n",
+                load_path.c_str());
+            app.quit();
+            continue;
+        }
+
         if (state.request_rescan) {
             state.request_rescan = false;
             foyer::library::reload_config();
@@ -343,10 +377,16 @@ int main(int argc, char** argv) {
                         "Foyer update download failed - check Wi-Fi / log";
                     state.banner_ttl = 360;
                 } else if (was_install && !downloaded.empty()) {
-                    state.banner_text =
-                        "Update v" + downloaded +
-                        " downloaded - restart foyer to apply";
-                    state.banner_ttl = 600;
+                    // Staged .new is ready — surface the restart-confirm
+                    // modal so the user can apply + relaunch in one
+                    // tap instead of having to manually exit and re-
+                    // enter foyer. Banner clears; the modal is the
+                    // primary surface now.
+                    state.foyer_update_version = downloaded;
+                    state.restart_confirm_open  = true;
+                    state.restart_confirm_index = 0; // default Yes
+                    state.banner_text.clear();
+                    state.banner_ttl = 0;
                 } else if (newer) {
                     // Silent boot check found something — point the
                     // user at the actionable surface.
@@ -469,17 +509,22 @@ int main(int argc, char** argv) {
                     foyer::browser::set_manifest_cache(manifest);
                     const auto totals = foyer::library::install_cores(manifest,
                         [&](const foyer::library::InstallProgress& p) {
-                            char b[160];
-                            const char* verb =
-                                p.action == foyer::library::InstallAction::Skipped   ? "skipped" :
-                                p.action == foyer::library::InstallAction::Updated   ? "updated" :
-                                p.action == foyer::library::InstallAction::Installed ? "installed"
-                                                                                     : "FAILED";
-                            std::snprintf(b, sizeof(b), "[%d/%d] %s - %s",
-                                p.index, p.total, p.name.c_str(), verb);
-                            state.banner_text = b;
-                            state.banner_ttl  = 60;
-                            app.tick();
+                            // The per-byte progress overlay (banner
+                            // pill widening with the bar) carries the
+                            // actual download. We just publish the
+                            // current core's name so the title line
+                            // matches what's transferring; skip-only
+                            // rows tick by silently in the log.
+                            if (p.action == foyer::library::InstallAction::Installed
+                             || p.action == foyer::library::InstallAction::Updated
+                             || p.action == foyer::library::InstallAction::Failed) {
+                                char b[120];
+                                std::snprintf(b, sizeof(b),
+                                    "Updating %s...", p.name.c_str());
+                                state.banner_text = b;
+                                state.banner_ttl  = 240;
+                                app.tick();
+                            }
                         }, force);
                     if (totals.failed > 0) {
                         char b[120];
@@ -487,14 +532,19 @@ int main(int argc, char** argv) {
                             "%d core%s failed - check log",
                             totals.failed, totals.failed == 1 ? "" : "s");
                         state.banner_text = b;
-                    } else {
-                        char b[160];
+                        state.banner_ttl = 360;
+                    } else if (totals.installed + totals.updated > 0) {
+                        char b[80];
+                        const int n = totals.installed + totals.updated;
                         std::snprintf(b, sizeof(b),
-                            "Cores ready (%d new, %d updated, %d skipped)",
-                            totals.installed, totals.updated, totals.skipped);
+                            "%d core%s up to date", n, n == 1 ? "" : "s");
                         state.banner_text = b;
+                        state.banner_ttl  = 180;
+                    } else {
+                        // Everything skipped — nothing to surface.
+                        state.banner_text.clear();
+                        state.banner_ttl = 0;
                     }
-                    state.banner_ttl = 360;
                     // Refresh manifest cache so per-row state
                     // reflects the new "up to date" status.
                     foyer::browser::set_manifest_cache(
@@ -817,5 +867,13 @@ int main(int argc, char** argv) {
         }
     }
     foyer::browser::mtp_stop();
+
+    // Apply any staged self-update before we exit. Without this the
+    // user who picked "Later" on the restart-confirm modal would have
+    // to launch foyer TWICE after a download (once to swap .new ->
+    // .nro at boot, again to actually run the new bytes). Doing the
+    // rename on the way out closes that gap — the next launch is
+    // already the new version.
+    apply_staged_update_if_present();
     return 0;
 }

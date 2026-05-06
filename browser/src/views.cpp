@@ -1015,6 +1015,57 @@ void draw_update_confirm(NVGcontext* vg, float w, float h, const State& s) {
     button(no_x,  "No",  s.update_confirm_index == 1);
 }
 
+// Post-download restart confirmation. Opened by main.cpp's foyer_job
+// poll block when downloaded_version() lands. Yes -> apply staged
+// .new immediately + chain-launch; No -> leave .new on disk for the
+// boot path to apply on next manual launch.
+void draw_restart_confirm(NVGcontext* vg, float w, float h, const State& s) {
+    if (!s.restart_confirm_open) return;
+    const auto& th = theme();
+
+    nvgBeginPath(vg);
+    nvgRect(vg, 0, 0, w, h);
+    nvgFillColor(vg, nvgRGBAf(0, 0, 0, 0.55f));
+    nvgFill(vg);
+
+    constexpr float kCardW = 540.0f;
+    constexpr float kCardH = 240.0f;
+    const float cx = (w - kCardW) * 0.5f;
+    const float cy = (h - kCardH) * 0.5f;
+
+    rrect(vg, cx, cy, kCardW, kCardH, 14.0f, th.bg_panel);
+    rrect_outline(vg, cx, cy, kCardW, kCardH, 14.0f, th.border, 1.0f);
+
+    nvgFontSize(vg, th.head_size);
+    nvgFillColor(vg, th.text_strong);
+    nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
+    const std::string title = "Restart foyer to apply v" + s.foyer_update_version + "?";
+    nvgText(vg, cx + kCardW * 0.5f, cy + 24, title.c_str(), nullptr);
+
+    nvgFontSize(vg, th.label_size);
+    nvgFillColor(vg, th.text_dim);
+    nvgText(vg, cx + kCardW * 0.5f, cy + 24 + th.head_size + 12,
+        "Replaces foyer.nro and re-launches. No on-disk save loss.",
+        nullptr);
+
+    constexpr float kBtnW = 140.0f;
+    constexpr float kBtnH = 56.0f;
+    const float by = cy + kCardH - 28 - kBtnH;
+    const float yes_x = cx + kCardW * 0.25f - kBtnW * 0.5f;
+    const float no_x  = cx + kCardW * 0.75f - kBtnW * 0.5f;
+
+    auto button = [&](float bx, const char* label, bool sel) {
+        rrect(vg, bx, by, kBtnW, kBtnH, 10.0f,
+              sel ? th.accent : th.bg_panel_hi);
+        nvgFontSize(vg, th.body_size);
+        nvgFillColor(vg, sel ? th.bg : th.text_strong);
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+        nvgText(vg, bx + kBtnW * 0.5f, by + kBtnH * 0.5f, label, nullptr);
+    };
+    button(yes_x, "Restart now", s.restart_confirm_index == 0);
+    button(no_x,  "Later",       s.restart_confirm_index == 1);
+}
+
 void draw_popup(NVGcontext* vg, float w, float h, const State& s) {
     if (!s.popup_open) return;
     const auto& th = theme();
@@ -3301,6 +3352,52 @@ void update(State& s, const Library& lib,
         return;
     }
 
+    // Post-download restart confirmation. Opened by main.cpp once the
+    // foyer self-update .new file is staged. Default index is 0 (Yes)
+    // because the user already opted in to the update.
+    if (s.restart_confirm_open) {
+        reset_input_state(s);
+        if (touch.tap_started && touch.count > 0) {
+            constexpr float kCardW = 540.0f;
+            constexpr float kCardH = 240.0f;
+            constexpr float kBtnW  = 140.0f;
+            constexpr float kBtnH  = 56.0f;
+            const float cx = (w - kCardW) * 0.5f;
+            const float cy = (h - kCardH) * 0.5f;
+            const float by = cy + kCardH - 28 - kBtnH;
+            const float yes_x = cx + kCardW * 0.25f - kBtnW * 0.5f;
+            const float no_x  = cx + kCardW * 0.75f - kBtnW * 0.5f;
+            const float tx = touch.points[0].x;
+            const float ty = touch.points[0].y;
+            auto in_btn = [&](float bx) {
+                return tx >= bx && tx < bx + kBtnW &&
+                       ty >= by && ty < by + kBtnH;
+            };
+            if (in_btn(yes_x)) {
+                s.restart_confirm_index = 0;
+                down |= HidNpadButton_A;
+            } else if (in_btn(no_x)) {
+                s.restart_confirm_index = 1;
+                down |= HidNpadButton_A;
+            }
+        }
+        if (down & (HidNpadButton_AnyLeft | HidNpadButton_AnyRight)) {
+            s.restart_confirm_index = 1 - s.restart_confirm_index;
+        }
+        if (down & HidNpadButton_B) {
+            s.restart_confirm_open = false;
+            return;
+        }
+        if (down & HidNpadButton_A) {
+            const bool yes = (s.restart_confirm_index == 0);
+            s.restart_confirm_open = false;
+            if (yes) {
+                s.request_restart_now = true;
+            }
+        }
+        return;
+    }
+
     // Modal popup intercepts all input while open.
     if (s.popup_open) {
         reset_input_state(s);
@@ -4721,6 +4818,7 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
     draw_popup(vg, w, h, s);
     draw_quit_confirm(vg, w, h, s);
     draw_update_confirm(vg, w, h, s);
+    draw_restart_confirm(vg, w, h, s);
     settings::draw_option_picker(vg, w, h, s);
 
     // Banner (e.g., "Scraping NES…  3 / 24"). Drawn last so nothing

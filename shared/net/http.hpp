@@ -34,6 +34,16 @@ struct DownloadStatus {
 };
 DownloadStatus& current_download();
 
+// Optional pump callback fired from inside libcurl's xferinfo
+// callback during streaming downloads. The xferinfo callback runs on
+// the same thread that called get_to_file (in foyer's case, the main
+// thread), so the pump can safely call into the platform layer to
+// render a fresh frame — that's the only way the byte progress bar
+// animates while we're blocked in curl_easy_perform on a single
+// multi-megabyte download. Set to nullptr (default) to disable.
+using PumpCallback = std::function<void()>;
+void set_pump_callback(PumpCallback cb);
+
 struct Response {
     long              code = 0;     // HTTP status (0 if no response)
     std::vector<char> body;          // empty when streaming to a file

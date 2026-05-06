@@ -69,6 +69,14 @@ struct State {
     bool update_confirm_open = false;
     int  update_confirm_index = 1; // default to "No"
 
+    // Yes/No confirmation AFTER the self-update download finishes. A
+    // on Yes renames .new -> .nro and chain-launches the fresh foyer
+    // immediately; A on No leaves the staged file in place (the boot
+    // path applies it on next launch). Opened by main.cpp's
+    // foyer_job poll block when downloaded_version() is set.
+    bool restart_confirm_open = false;
+    int  restart_confirm_index = 0; // default to "Yes" — they just opted in
+
     // Modal option picker. Opened from a Settings Cycle row when the
     // user presses A — instead of cycling one step, we surface the
     // full list as a scrollable menu so they can see / pick directly.
@@ -120,6 +128,11 @@ struct State {
     // Set by the Updates page "Update everything" footer. main.cpp
     // chains the per-kind install paths once and clears the flag.
     bool        request_update_all        = false;
+    // Set by the post-download restart-confirm modal when the user
+    // picks "Restart now". main.cpp renames foyer.nro.new -> foyer.nro,
+    // chain-launches the freshly-staged binary via envSetNextLoad,
+    // and exits cleanly.
+    bool        request_restart_now       = false;
     // Set true on first Settings entry per app run so the cores /
     // cheats / bezels manifests start auto-fetching in the background.
     // Stays false thereafter so the user can still trigger a manual
