@@ -87,25 +87,46 @@ constexpr Catalogue kEnglishStrings = [] {
     return a;
 }();
 
+// Forward-declare per-language catalogues that live in their own .cpp.
+extern const Catalogue kSpanishStrings;
+extern const Catalogue kPortugueseBrazilStrings;
+
 // Catalogue table. Indexed by Language. Add per-language arrays here
 // as community translations land — declare them in their own .cpp
-// (e.g. i18n_es.cpp) and forward-declare the array here.
+// (e.g. i18n_es.cpp) and add the extern + table entry above.
 //
 // Slots that point to nullptr (or to empty strings inside an array)
 // fall through to English at lookup time, so a partial translation
 // is fine — nobody sees a blank space.
-constexpr std::array<const Catalogue*, (std::size_t)Language::kLanguageCount>
+const std::array<const Catalogue*, (std::size_t)Language::kLanguageCount>
     kCatalogues = {
         &kEnglishStrings,
+        &kSpanishStrings,
+        &kPortugueseBrazilStrings,
 };
 
 Language g_language = Language::English;
 
-// Map the libnx system language code onto our supported set.
-// Currently every locale collapses to English because no other
-// language has shipped translations yet — extend this when they do.
+// Map a libnx language code (u64 with the locale string packed into
+// the low bytes — "en-US\0\0\0", "pt-BR\0\0\0", "es-419\0\0", "es",
+// "ja", etc.) onto our supported Language set. Anything we don't
+// ship a catalogue for falls through to English; add cases here
+// as new community translations land.
 Language map_switch_language(std::uint64_t language_code) {
-    (void)language_code;
+    char code[9] = {};
+    std::memcpy(code, &language_code, 8);
+    // Iberian + Latin American Spanish both target our es catalogue.
+    // Latin-American conventions throughout, acceptable for both
+    // audiences as a starting point.
+    if (std::strncmp(code, "es", 2) == 0) {
+        return Language::Spanish;
+    }
+    // Brazilian Portuguese only — pt-BR is a distinct catalogue from
+    // European Portuguese (which we don't ship yet; "pt" without a
+    // region falls through to English).
+    if (std::strncmp(code, "pt-BR", 5) == 0) {
+        return Language::PortugueseBrazil;
+    }
     return Language::English;
 }
 

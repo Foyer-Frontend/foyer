@@ -12,6 +12,8 @@ add_library(foyer_shared STATIC
     platform/app.cpp
     platform/log.cpp
     i18n/i18n.cpp
+    i18n/i18n_es.cpp
+    i18n/i18n_pt_br.cpp
     library/system_db.cpp
     library/scanner.cpp
     library/library_cache.cpp

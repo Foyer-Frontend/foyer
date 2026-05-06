@@ -104,11 +104,12 @@ enum class StringId : std::uint16_t {
 
 // Languages foyer ships catalogues for. Switch system language gets
 // mapped onto these via map_switch_language() in i18n.cpp.
+//
+// Append-only; don't reorder existing entries.
 enum class Language : std::uint8_t {
     English,
-    // Append-only; don't reorder.
-    // Spanish, French, German, Italian, Portuguese, ... when
-    // community translations land.
+    Spanish,           // es / es-419 (Latin American)
+    PortugueseBrazil,  // pt-BR
 
     kLanguageCount,
 };
