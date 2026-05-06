@@ -23,6 +23,7 @@ roms/
 *.smd
 *.md
 !README.md
+!ROADMAP.md
 !LICENSE*.md
 !*.cmake.md
 !docs/**/*.md
