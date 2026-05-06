@@ -233,16 +233,25 @@ bool Frontend::init() {
 #  undef FOYER_STR2
 #endif
 
-    // Wire callbacks before retro_init so the core sees them during its own
-    // init sequence (some cores call env from inside retro_init).
+    // Per libretro spec, retro_set_environment is the ONLY callback
+    // that must run before retro_init — cores often dispatch env_cb
+    // from inside their init to read system_directory / log handles
+    // / hw_render setup. The rest of the retro_set_* callbacks come
+    // AFTER retro_init: most cores just stash the function pointer
+    // either way, but strict cores (mesen calls
+    // _console->GetVideoRenderer() inside retro_set_video_refresh —
+    // and _console only exists after retro_init has run) crash hard
+    // when they're set too early. atmosphère report 01778050927
+    // caught exactly this on the v0.2.29 mesen build: PC inside
+    // shared_ptr_base.h:1529 from a null-control-block copy out of
+    // _videoRenderer.
     retro_set_environment(env_cb);
+    retro_init();
     retro_set_video_refresh(video_refresh_cb);
     retro_set_audio_sample(audio_sample_cb);
     retro_set_audio_sample_batch(audio_sample_batch_cb);
     retro_set_input_poll(input_poll_cb);
     retro_set_input_state(input_state_cb);
-
-    retro_init();
 
     retro_system_info info{};
     retro_get_system_info(&info);
