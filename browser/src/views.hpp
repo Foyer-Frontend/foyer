@@ -167,6 +167,13 @@ struct State {
     // every rom in the focused system. The "kind" picks which scraper to use.
     enum class ScrapeKind { None, Libretro, ScreenScraper, SteamGridDB };
     ScrapeKind  request_scrape_kind = ScrapeKind::None;
+    // Set by the System-view popup "Pick cover..." entry. main.cpp
+    // services it on the next tick: fetches up to N grid candidates
+    // from SteamGridDB, downloads each to /foyer/data/cover_picks/,
+    // then opens the OptionPicker overlay with thumbnails so the user
+    // can pick one. The chosen file gets copied onto
+    // /foyer/assets/covers/<sys>/<stem>.png.
+    bool        request_pick_cover = false;
 
     // Optional banner shown at the top of the screen for ~120 frames.
     // Cleared automatically by draw() when ttl reaches zero.
@@ -231,5 +238,17 @@ void set_manifest_cache(library::CoreManifest manifest);
 // these to render per-pack install rows.
 void set_cheats_manifest_cache(library::CheatManifest manifest);
 void set_bezels_manifest_cache(library::BezelManifest manifest);
+
+// Open the cover-picker overlay with the list of candidate paths the
+// caller already downloaded. The picker shows each as a thumbnail
+// (image_paths) — A on a row copies that file onto
+// /foyer/assets/covers/<sys>/<stem>.png. Used by main.cpp's
+// request_pick_cover servicer; views.cpp owns the op enum so we
+// expose the open call rather than the op value.
+void open_cover_picker(State& s,
+                       std::string title,
+                       std::string sys_folder,
+                       std::string stem,
+                       std::vector<std::string> candidate_paths);
 
 } // namespace foyer::browser

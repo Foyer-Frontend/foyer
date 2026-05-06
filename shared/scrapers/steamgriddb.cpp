@@ -66,6 +66,35 @@ std::string first_grid_url(long long game_id, const std::string& key) {
     return out;
 }
 
+// Fetch up to `limit` grid URLs for the game id. Used by the
+// interactive cover-picker flow — grabs N candidates so the user can
+// scroll through previews and pick one. SteamGridDB's API returns
+// the most-popular grids first.
+std::vector<std::string> grid_urls(long long game_id, const std::string& key,
+                                   std::size_t limit) {
+    std::vector<std::string> out;
+    const auto url = "https://www.steamgriddb.com/api/v2/grids/game/"
+                   + std::to_string(game_id);
+    const auto resp = foyer::net::get(url, auth_headers(key));
+    if (resp.code != 200 || resp.body.empty()) return out;
+
+    auto* doc = yyjson_read(resp.body.data(), resp.body.size(), 0);
+    if (!doc) return out;
+    if (auto* root = yyjson_doc_get_root(doc)) {
+        if (auto* data = yyjson_obj_get(root, "data"); data && yyjson_is_arr(data)) {
+            std::size_t i, n; yyjson_val* item;
+            yyjson_arr_foreach(data, i, n, item) {
+                if (out.size() >= limit) break;
+                if (auto* u = yyjson_obj_get(item, "url"); u && yyjson_is_str(u)) {
+                    out.emplace_back(yyjson_get_str(u));
+                }
+            }
+        }
+    }
+    yyjson_doc_free(doc);
+    return out;
+}
+
 } // namespace
 
 bool fetch_cover(std::string_view system_folder,
@@ -94,6 +123,44 @@ bool fetch_cover(std::string_view system_folder,
     foyer::log::write("[sgdb] saved %s (id=%lld)\n", dest_png.c_str(), id);
     (void)system_folder;
     return true;
+}
+
+std::vector<std::string> fetch_cover_candidates(
+    std::string_view rom_stem,
+    const std::string& dest_dir,
+    std::size_t limit) {
+    std::vector<std::string> out;
+    const auto& a = foyer::scrapers::accounts().steamgriddb;
+    if (!a.ready()) {
+        foyer::log::write("[sgdb] api_key not set in accounts.jsonc\n");
+        return out;
+    }
+
+    const auto id = search_game_id(std::string{rom_stem}, a.api_key);
+    if (id == 0) {
+        foyer::log::write("[sgdb] no game match for '%.*s'\n",
+            (int)rom_stem.size(), rom_stem.data());
+        return out;
+    }
+
+    const auto urls = grid_urls(id, a.api_key, limit);
+    foyer::scrapers::ensure_parent_dir(dest_dir + "/.placeholder");
+
+    out.reserve(urls.size());
+    for (std::size_t i = 0; i < urls.size(); i++) {
+        // Save each candidate as <dest_dir>/cand_NN.png — caller hands
+        // these paths to the option-picker as image_paths so the user
+        // sees thumbnails and picks one.
+        char fn[64];
+        std::snprintf(fn, sizeof(fn), "/cand_%02zu.png", i);
+        const std::string dst = dest_dir + fn;
+        if (foyer::net::get_to_file(urls[i], dst)) {
+            out.push_back(dst);
+        }
+    }
+    foyer::log::write("[sgdb] fetched %zu candidate(s) for '%.*s' (id=%lld)\n",
+        out.size(), (int)rom_stem.size(), rom_stem.data(), id);
+    return out;
 }
 
 } // namespace foyer::scrapers::steamgriddb

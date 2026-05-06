@@ -36,6 +36,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <dirent.h>
 #include <sys/stat.h>
 
 namespace {
@@ -716,6 +717,59 @@ int main(int argc, char** argv) {
                 state.banner_text = std::string{"Core not installed: foyer-"}
                     + (core ? std::string{core->name} : "?") + ".nro";
                 state.banner_ttl  = 180;
+            }
+        }
+
+        if (state.request_pick_cover) {
+            state.request_pick_cover = false;
+            // Resolve focused game + system, then pull up to N
+            // SteamGridDB grid candidates and stash them on SD where
+            // the OptionPicker can render them as thumbnails.
+            if (state.system_index < lib.systems.size()) {
+                const auto& sys2 = lib.systems[state.system_index];
+                if (state.game_index < sys2.games.size()) {
+                    const auto& g = sys2.games[state.game_index];
+                    const auto* def = foyer::library::is_virtual_system(*sys2.def)
+                        ? foyer::library::origin_system_for_rom(g.path)
+                        : sys2.def;
+                    if (def) {
+                        constexpr const char* kCacheDir = "/foyer/data/cover_picks";
+                        ::mkdir("/foyer/data", 0777);
+                        ::mkdir(kCacheDir, 0777);
+                        // Wipe stale candidates from a previous run so
+                        // the picker doesn't show the previous game's
+                        // thumbnails when SteamGridDB returns fewer
+                        // images this time around.
+                        if (auto* d = ::opendir(kCacheDir)) {
+                            while (auto* e = ::readdir(d)) {
+                                if (!e->d_name[0] || e->d_name[0] == '.') continue;
+                                std::string p = std::string{kCacheDir}
+                                              + "/" + e->d_name;
+                                ::unlink(p.c_str());
+                            }
+                            ::closedir(d);
+                        }
+                        app.tick();   // keep UI responsive while we fetch
+                        auto cands = foyer::scrapers::steamgriddb
+                            ::fetch_cover_candidates(g.stem, kCacheDir, 8);
+                        if (cands.empty()) {
+                            state.banner_text = "No cover candidates found";
+                            state.banner_ttl  = 240;
+                        } else {
+                            // views.cpp owns the OpPickCover enum
+                            // value — expose via open_cover_picker so
+                            // main.cpp doesn't reach into the
+                            // anonymous-namespace settings:: ops.
+                            foyer::browser::open_cover_picker(state,
+                                std::string{"Pick cover for "} + g.stem,
+                                std::string{def->folder_name},
+                                g.stem,
+                                std::move(cands));
+                            state.banner_text = "";
+                            state.banner_ttl  = 0;
+                        }
+                    }
+                }
             }
         }
 

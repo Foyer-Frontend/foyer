@@ -896,6 +896,7 @@ enum PopupOp {
     PopScrapeSystem,     // System view: kicks off a bulk scrape of the focused system
     PopSystemMoveUp,     // Home: move the focused system one slot toward the front
     PopSystemMoveDown,   // Home: move the focused system one slot toward the back
+    PopPickCover,        // System / GameDetail: interactive cover-pick from SteamGridDB
 };
 
 std::vector<PopupItem> popup_items_for(View v) {
@@ -910,6 +911,7 @@ std::vector<PopupItem> popup_items_for(View v) {
                      {"Exit",          PopExit} };
         case View::System:
             return { {"Toggle Favorite",       PopToggleFavorite},
+                     {"Pick cover...",         PopPickCover},
                      {"Favorite all",          PopFavoriteAll},
                      {"Clear all favorites",   PopUnfavoriteAll},
                      {"Scrape this system",    PopScrapeSystem},
@@ -1345,6 +1347,7 @@ enum : int {
     OpUpdRescrape,     // "Re-scrape now" footer
     OpEmuSysCore,    // Cycle through available cores for one system.
     OpBezelForSystem, // Per-system bezel picker (Settings → Emulator → Bezel per system)
+    OpPickCover,      // Interactive cover-pick from SteamGridDB candidates
     OpExpMtp, OpExpMtpAutostart, OpExpDebugLog,
     // Account fields opened via on-screen keyboard.
     OpAccSsDevId, OpAccSsDevPw, OpAccSsUser, OpAccSsPw,
@@ -2350,6 +2353,15 @@ OptionList build_option_list(int op, const std::string& data) {
             o.current_index = -1;  // no "current" badge — file copy is fire-and-forget
             break;
         }
+        case OpPickCover: {
+            // The picker fields for this op (options + image_paths)
+            // are populated directly by main.cpp after the candidates
+            // are downloaded — this builder isn't called through the
+            // normal Cycle-row path. Returning an empty OptionList
+            // signals "don't auto-open".
+            o.title = "Pick cover";
+            break;
+        }
         case OpUpdSingleItem: {
             // data is "<kind>:<id>". The action menu varies by kind
             // *and* by whether the item is currently installed —
@@ -2444,6 +2456,39 @@ std::string apply_option(int op, const std::string& data,
         case OpRunahead: {
             library::set_runahead_frames(chosen_index);
             break;
+        }
+        case OpPickCover: {
+            // data is "<sys>:<stem>:<candidate_path>" — but we only
+            // need the chosen index because the candidate paths are
+            // already in the picker's image_paths. Walk the picker's
+            // own state to find what was chosen, copy it onto SD.
+            const auto& p = s.option_picker;
+            if (chosen_index < 0
+                || chosen_index >= (int)p.image_paths.size()) return {};
+            const std::string src = p.image_paths[chosen_index];
+            // data format: "<sys>:<stem>"
+            const auto colon = data.find(':');
+            if (colon == std::string::npos) return {};
+            const std::string sys_folder = data.substr(0, colon);
+            const std::string stem       = data.substr(colon + 1);
+            const std::string dst =
+                "/foyer/assets/covers/" + sys_folder + "/" + stem + ".png";
+            // ensure parent exists
+            ::mkdir("/foyer/assets/covers", 0777);
+            ::mkdir(("/foyer/assets/covers/" + sys_folder).c_str(), 0777);
+            // copy file
+            std::FILE* in  = std::fopen(src.c_str(), "rb");
+            if (!in) return {};
+            std::FILE* out = std::fopen(dst.c_str(), "wb");
+            if (!out) { std::fclose(in); return {}; }
+            char buf[64 * 1024];
+            std::size_t r;
+            while ((r = std::fread(buf, 1, sizeof(buf), in)) > 0)
+                std::fwrite(buf, 1, r, out);
+            std::fclose(in);
+            std::fclose(out);
+            s.request_invalidate_covers = true;
+            return std::string{"Cover saved for "} + stem;
         }
         case OpBezelForSystem: {
             // chosen_index 0 = "(none)", >0 = base name of a PNG
@@ -3426,6 +3471,21 @@ void update(State& s, const Library& lib,
                     s.banner_ttl  = 180;
                     break;
                 }
+                case PopPickCover: {
+                    if (s.view != View::System) break;
+                    if (s.system_index >= lib.systems.size()) break;
+                    const auto& sys2 = lib.systems[s.system_index];
+                    if (sys2.games.empty()) break;
+                    if (!foyer::scrapers::accounts().steamgriddb.ready()) {
+                        s.banner_text = "Set steamgriddb.api_key in accounts.jsonc first";
+                        s.banner_ttl  = 300;
+                        break;
+                    }
+                    s.request_pick_cover = true;
+                    s.banner_text = "Fetching cover candidates...";
+                    s.banner_ttl  = 240;
+                    break;
+                }
                 case PopSystemMoveUp:
                 case PopSystemMoveDown: {
                     if (s.view != View::Home) break;
@@ -4402,6 +4462,26 @@ void invalidate_cover_cache(NVGcontext* vg) {
     theme_bg_cache().clear(vg);
     system_splash_cache().clear(vg);
     meta_cache().clear();
+}
+
+void open_cover_picker(State& s,
+                       std::string title,
+                       std::string sys_folder,
+                       std::string stem,
+                       std::vector<std::string> candidate_paths) {
+    s.option_picker.open    = true;
+    s.option_picker.title   = std::move(title);
+    s.option_picker.options.clear();
+    s.option_picker.options.reserve(candidate_paths.size());
+    for (std::size_t i = 0; i < candidate_paths.size(); i++) {
+        s.option_picker.options.emplace_back(
+            "Candidate " + std::to_string(i + 1));
+    }
+    s.option_picker.image_paths = std::move(candidate_paths);
+    s.option_picker.current     = -1;
+    s.option_picker.cursor      = 0;
+    s.option_picker.op          = settings::OpPickCover;
+    s.option_picker.data        = std::move(sys_folder) + ":" + std::move(stem);
 }
 
 void set_manifest_cache(library::CoreManifest manifest) {
