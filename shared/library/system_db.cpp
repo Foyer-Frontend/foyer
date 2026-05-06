@@ -108,6 +108,19 @@ constexpr CoreDef kCoresCpc[]         = { { "caprice32",         "Caprice32"    
 // ExternalProject recipe lands.
 constexpr CoreDef kCoresC64[]         = { { "frodo",             "Frodo"              } };
 
+// Atari 8-bit family (atari800 covers both Atari 800 + 5200).
+constexpr CoreDef kCoresAtari800[]    = { { "atari800",          "Atari800"           } };
+
+// MSX / MSX2 / MSX2+ — fMSX is light and stable; bluemsx will join
+// when its recipe lands.
+constexpr CoreDef kCoresMsx[]         = { { "fmsx",              "fMSX"               } };
+
+// 3DO Interactive Multiplayer.
+constexpr CoreDef kCores3do[]         = { { "opera",             "Opera"              } };
+
+// nxengine (Cave Story) ships as a core but has no SystemDef entry —
+// the theme has no cavestory tile. Add the SystemDef once a tile lands.
+
 constexpr SystemDef kSystems[] = {
     { "nes",          "Nintendo Entertainment System", "NES",
       "Nintendo - Nintendo Entertainment System",
@@ -272,6 +285,26 @@ constexpr SystemDef kSystems[] = {
     { "c64",          "Commodore 64",                 "C64",
       "Commodore - 64",
       "d64|t64|prg|crt|p00|tap|nib|m3u", kCoresC64 },
+
+    { "atari800",     "Atari 800",                    "A800",
+      "Atari - 8-bit",
+      "atr|xfd|atx|cas|cdm|car|rom|com|xex", kCoresAtari800 },
+
+    { "atari5200",    "Atari 5200",                   "A5200",
+      "Atari - 5200",
+      "a52|car|bin|rom",   kCoresAtari800 },
+
+    { "msx",          "MSX",                          "MSX",
+      "Microsoft - MSX",
+      "rom|ri|mx1|mx2|col|dsk|cas|sg|sc|m3u", kCoresMsx },
+
+    { "msx2",         "MSX2",                         "MSX2",
+      "Microsoft - MSX2",
+      "rom|ri|mx1|mx2|col|dsk|cas|sg|sc|m3u", kCoresMsx },
+
+    { "3do",          "3DO",                          "3DO",
+      "The 3DO Company - 3DO",
+      "iso|chd|cue|m3u",   kCores3do },
 };
 
 bool iequal(std::string_view a, std::string_view b) {
