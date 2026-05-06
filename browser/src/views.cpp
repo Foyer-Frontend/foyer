@@ -1411,7 +1411,7 @@ enum : int {
     // those still exist for the per-Catalog subpages but the Updates
     // top-level entry now uses these three:
     OpUpdSingleItem,   // A on a pending row → picker (Update / Reinstall / Skip)
-    OpUpdAll,          // "Update everything" footer
+    OpUpdAll,          // _(SId::UpdatesUpdateEverything) footer
     OpUpdRescrape,     // "Re-scrape now" footer
     OpEmuSysCore,    // Cycle through available cores for one system.
     OpBezelForSystem, // Per-system bezel picker (Settings → Emulator → Bezel per system)
@@ -1709,9 +1709,8 @@ std::vector<Item> build_items(Category cat, const State& s) {
                         rows.push_back(std::move(it));
                     }
                     rows.push_back({ItemKind::Action,
-                        "Install all bezel packs", "run",
-                        "Walks every pack above; skips ones already at "
-                        "the manifest's version.",
+                        _(SId::EmuInstallAllBezels), _(SId::VerbRun),
+                        _(SId::EmuInstallAllBezelsHint),
                         OpInstallBezelPacks});
                 } else {
                     rows.push_back({ItemKind::Static,
@@ -1746,9 +1745,8 @@ std::vector<Item> build_items(Category cat, const State& s) {
                         rows.push_back(std::move(it));
                     }
                     rows.push_back({ItemKind::Action,
-                        "Install all cheat packs", "run",
-                        "Walks every pack above; skips ones already at "
-                        "the manifest's version.",
+                        _(SId::EmuInstallAllCheats), _(SId::VerbRun),
+                        _(SId::EmuInstallAllCheatsHint),
                         OpInstallCheatPacks});
                 } else {
                     rows.push_back({ItemKind::Static,
@@ -1760,10 +1758,9 @@ std::vector<Item> build_items(Category cat, const State& s) {
             if (s.settings_subpage == 5) {
                 // Shader presets: single install-all action (per-preset
                 // picker can land later if the catalog grows further).
-                rows.push_back({ItemKind::Action, "Install shader presets",
-                    "run",
-                    "Downloads the foyer-shaders catalogue into "
-                    "/foyer/shaders/.",
+                rows.push_back({ItemKind::Action,
+                    _(SId::EmuInstallShaders), _(SId::VerbRun),
+                    _(SId::EmuInstallShadersHint),
                     OpInstallShaderPresets});
                 break;
             }
@@ -1783,13 +1780,11 @@ std::vector<Item> build_items(Category cat, const State& s) {
                 // now opt into bezels per system, which is what this
                 // page exists for.
                 rows.push_back({ItemKind::Static,
-                    "Pick a PNG to overlay around the emulator output. "
-                    "(none) keeps the system clean.",
+                    _(SId::EmuBezelPickHint),
                     "", "", 0});
-                rows.push_back({ItemKind::Action, "Clear all bezels", "wipe",
-                    "Removes every per-system PNG so emulator output "
-                    "renders bare. Catalog files stay installed; pick "
-                    "again per system to re-apply.",
+                rows.push_back({ItemKind::Action,
+                    _(SId::EmuBezelClearAll), _(SId::VerbRun),
+                    _(SId::EmuBezelClearAllHint),
                     OpBezelClearAll});
                 for (const auto& sys : library::all_systems()) {
                     const std::string p =
@@ -1812,9 +1807,11 @@ std::vector<Item> build_items(Category cat, const State& s) {
                 // External standalones — read-only status list per
                 // configured external_cores entry.
                 if (library::config().external_cores.empty()) {
-                    rows.push_back({ItemKind::Static,
-                        "(none configured — edit "
-                        "/foyer/config/general.jsonc)", "", "", 0});
+                    char buf[160];
+                    std::snprintf(buf, sizeof(buf),
+                        _(SId::AccNotConfigured),
+                        "/foyer/config/general.jsonc");
+                    rows.push_back({ItemKind::Static, buf, "", "", 0});
                 } else {
                     for (const auto& ec : library::config().external_cores) {
                         struct stat sst{};
@@ -1823,7 +1820,7 @@ std::vector<Item> build_items(Category cat, const State& s) {
                         Item it;
                         it.kind  = ItemKind::Static;
                         it.label = ec.folder;
-                        it.value = present ? "installed" : "not installed";
+                        it.value = present ? "installed" : _(SId::AccNotInstalled);
                         it.hint  = ec.nro_path;
                         rows.push_back(std::move(it));
                     }
@@ -1836,7 +1833,7 @@ std::vector<Item> build_items(Category cat, const State& s) {
             const auto& a = scrapers::accounts();
             rows.push_back({ItemKind::Drill, "ScreenScraper dev ID",
                 mask_credential(a.screenscraper.devid),
-                "Edited via the on-screen keyboard.", OpAccSsDevId});
+                _(SId::AccEditedViaOsk), OpAccSsDevId});
             rows.push_back({ItemKind::Drill, "ScreenScraper dev password",
                 mask_credential(a.screenscraper.devpassword), "", OpAccSsDevPw});
             rows.push_back({ItemKind::Drill, "ScreenScraper username",
@@ -1899,9 +1896,9 @@ std::vector<Item> build_items(Category cat, const State& s) {
                                      || s.refresh_job.active();
             if (any_job_active) {
                 rows.push_back({ItemKind::Static,
-                    "Background job running", "", "", 0});
+                    _(SId::WorkerBackgroundRunning), "", "", 0});
                 rows.push_back({ItemKind::Action, "Cancel", "stop",
-                    "Aborts the in-flight transfer at the next callback.",
+                    _(SId::WorkerCancelHint),
                     OpUpdCancelJob});
             }
 
@@ -1984,10 +1981,10 @@ std::vector<Item> build_items(Category cat, const State& s) {
 
             if (pending.total() == 0 && !any_job_active) {
                 rows.push_back({ItemKind::Static,
-                    "Everything is up to date", "", "", 0});
+                    _(SId::UpdatesEverythingUpToDate), "", "", 0});
             }
 
-            // Footer actions — visual gap, then "Update everything"
+            // Footer actions — visual gap, then _(SId::UpdatesUpdateEverything)
             // (only when we actually have something pending) and the
             // "Re-scrape now" / Last-fetched stamp.
             rows.push_back({ItemKind::Static, "", "", "", 0});
@@ -2012,7 +2009,7 @@ std::vector<Item> build_items(Category cat, const State& s) {
                 else
                     std::snprintf(val, sizeof(val), "%zu items",
                         pending.total());
-                rows.push_back({ItemKind::Action, "Update everything",
+                rows.push_back({ItemKind::Action, _(SId::UpdatesUpdateEverything),
                     val, "", OpUpdAll});
             }
 
@@ -2024,7 +2021,7 @@ std::vector<Item> build_items(Category cat, const State& s) {
                 const auto secs = std::time(nullptr) - t0;
                 if (secs < 60)
                     std::snprintf(rescrape_hint, sizeof(rescrape_hint),
-                        "Last: just now");
+                        _(SId::UpdatesLastJustNow));
                 else if (secs < 3600)
                     std::snprintf(rescrape_hint, sizeof(rescrape_hint),
                         "Last: %lld min ago",
@@ -2036,24 +2033,24 @@ std::vector<Item> build_items(Category cat, const State& s) {
             }
             rows.push_back({ItemKind::Action, "Re-scrape now",
                 rescrape_hint,
-                "Refreshes the cores / bezels / cheats manifests.",
+                _(SId::UpdatesRescrapeHint),
                 OpUpdRescrape});
 
             // Bulk scrape (game metadata) is conceptually different
             // from manifest scrape — keep it but tuck it at the end.
             rows.push_back({ItemKind::Action, "Scrape all systems",
                 "metadata",
-                "Walks every system using the preferred scraper.",
+                _(SId::UpdatesScrapeAllSystemsHint),
                 OpUpdScrapeAll});
             break;
         }
         case Category::Experimental:
-            rows.push_back({ItemKind::Toggle, "Roms over USB",
-                /*value*/ "", "Spin up libhaze MTP scoped to /foyer/roms.",   OpExpMtp});
-            rows.push_back({ItemKind::Toggle, "Auto-start USB on boot",
-                /*value*/ "", "Skip the manual toggle on every launch.",       OpExpMtpAutostart});
-            rows.push_back({ItemKind::Toggle, "Verbose log",
-                /*value*/ "", "Write extra diagnostics to /foyer/data/log.txt.", OpExpDebugLog});
+            rows.push_back({ItemKind::Toggle, _(SId::ExpRomsOverUsb),
+                /*value*/ "", _(SId::ExpRomsOverUsbHint),   OpExpMtp});
+            rows.push_back({ItemKind::Toggle, _(SId::ExpAutoStartUsb),
+                /*value*/ "", _(SId::ExpAutoStartUsbHint),       OpExpMtpAutostart});
+            rows.push_back({ItemKind::Toggle, _(SId::ExpVerboseLog),
+                /*value*/ "", _(SId::ExpVerboseLogHint), OpExpDebugLog});
             break;
         default: break;
     }
@@ -2379,7 +2376,10 @@ OptionList build_option_list(int op, const std::string& data) {
             break;
         }
         case OpEmuSysCore: {
-            o.title = std::string{"Default core ("} + data + ")";
+            char buf[160];
+            std::snprintf(buf, sizeof(buf),
+                _(SId::DefaultCorePrefix), data.c_str());
+            o.title = buf;
             if (const auto* sys = library::find_system_by_folder(data)) {
                 std::string current = sys->cores.empty()
                     ? std::string{} : std::string{sys->cores.front().name};
@@ -2417,8 +2417,12 @@ OptionList build_option_list(int op, const std::string& data) {
             break;
         }
         case OpRunahead: {
-            o.title = "Run-ahead";
-            o.options = { "off", "1 frame", "2 frames", "3 frames", "4 frames" };
+            o.title = _(SId::DisplayRunahead);
+            o.options = { _(SId::RunaheadOff),
+                          _(SId::RunaheadOneFrame),
+                          _(SId::RunaheadTwoFrames),
+                          _(SId::RunaheadThreeFrames),
+                          _(SId::RunaheadFourFrames) };
             int cur = library::config().runahead_frames;
             if (cur < 0) cur = 0;
             if (cur > 4) cur = 4;
@@ -2432,8 +2436,11 @@ OptionList build_option_list(int op, const std::string& data) {
             // not a source candidate). "(none)" sits at the top so
             // users can clear the bezel for a system they don't want
             // overlaid.
-            o.title = std::string{"Bezel for "} + data;
-            o.options.emplace_back("(none — no bezel)");
+            char buf[160];
+            std::snprintf(buf, sizeof(buf),
+                _(SId::BezelForPrefix), data.c_str());
+            o.title = buf;
+            o.options.emplace_back(_(SId::BezelNoneOption));
             std::vector<std::string> names;
             if (auto* dir = ::opendir("/foyer/bezels")) {
                 while (auto* e = ::readdir(dir)) {
@@ -2501,12 +2508,12 @@ OptionList build_option_list(int op, const std::string& data) {
                                  : ((installed ? std::string{"Update "}
                                               : std::string{"Install "}) + id);
             if (!installed) {
-                o.options = { "Install", "Skip this version" };
+                o.options = { "Install", _(SId::VerbSkipVersion) };
             } else if (kind == "foyer") {
-                o.options = { "Update now", "Skip this version" };
+                o.options = { _(SId::VerbUpdateNow), _(SId::VerbSkipVersion) };
             } else {
-                o.options = { "Update now", "Re-install",
-                              "Skip this version" };
+                o.options = { _(SId::VerbUpdateNow), _(SId::VerbReinstall),
+                              _(SId::VerbSkipVersion) };
             }
             o.current_index = -1;  // no "current" badge for actions
             break;
@@ -2639,11 +2646,14 @@ std::string apply_option(int op, const std::string& data,
                 std::fwrite(buf, 1, n, out);
             std::fclose(in);
             std::fclose(out);
-            return std::string{"Bezel for "} + data + ": " + chosen;
+            char prefix[200];
+            std::snprintf(prefix, sizeof(prefix),
+                _(SId::BezelForPrefix), data.c_str());
+            return std::string{prefix} + ": " + chosen;
         }
         case OpUpdSingleItem: {
             // Parse "kind:id" out of `data` and dispatch the chosen
-            // verb. Routing for "Update" / "Re-install" reuses the
+            // verb. Routing for "Update" / _(SId::VerbReinstall) reuses the
             // existing per-kind request flags so the heavy lifting
             // (download + unzip + version sidecar) doesn't change.
             const auto colon = data.find(':');
@@ -2652,12 +2662,12 @@ std::string apply_option(int op, const std::string& data,
             const std::string id   = data.substr(colon + 1);
             const std::string& verb = chosen;
 
-            // "Skip this version" — record the skip for whichever
+            // _(SId::VerbSkipVersion) — record the skip for whichever
             // version the manifest currently advertises and let the
             // Updates page hide the row on the next rebuild. We have
             // to re-derive the version since apply_option doesn't
             // carry it; cheap lookup against the cache.
-            if (verb == "Skip this version") {
+            if (verb == _(SId::VerbSkipVersion)) {
                 std::string ver;
                 if      (kind == "foyer") ver = s.foyer_update_version;
                 else if (kind == "core") {
@@ -2681,7 +2691,7 @@ std::string apply_option(int op, const std::string& data,
                 return std::string{"Skipped "} + id;
             }
 
-            const bool force = (verb == "Re-install");
+            const bool force = (verb == _(SId::VerbReinstall));
             if (kind == "foyer") {
                 s.request_install_foyer_update = true;
             } else if (kind == "core") {
@@ -2697,7 +2707,7 @@ std::string apply_option(int op, const std::string& data,
             }
             const char* prefix =
                 (verb == "Install")    ? "Installing "    :
-                (verb == "Re-install") ? "Re-installing " :
+                (verb == _(SId::VerbReinstall)) ? "Re-installing " :
                                          "Updating ";
             return std::string{prefix} + id;
         }

@@ -279,6 +279,57 @@ enum class StringId : std::uint16_t {
     LangPortugueseBrazil,
     LangSystemDefault,
 
+    // ----- Emulator subpage details (cheats / shaders / bezels) -----
+    EmuInstallAllCheats,
+    EmuInstallAllCheatsHint,
+    EmuInstallShaders,
+    EmuInstallShadersHint,
+    EmuBezelPickHint,
+    EmuBezelClearAll,
+    EmuBezelClearAllHint,
+    BezelForPrefix,            // "Bezel for %s"
+    BezelNoneOption,           // "(none — no bezel)"
+    DefaultCorePrefix,         // "Default core (%s)"
+
+    // ----- Run-ahead frame labels -----
+    RunaheadTwoFrames,
+    RunaheadThreeFrames,
+    RunaheadFourFrames,
+
+    // ----- Accounts misc -----
+    AccNotConfigured,           // "(none configured — edit %s)"
+    AccNotInstalled,            // "not installed"
+    AccEditedViaOsk,            // "Edited via the on-screen keyboard."
+
+    // ----- Worker / background job -----
+    WorkerBackgroundRunning,
+    WorkerCancelHint,
+
+    // ----- Updates page extras -----
+    UpdatesEverythingUpToDate,
+    UpdatesUpdateEverything,
+    UpdatesLastJustNow,
+    UpdatesRescrapeNow,
+    UpdatesRescrapeHint,
+    UpdatesScrapeAllSystems,
+    UpdatesScrapeAllSystemsHint,
+
+    // ----- Experimental tab -----
+    ExpRomsOverUsb,
+    ExpRomsOverUsbHint,
+    ExpAutoStartUsb,
+    ExpAutoStartUsbHint,
+    ExpVerboseLog,
+    ExpVerboseLogHint,
+
+    // ----- Per-row Action verbs -----
+    VerbAction,
+    VerbUpdate,
+    VerbInstall,
+    VerbSkipVersion,
+    VerbUpdateNow,
+    VerbReinstall,
+
     // Sentinel — keep last.
     kStringIdCount,
 };

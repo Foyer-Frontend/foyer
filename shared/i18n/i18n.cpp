@@ -265,6 +265,61 @@ constexpr Catalogue kEnglishStrings = [] {
     a[(std::size_t)StringId::LangSpanish]                = "Español";
     a[(std::size_t)StringId::LangPortugueseBrazil]       = "Português (Brasil)";
     a[(std::size_t)StringId::LangSystemDefault]          = "System default";
+
+    a[(std::size_t)StringId::EmuInstallAllCheats]        = "Install all cheat packs";
+    a[(std::size_t)StringId::EmuInstallAllCheatsHint]    =
+        "Walks every pack above; skips ones already at the manifest's version.";
+    a[(std::size_t)StringId::EmuInstallShaders]          = "Install shader presets";
+    a[(std::size_t)StringId::EmuInstallShadersHint]      =
+        "Downloads the foyer-shaders catalogue into /foyer/shaders/.";
+    a[(std::size_t)StringId::EmuBezelPickHint]           =
+        "Pick a PNG to overlay around the emulator output. (none) keeps the system clean.";
+    a[(std::size_t)StringId::EmuBezelClearAll]           = "Clear all bezels";
+    a[(std::size_t)StringId::EmuBezelClearAllHint]       =
+        "Removes every per-system PNG so emulator output renders bare. "
+        "Catalog files stay installed; pick again per system to re-apply.";
+    a[(std::size_t)StringId::BezelForPrefix]             = "Bezel for %s";
+    a[(std::size_t)StringId::BezelNoneOption]            = "(none — no bezel)";
+    a[(std::size_t)StringId::DefaultCorePrefix]          = "Default core (%s)";
+
+    a[(std::size_t)StringId::RunaheadTwoFrames]          = "2 frames";
+    a[(std::size_t)StringId::RunaheadThreeFrames]        = "3 frames";
+    a[(std::size_t)StringId::RunaheadFourFrames]         = "4 frames";
+
+    a[(std::size_t)StringId::AccNotConfigured]           = "(none configured — edit %s)";
+    a[(std::size_t)StringId::AccNotInstalled]            = "not installed";
+    a[(std::size_t)StringId::AccEditedViaOsk]            = "Edited via the on-screen keyboard.";
+
+    a[(std::size_t)StringId::WorkerBackgroundRunning]    = "Background job running";
+    a[(std::size_t)StringId::WorkerCancelHint]           =
+        "Aborts the in-flight transfer at the next callback.";
+
+    a[(std::size_t)StringId::UpdatesEverythingUpToDate]  = "Everything is up to date";
+    a[(std::size_t)StringId::UpdatesUpdateEverything]    = "Update everything";
+    a[(std::size_t)StringId::UpdatesLastJustNow]         = "Last: just now";
+    a[(std::size_t)StringId::UpdatesRescrapeNow]         = "Re-scrape now";
+    a[(std::size_t)StringId::UpdatesRescrapeHint]        =
+        "Refreshes the cores / bezels / cheats manifests.";
+    a[(std::size_t)StringId::UpdatesScrapeAllSystems]    = "Scrape all systems";
+    a[(std::size_t)StringId::UpdatesScrapeAllSystemsHint]=
+        "Walks every system using the preferred scraper.";
+
+    a[(std::size_t)StringId::ExpRomsOverUsb]             = "Roms over USB";
+    a[(std::size_t)StringId::ExpRomsOverUsbHint]         =
+        "Spin up libhaze MTP scoped to /foyer/roms.";
+    a[(std::size_t)StringId::ExpAutoStartUsb]            = "Auto-start USB on boot";
+    a[(std::size_t)StringId::ExpAutoStartUsbHint]        =
+        "Skip the manual toggle on every launch.";
+    a[(std::size_t)StringId::ExpVerboseLog]              = "Verbose log";
+    a[(std::size_t)StringId::ExpVerboseLogHint]          =
+        "Write extra diagnostics to /foyer/data/log.txt.";
+
+    a[(std::size_t)StringId::VerbAction]                 = "Action";
+    a[(std::size_t)StringId::VerbUpdate]                 = "Update %s";
+    a[(std::size_t)StringId::VerbInstall]                = "Install %s";
+    a[(std::size_t)StringId::VerbSkipVersion]            = "Skip this version";
+    a[(std::size_t)StringId::VerbUpdateNow]              = "Update now";
+    a[(std::size_t)StringId::VerbReinstall]              = "Re-install";
     return a;
 }();
 

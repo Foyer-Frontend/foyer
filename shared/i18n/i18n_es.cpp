@@ -261,6 +261,61 @@ const std::array<const char*, kCount> kSpanishStrings = [] {
     a[(std::size_t)StringId::LangSpanish]                = "Español";
     a[(std::size_t)StringId::LangPortugueseBrazil]       = "Portugués (Brasil)";
     a[(std::size_t)StringId::LangSystemDefault]          = "Predeterminado del sistema";
+
+    a[(std::size_t)StringId::EmuInstallAllCheats]        = "Instalar todos los paquetes de trucos";
+    a[(std::size_t)StringId::EmuInstallAllCheatsHint]    =
+        "Recorre cada paquete; omite los que ya están en la versión del manifiesto.";
+    a[(std::size_t)StringId::EmuInstallShaders]          = "Instalar presets de shaders";
+    a[(std::size_t)StringId::EmuInstallShadersHint]      =
+        "Descarga el catálogo de foyer-shaders en /foyer/shaders/.";
+    a[(std::size_t)StringId::EmuBezelPickHint]           =
+        "Elige un PNG para superponer alrededor de la imagen. (ninguno) deja el sistema limpio.";
+    a[(std::size_t)StringId::EmuBezelClearAll]           = "Borrar todos los marcos";
+    a[(std::size_t)StringId::EmuBezelClearAllHint]       =
+        "Quita el PNG de cada sistema para que la imagen se vea sin adornos. "
+        "Los archivos del catálogo siguen instalados; vuelve a elegir por sistema para reaplicar.";
+    a[(std::size_t)StringId::BezelForPrefix]             = "Marco para %s";
+    a[(std::size_t)StringId::BezelNoneOption]            = "(ninguno — sin marco)";
+    a[(std::size_t)StringId::DefaultCorePrefix]          = "Núcleo por defecto (%s)";
+
+    a[(std::size_t)StringId::RunaheadTwoFrames]          = "2 cuadros";
+    a[(std::size_t)StringId::RunaheadThreeFrames]        = "3 cuadros";
+    a[(std::size_t)StringId::RunaheadFourFrames]         = "4 cuadros";
+
+    a[(std::size_t)StringId::AccNotConfigured]           = "(no configurado — edita %s)";
+    a[(std::size_t)StringId::AccNotInstalled]            = "no instalado";
+    a[(std::size_t)StringId::AccEditedViaOsk]            = "Se edita con el teclado en pantalla.";
+
+    a[(std::size_t)StringId::WorkerBackgroundRunning]    = "Trabajo en segundo plano en curso";
+    a[(std::size_t)StringId::WorkerCancelHint]           =
+        "Cancela la transferencia en el próximo callback.";
+
+    a[(std::size_t)StringId::UpdatesEverythingUpToDate]  = "Todo está al día";
+    a[(std::size_t)StringId::UpdatesUpdateEverything]    = "Actualizar todo";
+    a[(std::size_t)StringId::UpdatesLastJustNow]         = "Última: ahora mismo";
+    a[(std::size_t)StringId::UpdatesRescrapeNow]         = "Volver a buscar ahora";
+    a[(std::size_t)StringId::UpdatesRescrapeHint]        =
+        "Refresca los manifiestos de cores / marcos / trucos.";
+    a[(std::size_t)StringId::UpdatesScrapeAllSystems]    = "Buscar metadatos de todos los sistemas";
+    a[(std::size_t)StringId::UpdatesScrapeAllSystemsHint]=
+        "Recorre cada sistema con el scraper preferido.";
+
+    a[(std::size_t)StringId::ExpRomsOverUsb]             = "Roms por USB";
+    a[(std::size_t)StringId::ExpRomsOverUsbHint]         =
+        "Activa libhaze MTP limitado a /foyer/roms.";
+    a[(std::size_t)StringId::ExpAutoStartUsb]            = "Iniciar USB al arrancar";
+    a[(std::size_t)StringId::ExpAutoStartUsbHint]        =
+        "Evita tener que activarlo en cada arranque.";
+    a[(std::size_t)StringId::ExpVerboseLog]              = "Registro detallado";
+    a[(std::size_t)StringId::ExpVerboseLogHint]          =
+        "Escribe diagnóstico extra en /foyer/data/log.txt.";
+
+    a[(std::size_t)StringId::VerbAction]                 = "Acción";
+    a[(std::size_t)StringId::VerbUpdate]                 = "Actualizar %s";
+    a[(std::size_t)StringId::VerbInstall]                = "Instalar %s";
+    a[(std::size_t)StringId::VerbSkipVersion]            = "Omitir esta versión";
+    a[(std::size_t)StringId::VerbUpdateNow]              = "Actualizar ahora";
+    a[(std::size_t)StringId::VerbReinstall]              = "Reinstalar";
     return a;
 }();
 
