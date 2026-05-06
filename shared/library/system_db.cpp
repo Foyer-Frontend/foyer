@@ -19,10 +19,12 @@ constexpr CoreDef kCoresNes[]         = {
 constexpr CoreDef kCoresSnes9x[]      = {
     { "snes9x",         "Snes9x"          },
     { "bsnes_hd_beta",  "bsnes-hd (16:9)" },
+    { "snes9x2010",     "Snes9x 2010 (lighter)" },
 };
 constexpr CoreDef kCoresGambatte[]    = {
     { "gambatte", "Gambatte" },
     { "sameboy",  "SameBoy"  },
+    { "tgbdual",  "TGB Dual (link cable)" },
 };
 constexpr CoreDef kCoresMgba[]        = {
     { "mgba",     "mGBA"     },
@@ -56,7 +58,10 @@ constexpr CoreDef kCoresRace[]        = {
     { "race",         "RACE"         },
     { "mednafen_ngp", "Beetle NGP"   },
 };
-constexpr CoreDef kCoresStella[]      = { { "stella",        "Stella"        } };
+constexpr CoreDef kCoresStella[]      = {
+    { "stella",     "Stella"                  },
+    { "stella2014", "Stella 2014 (lighter)"   },
+};
 constexpr CoreDef kCoresProsystem[]   = { { "prosystem",     "ProSystem"     } };
 constexpr CoreDef kCoresHandy[]       = {
     { "handy",         "Handy"      },
@@ -64,6 +69,44 @@ constexpr CoreDef kCoresHandy[]       = {
 };
 // 32X and SegaCD currently ship via picodrive only.
 constexpr CoreDef kCoresPicoOnly[]    = { { "picodrive",     "PicoDrive"     } };
+
+// PC Engine / TurboGrafx-16 — Beetle PCE first, the older lighter
+// pce_fast as a thermal-friendly alternative.
+constexpr CoreDef kCoresPce[] = {
+    { "beetle_pce",        "Beetle PCE"         },
+    { "mednafen_pce_fast", "Beetle PCE (fast)"  },
+};
+// PC Engine SuperGrafx — Beetle SuperGrafx is its own libretro core,
+// not a mode of the regular PCE core.
+constexpr CoreDef kCoresSupergrafx[]  = { { "beetle_supergrafx", "Beetle SuperGrafx" } };
+constexpr CoreDef kCoresPcfx[]        = { { "beetle_pcfx",       "Beetle PC-FX"      } };
+
+// WonderSwan / WonderSwan Color share the same Beetle core.
+constexpr CoreDef kCoresWswan[]       = { { "beetle_wswan",      "Beetle WonderSwan" } };
+
+constexpr CoreDef kCoresVb[]          = { { "beetle_vb",         "Beetle Virtual Boy" } };
+constexpr CoreDef kCoresJaguar[]      = { { "virtualjaguar",     "Virtual Jaguar"     } };
+constexpr CoreDef kCoresPokemini[]    = { { "pokemini",          "PokeMini"           } };
+constexpr CoreDef kCoresIntellivision[] = { { "freeintv",        "FreeIntv"           } };
+constexpr CoreDef kCoresGw[]          = { { "gw",                "Game and Watch"     } };
+
+// Engine cores — one engine reimplementation per slot.
+// Note: reminiscence (Flashback) ships as a core but has no SystemDef
+// entry yet because the EmulationStation theme we use for system art
+// doesn't have a "flashback" tile. Add the SystemDef once a tile lands.
+constexpr CoreDef kCoresDoom[]        = { { "prboom",            "PrBoom"             } };
+constexpr CoreDef kCoresQuake[]       = { { "tyrquake",          "TyrQuake"           } };
+constexpr CoreDef kCoresPico8[]       = { { "retro8",            "retro8"             } };
+
+// DOS — DOSBox-pure handles the full single-file zip workflow.
+constexpr CoreDef kCoresDos[]         = { { "dosbox_pure",       "DOSBox-pure"        } };
+
+// Amstrad CPC.
+constexpr CoreDef kCoresCpc[]         = { { "caprice32",         "Caprice32"          } };
+
+// Commodore 64 — Frodo (lightweight); vice will join when its
+// ExternalProject recipe lands.
+constexpr CoreDef kCoresC64[]         = { { "frodo",             "Frodo"              } };
 
 constexpr SystemDef kSystems[] = {
     { "nes",          "Nintendo Entertainment System", "NES",
@@ -157,6 +200,78 @@ constexpr SystemDef kSystems[] = {
     { "segacd",       "Sega CD",                      "SegaCD",
       "Sega - Mega-CD - Sega CD",
       "cue|iso|chd|m3u",   kCoresPicoOnly },
+
+    // ----- 0.3.0 additions: extra-system cores -----
+
+    { "pcengine",     "PC Engine",                    "PCE",
+      "NEC - PC Engine - TurboGrafx 16",
+      "pce|sgx|cue|chd|m3u", kCoresPce },
+
+    { "pcenginecd",   "PC Engine CD",                 "PCE-CD",
+      "NEC - PC Engine CD - TurboGrafx-CD",
+      "cue|chd|m3u|iso",   kCoresPce },
+
+    { "supergrafx",   "PC Engine SuperGrafx",         "SGX",
+      "NEC - PC Engine SuperGrafx",
+      "pce|sgx",           kCoresSupergrafx },
+
+    { "pcfx",         "PC-FX",                        "PCFX",
+      "NEC - PC-FX",
+      "cue|chd|m3u|iso",   kCoresPcfx },
+
+    { "wonderswan",   "WonderSwan",                   "WS",
+      "Bandai - WonderSwan",
+      "ws",                kCoresWswan },
+
+    { "wonderswancolor", "WonderSwan Color",          "WSC",
+      "Bandai - WonderSwan Color",
+      "wsc",               kCoresWswan },
+
+    { "virtualboy",   "Virtual Boy",                  "VB",
+      "Nintendo - Virtual Boy",
+      "vb|vboy|bin",       kCoresVb },
+
+    { "atarijaguar",  "Atari Jaguar",                 "Jag",
+      "Atari - Jaguar",
+      "j64|jag|rom",       kCoresJaguar },
+
+    { "pokemini",     "Pokemon Mini",                 "PM",
+      "Nintendo - Pokemon Mini",
+      "min",               kCoresPokemini },
+
+    { "intellivision", "Intellivision",               "Intv",
+      "Mattel - Intellivision",
+      "int|bin|rom",       kCoresIntellivision },
+
+    { "gameandwatch", "Game & Watch",                 "G&W",
+      "Handheld Electronic Game",
+      "mgw",               kCoresGw },
+
+    // Engine-game systems — each rom is the data for a particular
+    // engine reimplementation; folder = engine identity.
+    { "doom",         "Doom (PrBoom)",                "DOOM",
+      "DOOM",
+      "wad|iwad|pwad",     kCoresDoom },
+
+    { "quake",        "Quake (TyrQuake)",             "Q",
+      "Quake",
+      "pak",               kCoresQuake },
+
+    { "pico8",        "Pico-8",                       "P8",
+      "PICO-8",
+      "p8|p8.png",         kCoresPico8 },
+
+    { "dos",          "DOS",                          "DOS",
+      "DOS",
+      "exe|com|bat|conf|zip|m3u", kCoresDos },
+
+    { "amstradcpc",   "Amstrad CPC",                  "CPC",
+      "Amstrad - CPC",
+      "dsk|cpr|cdt|sna|kcr", kCoresCpc },
+
+    { "c64",          "Commodore 64",                 "C64",
+      "Commodore - 64",
+      "d64|t64|prg|crt|p00|tap|nib|m3u", kCoresC64 },
 };
 
 bool iequal(std::string_view a, std::string_view b) {
