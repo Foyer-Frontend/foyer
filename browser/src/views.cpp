@@ -1386,38 +1386,30 @@ std::vector<Item> build_items(Category cat, const State& s) {
     switch (cat) {
         case Category::General:
             rows.push_back({ItemKind::Cycle,  "Preferred scraper", scraper_label(cfg.preferred_scraper),
-                "Provider used when you press Y on a game to fetch box art "
-                "and metadata.",
+                "Provider used when Y scrapes a game.",
                 OpScraper});
             rows.push_back({ItemKind::Static, "Rom root",          cfg.rom_root,
-                "Where foyer scans for systems and roms. Edit "
-                "/foyer/config/general.jsonc on SD to change.",
+                "Where foyer scans for roms.",
                 OpRomRoot});
             rows.push_back({ItemKind::Toggle, "Scan subfolders",   "",
-                "Walk into subdirectories under each system folder when "
-                "building the library. Off keeps scans flat.",
+                "Walk subdirectories on scan.",
                 OpScanSub});
             break;
         case Category::Display: {
             rows.push_back({ItemKind::Cycle,  "Theme",        cfg.theme_name,
-                "Active palette + wallpaper. Drop custom packs into "
-                "/foyer/config/themes/<name>/ to add to this list.",
+                "Active palette + wallpaper.",
                 OpTheme});
             rows.push_back({ItemKind::Toggle, "Show clock",       "",
-                "Display the current time in the top-bar.",
+                "Top-bar clock.",
                 OpShowClock});
             rows.push_back({ItemKind::Toggle, "Show backgrounds", "",
-                "Render the per-game backdrop behind the System view from "
-                "/foyer/assets/backgrounds/<sys>/<stem>.jpg.",
+                "Per-game backdrop in System view.",
                 OpShowBg});
             rows.push_back({ItemKind::Toggle, "Show covers",      "",
-                "Render box-art tiles in the game grid from "
-                "/foyer/assets/covers/<sys>/<stem>.png.",
+                "Box-art tiles in the game grid.",
                 OpShowCovers});
             rows.push_back({ItemKind::Toggle, "Show bezels",      "",
-                "Overlay the per-system PNG around emulator output. Off "
-                "keeps the screen clean. Pick a bezel under "
-                "Emulator -> Bezel per system.",
+                "Overlay per-system PNG around output.",
                 OpShowBezels});
             // Post-process shader, applied per-frame in every player.
             // Built-in presets ship with the player binary; users can
@@ -1431,8 +1423,8 @@ std::vector<Item> build_items(Category cat, const State& s) {
             else if (cfg.shader_name == "gb_dmg")      shader_label = "Game Boy DMG";
             else if (cfg.shader_name == "gba_correct") shader_label = "GBA correction";
             rows.push_back({ItemKind::Cycle, "Shader", shader_label,
-                "Built-ins or /foyer/shaders/<name>.glsl. Per-game "
-                "overrides via per_game.jsonc.", OpShader});
+                "Post-process pass applied per frame.",
+                OpShader});
             // Run-ahead trades CPU for visible input-lag reduction.
             // Each enabled frame adds one extra retro_run() per
             // displayed frame, so K=1 ~= 2x core load.
@@ -1445,9 +1437,8 @@ std::vector<Item> build_items(Category cat, const State& s) {
                 ra_label = ra_buf;
             }
             rows.push_back({ItemKind::Cycle, "Run-ahead", ra_label,
-                "Reduces visible input lag by emulating ahead. Costs "
-                "extra CPU per frame; some cores can't serialize state "
-                "and silently fall back to off.", OpRunahead});
+                "Reduce input lag by emulating ahead.",
+                OpRunahead});
             break;
         }
         case Category::Audio:
@@ -1456,12 +1447,10 @@ std::vector<Item> build_items(Category cat, const State& s) {
             break;
         case Category::Library: {
             rows.push_back({ItemKind::Action, "Rescan library",         "run",
-                "Walks /foyer/roms/ again and rebuilds library.cache.json. "
-                "Use after adding or removing roms via MTP.",
+                "Walks /foyer/roms/ + rebuilds cache.",
                 OpRescan});
             rows.push_back({ItemKind::Action, "Invalidate cover cache", "refresh",
-                "Drops every cached box-art handle so newly-scraped covers "
-                "show without restarting the browser.",
+                "Reload box-art from disk.",
                 OpInvalidateCovers});
             // Sort cycle. Cycling triggers a rescan so the new order
             // takes effect immediately.
@@ -1473,7 +1462,7 @@ std::vector<Item> build_items(Category cat, const State& s) {
                 case library::Config::SortMode::Name:      sort_label = "Name";            break;
             }
             rows.push_back({ItemKind::Cycle, "Sort games by", sort_label,
-                "Left/Right cycles. Re-sort applies on next library rescan.",
+                "Order of the per-system game grid.",
                 OpSortMode});
             break;
         }
