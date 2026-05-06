@@ -2150,25 +2150,23 @@ void draw_settings(NVGcontext* vg, float w, float h, const State& s, const Libra
                 kCategories[i].label, nullptr);
     }
 
-    // Content panel.
+    // Content panel. Page-title text used to draw above the card
+    // ("Settings", "Updates", "Display", ...) but it duplicated the
+    // breadcrumb topbar + the highlighted left sidebar entry — pure
+    // wasted height. Card now starts at content_y; the freed 56px
+    // is real estate the row list gets to use.
     const float cx = kSidebarPad + kSidebarW + kSidebarPad;
     const float cy = content_y;
     const float cw = w - cx - kSidebarPad;
     const float ch = content_h;
 
-    // Page title line above the card.
-    nvgFontSize(vg, th.title_size);
-    nvgFillColor(vg, th.text_strong);
-    nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_TOP);
-    nvgText(vg, cx, cy + 4, kCategories[s.settings_category].label, nullptr);
-
     const auto rows = build_items((Category)s.settings_category, s);
     if (rows.empty()) return;
 
     const float card_x = cx;
-    const float card_y = cy + 56;
+    const float card_y = cy;
     const float card_w = cw;
-    const float card_h = ch - 56;
+    const float card_h = ch;
 
     rrect(vg, card_x, card_y, card_w, card_h, 14.0f, th.bg_panel);
     if (s.settings_in_content) {

@@ -482,8 +482,10 @@ int main(int argc, char** argv) {
             const bool        force = state.install_force;
             state.install_force = false;
 
-            state.banner_text = "Fetching cores manifest...";
-            state.banner_ttl  = 60;
+            // Manifest fetch is fast (small JSON, sub-second) — skip
+            // the "Fetching..." banner; the byte-progress overlay
+            // takes over the moment the first core download starts.
+            // Failures still surface explicitly.
             app.tick();
             auto manifest = foyer::library::fetch_manifest(
                 foyer::library::config().cores_manifest_url);
@@ -507,24 +509,16 @@ int main(int argc, char** argv) {
                 }
                 if (!manifest.cores.empty()) {
                     foyer::browser::set_manifest_cache(manifest);
+                    // No per-row banner. The byte progress overlay
+                    // already carries everything visible the user
+                    // needs (live bar, MB counter, % complete) for
+                    // the active transfer; skipped/installed/updated
+                    // rows go to the log only. The callback still
+                    // pumps app.tick() between rows so the UI stays
+                    // responsive between back-to-back downloads.
                     const auto totals = foyer::library::install_cores(manifest,
-                        [&](const foyer::library::InstallProgress& p) {
-                            // The per-byte progress overlay (banner
-                            // pill widening with the bar) carries the
-                            // actual download. We just publish the
-                            // current core's name so the title line
-                            // matches what's transferring; skip-only
-                            // rows tick by silently in the log.
-                            if (p.action == foyer::library::InstallAction::Installed
-                             || p.action == foyer::library::InstallAction::Updated
-                             || p.action == foyer::library::InstallAction::Failed) {
-                                char b[120];
-                                std::snprintf(b, sizeof(b),
-                                    "Updating %s...", p.name.c_str());
-                                state.banner_text = b;
-                                state.banner_ttl  = 240;
-                                app.tick();
-                            }
+                        [&](const foyer::library::InstallProgress&) {
+                            app.tick();
                         }, force);
                     if (totals.failed > 0) {
                         char b[120];
@@ -533,15 +527,8 @@ int main(int argc, char** argv) {
                             totals.failed, totals.failed == 1 ? "" : "s");
                         state.banner_text = b;
                         state.banner_ttl = 360;
-                    } else if (totals.installed + totals.updated > 0) {
-                        char b[80];
-                        const int n = totals.installed + totals.updated;
-                        std::snprintf(b, sizeof(b),
-                            "%d core%s up to date", n, n == 1 ? "" : "s");
-                        state.banner_text = b;
-                        state.banner_ttl  = 180;
                     } else {
-                        // Everything skipped — nothing to surface.
+                        // Success or all-skipped: nothing to surface.
                         state.banner_text.clear();
                         state.banner_ttl = 0;
                     }
