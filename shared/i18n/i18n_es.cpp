@@ -171,6 +171,9 @@ const std::array<const char*, kCount> kSpanishStrings = [] {
     a[(std::size_t)StringId::LibrarySortGamesHint]       = "Orden de la cuadrícula de juegos por sistema.";
     a[(std::size_t)StringId::LibrarySortSystems]         = "Ordenar sistemas por";
     a[(std::size_t)StringId::LibrarySortSystemsHint]     = "Orden de las viñetas del carrusel principal.";
+    a[(std::size_t)StringId::LibraryHideEmpty]           = "Ocultar sistemas vacíos";
+    a[(std::size_t)StringId::LibraryHideEmptyHint]       =
+        "Oculta los sistemas cuya carpeta de roms no tiene juegos escaneables.";
     a[(std::size_t)StringId::SortByName]                 = "Nombre";
     a[(std::size_t)StringId::SortByRecent]               = "Jugados recientemente";
     a[(std::size_t)StringId::SortByPlaytime]             = "Tiempo jugado";

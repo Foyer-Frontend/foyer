@@ -1394,6 +1394,8 @@ enum : int {
     OpUpdCancelJob,
     OpSortMode,
     OpSystemSortMode,
+    OpHideEmpty,
+    OpLanguage,
     OpShader,
     OpRunahead,
     OpInstallShaderPresets,
@@ -1467,7 +1469,7 @@ std::vector<Item> build_items(Category cat, const State& s) {
     std::vector<Item> rows;
     const auto& cfg = library::config();
     switch (cat) {
-        case Category::General:
+        case Category::General: {
             rows.push_back({ItemKind::Cycle,  _(SId::SettingsPreferredScraper), scraper_label(cfg.preferred_scraper),
                 _(SId::SettingsPreferredScraperHint),
                 OpScraper});
@@ -1477,7 +1479,18 @@ std::vector<Item> build_items(Category cat, const State& s) {
             rows.push_back({ItemKind::Toggle, _(SId::SettingsScanSubfolders),   "",
                 _(SId::SettingsScanSubfoldersHint),
                 OpScanSub});
+            // Language override. Cycle row — open the picker on A, the
+            // value column shows the current language name.
+            const auto& lang_code = cfg.language;
+            const char* lang_label = _(SId::LangSystemDefault);
+            if      (lang_code == "es")    lang_label = _(SId::LangSpanish);
+            else if (lang_code == "pt-BR") lang_label = _(SId::LangPortugueseBrazil);
+            else if (lang_code == "en")    lang_label = _(SId::LangEnglish);
+            rows.push_back({ItemKind::Cycle, _(SId::SettingsLanguage), lang_label,
+                _(SId::SettingsLanguageHint),
+                OpLanguage});
             break;
+        }
         case Category::Display: {
             rows.push_back({ItemKind::Cycle,  _(SId::SettingsTheme),        cfg.theme_name,
                 _(SId::SettingsThemeHint),
@@ -1558,6 +1571,9 @@ std::vector<Item> build_items(Category cat, const State& s) {
             rows.push_back({ItemKind::Cycle, _(SId::LibrarySortSystems), sys_sort_label,
                 _(SId::LibrarySortSystemsHint),
                 OpSystemSortMode});
+            rows.push_back({ItemKind::Toggle, _(SId::LibraryHideEmpty), "",
+                _(SId::LibraryHideEmptyHint),
+                OpHideEmpty});
             break;
         }
         case Category::Emulator: {
@@ -2053,6 +2069,7 @@ bool toggle_get(int op) {
         case OpShowBezels:       return cfg.show_bezels;
         case OpShowBg:           return cfg.show_backgrounds;
         case OpShowCovers:       return cfg.show_covers;
+        case OpHideEmpty:        return cfg.hide_empty_systems;
         case OpExpMtpAutostart:  return cfg.mtp_autostart;
         case OpExpDebugLog:      return cfg.debug_log;
         case OpExpMtp:           return mtp_running();
@@ -2067,6 +2084,7 @@ void toggle_set(int op, bool val) {
         case OpShowBg:           library::set_bool("show_backgrounds", val); break;
         case OpShowCovers:       library::set_bool("show_covers",      val); break;
         case OpShowBezels:       library::set_bool("show_bezels",      val); break;
+        case OpHideEmpty:        library::set_bool("hide_empty_systems", val); break;
         case OpExpMtpAutostart:  library::set_bool("mtp_autostart",    val); break;
         case OpExpDebugLog:      library::set_bool("debug_log",        val); break;
         case OpExpMtp:
@@ -2310,9 +2328,31 @@ OptionList build_option_list(int op, const std::string& data) {
     OptionList o;
     switch (op) {
         case OpScraper: {
-            o.title = "Preferred scraper";
+            o.title = _(SId::SettingsPreferredScraper);
             o.options = { "libretro-thumbnails", "ScreenScraper", "SteamGridDB" };
             o.current_index = (int)library::config().preferred_scraper;
+            break;
+        }
+        case OpLanguage: {
+            // 4 options, in catalogue-stable order:
+            //   0 → System default (empty config string)
+            //   1 → English        ("en")
+            //   2 → Spanish        ("es")
+            //   3 → Portuguese-BR  ("pt-BR")
+            // Adding a language: append to the picker AND to
+            // i18n::map_switch_language()'s case list.
+            o.title = _(SId::SettingsLanguage);
+            o.options = {
+                _(SId::LangSystemDefault),
+                _(SId::LangEnglish),
+                _(SId::LangSpanish),
+                _(SId::LangPortugueseBrazil),
+            };
+            const auto& cur = library::config().language;
+            o.current_index = (cur == "en")    ? 1
+                            : (cur == "es")    ? 2
+                            : (cur == "pt-BR") ? 3
+                                               : 0;
             break;
         }
         case OpTheme: {
@@ -2489,6 +2529,25 @@ std::string apply_option(int op, const std::string& data,
         case OpScraper: {
             library::set_preferred_scraper(
                 (library::Config::Scraper)chosen_index);
+            break;
+        }
+        case OpLanguage: {
+            // Index map mirrors the picker order in option_picker_open.
+            const char* code =
+                  (chosen_index == 1) ? "en"
+                : (chosen_index == 2) ? "es"
+                : (chosen_index == 3) ? "pt-BR"
+                                      : "";  // System default
+            library::set_language(code);
+            // Apply immediately so the next frame already shows the
+            // new strings (no restart required for in-process tr()
+            // calls, only for libnx-side strings the user might see
+            // at boot like log timestamps).
+            using L = foyer::i18n::Language;
+            if      (std::string_view{code} == "en")    foyer::i18n::set_language(L::English);
+            else if (std::string_view{code} == "es")    foyer::i18n::set_language(L::Spanish);
+            else if (std::string_view{code} == "pt-BR") foyer::i18n::set_language(L::PortugueseBrazil);
+            else                                        foyer::i18n::init();  // re-detect from system
             break;
         }
         case OpTheme: {

@@ -195,6 +195,22 @@ int main(int argc, char** argv) {
     // doesn't have a translation yet. Cheap (one libnx Set service
     // call) so no async work needed.
     foyer::i18n::init();
+    // Apply the user's explicit Settings → General → Language
+    // override on top of the system-language autodetect. Empty
+    // string = follow system; otherwise we set the language enum to
+    // match the saved code. Map mirrors the picker in views.cpp.
+    {
+        const auto& saved = foyer::library::config().language;
+        if (!saved.empty()) {
+            using L = foyer::i18n::Language;
+            if      (saved == "en")    foyer::i18n::set_language(L::English);
+            else if (saved == "es")    foyer::i18n::set_language(L::Spanish);
+            else if (saved == "pt-BR") foyer::i18n::set_language(L::PortugueseBrazil);
+            // Unrecognised codes silently fall through to the
+            // system-detected default — same shape as
+            // map_switch_language()'s default case.
+        }
+    }
     // Wire the per-byte UI pump. xferinfo (called from inside
     // curl_easy_perform) hits this every ~200ms; we throttle to ~30
     // fps so the progress bar redraws without blowing the frame

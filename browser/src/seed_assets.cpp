@@ -1,5 +1,7 @@
 #include "seed_assets.hpp"
 #include "platform/log.hpp"
+#include "library/config.hpp"
+#include "library/system_db.hpp"
 
 #include <cstdio>
 #include <dirent.h>
@@ -78,6 +80,28 @@ void seed_assets_if_missing() {
         foyer::log::write(
             "[seed] copied %d bezel(s) and %d cheat file(s) to SD\n",
             b, c);
+    }
+
+    // Seed an empty <rom_root>/<system>/ directory for every supported
+    // system on first boot so the user has a visible target tree to
+    // copy roms into without having to know the foyer folder
+    // conventions. mkdir is idempotent — pre-existing folders (with
+    // or without roms) are left alone, never wiped.
+    const auto& cfg = foyer::library::config();
+    ensure_dir(cfg.rom_root);
+    int dirs_created = 0;
+    for (const auto& sys : foyer::library::all_systems()) {
+        const auto path = cfg.rom_root + "/" + std::string{sys.folder_name};
+        if (!path_exists(path)) {
+            ::mkdir(path.c_str(), 0777);
+            dirs_created++;
+        }
+    }
+    if (dirs_created > 0) {
+        foyer::log::write(
+            "[seed] created %d rom subdirector%s under %s\n",
+            dirs_created, dirs_created == 1 ? "y" : "ies",
+            cfg.rom_root.c_str());
     }
 }
 

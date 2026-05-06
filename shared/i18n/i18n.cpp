@@ -175,6 +175,9 @@ constexpr Catalogue kEnglishStrings = [] {
     a[(std::size_t)StringId::LibrarySortGamesHint]       = "Order of the per-system game grid.";
     a[(std::size_t)StringId::LibrarySortSystems]         = "Sort systems by";
     a[(std::size_t)StringId::LibrarySortSystemsHint]     = "Order of the Home carousel tiles.";
+    a[(std::size_t)StringId::LibraryHideEmpty]           = "Hide empty systems";
+    a[(std::size_t)StringId::LibraryHideEmptyHint]       =
+        "Hide systems whose rom folder has no scannable games.";
     a[(std::size_t)StringId::SortByName]                 = "Name";
     a[(std::size_t)StringId::SortByRecent]               = "Recently played";
     a[(std::size_t)StringId::SortByPlaytime]             = "Playtime";

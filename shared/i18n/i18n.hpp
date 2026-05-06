@@ -183,6 +183,8 @@ enum class StringId : std::uint16_t {
     LibrarySortGamesHint,
     LibrarySortSystems,
     LibrarySortSystemsHint,
+    LibraryHideEmpty,
+    LibraryHideEmptyHint,
     SortByName,
     SortByRecent,
     SortByPlaytime,

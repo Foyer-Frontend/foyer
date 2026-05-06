@@ -173,6 +173,19 @@ void sort_games(std::vector<Game>& games, Config::SortMode mode) {
     }
 }
 
+// Drop systems whose game list is empty, when the user has toggled
+// "Hide empty systems" on in Settings → Library. Applied first so
+// the subsequent sort operates on the visible subset only. Virtual
+// systems (Recent / Favorites) keep their special handling — those
+// don't go through this list.
+void apply_hide_empty(std::vector<System>& systems) {
+    if (!config().hide_empty_systems) return;
+    systems.erase(
+        std::remove_if(systems.begin(), systems.end(),
+            [](const System& s){ return s.games.empty(); }),
+        systems.end());
+}
+
 // Reorder real systems according to Config::system_sort_mode. Used by
 // both the cache-hit fast path and the full-scan path, so a switch in
 // system_sort_mode without other library changes still re-orders on
@@ -250,6 +263,7 @@ std::vector<System> scan_library(const ScanOptions& opts) {
             // count / custom / scanner default) — re-apply on every
             // load so a switch in system_sort_mode shows up without
             // needing to bust the library cache.
+            apply_hide_empty(*cached);
             apply_system_sort(*cached);
             // Recreate virtual carousel tiles from the loaded games.
             auto& out_real = *cached;
@@ -337,6 +351,7 @@ std::vector<System> scan_library(const ScanOptions& opts) {
         out.emplace_back(std::move(unknown));
     }
 
+    apply_hide_empty(out);
     apply_system_sort(out);
 
     // Synthesise the virtual "Recent" + "Favorites" carousel tiles by

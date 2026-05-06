@@ -55,6 +55,18 @@ struct Config {
     // chain entirely so even the bundled default.png is hidden, useful
     // when the user prefers integer-scale or a vendor overlay.
     bool         show_bezels       = true;
+    // When true, the home carousel skips systems whose rom folder is
+    // empty. Foyer auto-creates a <rom_root>/<system>/ subdirectory
+    // for every supported system on first boot, so the carousel
+    // would otherwise be cluttered with 60+ empty tiles. Default on.
+    bool         hide_empty_systems = true;
+
+    // UI language override. Empty string = follow Switch system
+    // language. Other values = ISO-style language code that
+    // i18n::map_switch_language() recognises ("es", "pt-BR", ...).
+    // Loaded at boot; takes effect immediately on the next frame
+    // since translation is stateless.
+    std::string  language          = "";
 
     // Run-ahead lookahead frames. 0 disables (default); 1..4 trade CPU
     // for reduced visible input lag — each enabled frame adds one extra
@@ -141,6 +153,11 @@ void          set_preferred_scraper(Config::Scraper s);
 void          set_default_core_for(std::string_view folder,
                                    std::string_view core_name);
 void          set_theme_name(std::string_view name);
+
+// UI language override. Empty string = follow Switch system language.
+// Other values: ISO-style code parsed by foyer::i18n::map_switch_language()
+// — e.g. "es", "pt-BR".
+void          set_language(std::string_view code);
 void          set_sort_mode(Config::SortMode mode);
 void          set_system_sort_mode(Config::SystemSortMode mode);
 void          set_system_custom_order(std::vector<std::string> order);
