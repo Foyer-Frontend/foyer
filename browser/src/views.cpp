@@ -1398,6 +1398,7 @@ enum : int {
     OpUpdRescrape,     // "Re-scrape now" footer
     OpEmuSysCore,    // Cycle through available cores for one system.
     OpBezelForSystem, // Per-system bezel picker (Settings → Emulator → Bezel per system)
+    OpBezelClearAll,  // Wipe every /foyer/bezels/*.png
     OpPickCover,      // Interactive cover-pick from SteamGridDB candidates
     OpExpMtp, OpExpMtpAutostart, OpExpDebugLog,
     // Account fields opened via on-screen keyboard.
@@ -1753,6 +1754,11 @@ std::vector<Item> build_items(Category cat, const State& s) {
                     "Pick a PNG to overlay around the emulator output. "
                     "(none) keeps the system clean.",
                     "", "", 0});
+                rows.push_back({ItemKind::Action, "Clear all bezels", "wipe",
+                    "Removes every per-system PNG so emulator output "
+                    "renders bare. Catalog files stay installed; pick "
+                    "again per system to re-apply.",
+                    OpBezelClearAll});
                 for (const auto& sys : library::all_systems()) {
                     const std::string p =
                         std::string{"/foyer/bezels/"}
@@ -2109,18 +2115,13 @@ void draw_settings(NVGcontext* vg, float w, float h, const State& s, const Libra
     const float content_y = kTopBarH + 12.0f;
     const float content_h = h - content_y - kBottomBarH - 12.0f;
 
-    // Sidebar panel.
+    // Sidebar panel. The "foyer" + "Settings" labels that used to
+    // sit at the top of the sidebar were duplicating the breadcrumb
+    // topbar — dropped, so the category list moves up into that
+    // freed space (one extra row visible without scrolling).
     rrect(vg, kSidebarPad, content_y, kSidebarW, content_h, 14.0f, th.bg_panel);
 
-    nvgFontSize(vg, th.label_size);
-    nvgFillColor(vg, th.text_dim);
-    nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
-    nvgText(vg, kSidebarPad + 22, content_y + 28, "foyer", nullptr);
-    nvgFontSize(vg, th.head_size);
-    nvgFillColor(vg, th.text_strong);
-    nvgText(vg, kSidebarPad + 22, content_y + 56, "Settings", nullptr);
-
-    const float side_list_y = content_y + 96;
+    const float side_list_y = content_y + 16;
     for (int i = 0; i < (int)Category::Count_; i++) {
         const float ry  = side_list_y + i * kSideRowH;
         const bool sel  = (i == s.settings_category);
@@ -4412,6 +4413,29 @@ void update(State& s, const Library& lib,
                             s.request_refresh_bezels_manifest  = true;
                             s.request_check_foyer_update       = true;
                             s.banner_text = "Re-scraping manifests...";
+                            s.banner_ttl  = 180;
+                        } else if (it.payload == settings::OpBezelClearAll) {
+                            // Walk /foyer/bezels and delete every
+                            // per-system PNG that maps to a known
+                            // system folder. Catalog entries
+                            // (snes-castlevania4 / tv / etc.) stay so
+                            // the picker still has source material.
+                            int n = 0;
+                            for (const auto& sys : library::all_systems()) {
+                                const std::string p =
+                                    std::string{"/foyer/bezels/"}
+                                    + std::string{sys.folder_name} + ".png";
+                                if (::unlink(p.c_str()) == 0) n++;
+                            }
+                            // Also nuke the legacy bundled default.png
+                            // in case an old players-built nro is still
+                            // riding the v0.2.x fallback chain.
+                            ::unlink("/foyer/bezels/default.png");
+                            char b[80];
+                            std::snprintf(b, sizeof(b),
+                                "Cleared %d per-system bezel%s",
+                                n, n == 1 ? "" : "s");
+                            s.banner_text = b;
                             s.banner_ttl  = 180;
                         }
                         break;
