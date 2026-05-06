@@ -2744,13 +2744,41 @@ void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Li
         nvgText(vg, cx + cw * 0.5f, cy + ch * 0.5f, "no cover", nullptr);
     }
 
-    // File ext meta below cover.
+    // File ext + per-game stats below the cover. last_played is in
+    // the Game struct already (hydrated from per_game.jsonc); playtime
+    // isn't, so we look it up directly. Both render as faint label-
+    // size text so they stay informative without competing with the
+    // cover or the core picker for attention.
     char meta[128];
     std::snprintf(meta, sizeof(meta), ".%s", g.ext.c_str());
     nvgFontSize(vg, th.label_size);
     nvgFillColor(vg, th.text_dim);
     nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_BOTTOM);
-    nvgText(vg, cx, cy + ch + 36, meta, nullptr);
+    nvgText(vg, cx, cy + ch + 24, meta, nullptr);
+
+    auto fmt_relative = [](std::uint64_t when) -> std::string {
+        if (!when) return std::string{"never played"};
+        const auto now  = (std::uint64_t)std::time(nullptr);
+        const auto diff = (now > when) ? (now - when) : 0;
+        if (diff < 60)         return std::string{"played just now"};
+        if (diff < 3600)       return "played " + std::to_string(diff / 60)   + " min ago";
+        if (diff < 86400)      return "played " + std::to_string(diff / 3600) + " hr ago";
+        if (diff < 86400 * 7)  return "played " + std::to_string(diff / 86400) + " days ago";
+        if (diff < 86400 * 30) return "played " + std::to_string(diff / (86400*7)) + " wk ago";
+        return "played " + std::to_string(diff / (86400 * 30)) + " mo ago";
+    };
+    auto fmt_playtime = [](std::uint64_t secs) -> std::string {
+        if (!secs) return std::string{"no playtime"};
+        if (secs < 60)    return std::to_string(secs) + " sec";
+        if (secs < 3600)  return std::to_string(secs / 60)   + " min";
+        const auto h = secs / 3600;
+        const auto m = (secs % 3600) / 60;
+        if (m == 0) return std::to_string(h) + " hr";
+        return std::to_string(h) + " hr " + std::to_string(m) + " min";
+    };
+    nvgText(vg, cx, cy + ch + 44, fmt_relative(g.last_played).c_str(), nullptr);
+    nvgText(vg, cx, cy + ch + 60,
+        fmt_playtime(library::per_game_playtime(g.path)).c_str(), nullptr);
 
     // Core picker + per-game knob rows. Layout in this order:
     //   - Continue (if a save state exists)
@@ -3347,6 +3375,44 @@ void update(State& s, const Library& lib,
                 } else {
                     s.game_index = (s.game_index == 0) ? total - 1
                                                        : s.game_index - 1;
+                }
+            } else if (down & HidNpadButton_ZR) {
+                // Letter jump — ZR advances to the first game whose
+                // sort-display starts with a different first character
+                // than the current focus. Useful on long sorted lists
+                // (NES with 230 games) where Up/Down + L/R aren't
+                // alphabet-aware.
+                auto first_char = [](const std::string& s) -> char {
+                    if (s.empty()) return 0;
+                    char c = s[0];
+                    if (c >= 'A' && c <= 'Z') c = (char)(c + 32);
+                    return c;
+                };
+                const char cur = first_char(sys.games[s.game_index].display);
+                for (std::size_t i = s.game_index + 1; i < total; i++) {
+                    if (first_char(sys.games[i].display) != cur) {
+                        s.game_index = i; break;
+                    }
+                }
+            } else if (down & HidNpadButton_ZL) {
+                // ZL goes to the start of the previous letter group.
+                auto first_char = [](const std::string& s) -> char {
+                    if (s.empty()) return 0;
+                    char c = s[0];
+                    if (c >= 'A' && c <= 'Z') c = (char)(c + 32);
+                    return c;
+                };
+                if (s.game_index > 0) {
+                    const char cur = first_char(sys.games[s.game_index].display);
+                    std::size_t i = s.game_index;
+                    // Walk back over rows that share the current letter.
+                    while (i > 0 && first_char(sys.games[i].display) == cur) i--;
+                    // i is now on a game with a different (previous)
+                    // letter; back up to the first occurrence of THAT
+                    // letter so the user lands on the head of the group.
+                    const char target = first_char(sys.games[i].display);
+                    while (i > 0 && first_char(sys.games[i - 1].display) == target) i--;
+                    s.game_index = i;
                 }
             } else if (down & HidNpadButton_AnyRight) {
                 s.game_index = std::min(s.game_index + 10, total - 1);
