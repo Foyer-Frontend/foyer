@@ -25,6 +25,19 @@ struct Config {
     std::string  rom_root          = "/foyer/roms";
     std::string  theme_name        = "default";
     SortMode     sort_mode         = SortMode::Name;
+
+    // Order of the Home carousel system tiles. ScannerOrder is the
+    // default (whatever scan_library emits); the others sort the
+    // populated systems alphabetically / by populated game count
+    // descending / by an explicit user-defined ordering held in
+    // system_custom_order. Virtual systems (Recent / Favorites)
+    // always pin to the front — they're not affected by this knob.
+    enum class SystemSortMode { ScannerOrder, Alphabetical, GameCount, Custom };
+    SystemSortMode           system_sort_mode = SystemSortMode::ScannerOrder;
+    // For Custom mode: list of system folder slugs in the order the
+    // user wants them surfaced. Folders not in the list fall back to
+    // alphabetical at the end so a fresh system doesn't disappear.
+    std::vector<std::string> system_custom_order;
     // Default post-process shader applied to every game's framebuffer.
     // Built-in names: "none", "scanlines", "crt_simple", "lcd_grid",
     // "gb_dmg", "gba_correct". Anything else is treated as a path
@@ -129,6 +142,8 @@ void          set_default_core_for(std::string_view folder,
                                    std::string_view core_name);
 void          set_theme_name(std::string_view name);
 void          set_sort_mode(Config::SortMode mode);
+void          set_system_sort_mode(Config::SystemSortMode mode);
+void          set_system_custom_order(std::vector<std::string> order);
 void          set_shader_name(std::string_view name);
 void          set_runahead_frames(int frames);
 void          set_bool(std::string_view key, bool value);  // accepts the field names below

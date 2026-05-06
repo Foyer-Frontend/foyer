@@ -173,6 +173,57 @@ void sort_games(std::vector<Game>& games, Config::SortMode mode) {
     }
 }
 
+// Reorder real systems according to Config::system_sort_mode. Used by
+// both the cache-hit fast path and the full-scan path, so a switch in
+// system_sort_mode without other library changes still re-orders on
+// the next scan_library() call.
+void apply_system_sort(std::vector<System>& systems) {
+    const auto mode = config().system_sort_mode;
+    if (mode == Config::SystemSortMode::ScannerOrder) return;
+
+    auto folder_lc = [](std::string_view s) {
+        std::string r{s};
+        for (auto& c : r) if (c >= 'A' && c <= 'Z') c = (char)(c + 32);
+        return r;
+    };
+    switch (mode) {
+        case Config::SystemSortMode::Alphabetical:
+            std::sort(systems.begin(), systems.end(),
+                [&](const System& a, const System& b) {
+                    return folder_lc(a.def ? a.def->short_name : "") <
+                           folder_lc(b.def ? b.def->short_name : "");
+                });
+            break;
+        case Config::SystemSortMode::GameCount:
+            std::sort(systems.begin(), systems.end(),
+                [&](const System& a, const System& b) {
+                    if (a.games.size() != b.games.size())
+                        return a.games.size() > b.games.size();
+                    return folder_lc(a.def ? a.def->short_name : "") <
+                           folder_lc(b.def ? b.def->short_name : "");
+                });
+            break;
+        case Config::SystemSortMode::Custom: {
+            const auto& order = config().system_custom_order;
+            auto rank = [&](const System& s) -> int {
+                if (!s.def) return (int)order.size() + 1;
+                for (std::size_t i = 0; i < order.size(); i++)
+                    if (s.def->folder_name == order[i]) return (int)i;
+                return (int)order.size() + 1;
+            };
+            std::stable_sort(systems.begin(), systems.end(),
+                [&](const System& a, const System& b) {
+                    const int ra = rank(a), rb = rank(b);
+                    if (ra != rb) return ra < rb;
+                    return folder_lc(a.def ? a.def->short_name : "") <
+                           folder_lc(b.def ? b.def->short_name : "");
+                });
+            break;
+        }
+        default: break;
+    }
+}
+
 } // namespace
 
 std::vector<System> scan_library(const ScanOptions& opts) {
@@ -195,6 +246,11 @@ std::vector<System> scan_library(const ScanOptions& opts) {
                 }
                 sort_games(s.games, config().sort_mode);
             }
+            // System ordering is a config knob (alphabetical / game
+            // count / custom / scanner default) — re-apply on every
+            // load so a switch in system_sort_mode shows up without
+            // needing to bust the library cache.
+            apply_system_sort(*cached);
             // Recreate virtual carousel tiles from the loaded games.
             auto& out_real = *cached;
             auto add_virtual = [&](const SystemDef& def, auto&& filter,
@@ -280,6 +336,8 @@ std::vector<System> scan_library(const ScanOptions& opts) {
         sort_games(unknown.games, Config::SortMode::Name);
         out.emplace_back(std::move(unknown));
     }
+
+    apply_system_sort(out);
 
     // Synthesise the virtual "Recent" + "Favorites" carousel tiles by
     // pooling games across every real system. Inserted in reverse order

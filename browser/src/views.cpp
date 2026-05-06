@@ -894,6 +894,8 @@ enum PopupOp {
     PopUnfavoriteAll,    // System view: clears every favorite in the system
     PopClearPlaytime,    // System view: zeros last_played + playtime for every rom
     PopScrapeSystem,     // System view: kicks off a bulk scrape of the focused system
+    PopSystemMoveUp,     // Home: move the focused system one slot toward the front
+    PopSystemMoveDown,   // Home: move the focused system one slot toward the back
 };
 
 std::vector<PopupItem> popup_items_for(View v) {
@@ -901,6 +903,8 @@ std::vector<PopupItem> popup_items_for(View v) {
         case View::Home:
             return { {"Search",        PopSearch},
                      {"Resume Last",   PopResume},
+                     {"Move up",       PopSystemMoveUp},
+                     {"Move down",     PopSystemMoveDown},
                      {"Rescan Games",  PopRescan},
                      {"Settings",      PopSettings},
                      {"Exit",          PopExit} };
@@ -1321,6 +1325,7 @@ enum : int {
     OpUpdRefreshManifest, OpUpdInstallSingleCore, OpUpdReinstallSingleCore,
     OpUpdCancelJob,
     OpSortMode,
+    OpSystemSortMode,
     OpShader,
     OpRunahead,
     OpInstallShaderPresets,
@@ -1472,6 +1477,16 @@ std::vector<Item> build_items(Category cat, const State& s) {
             rows.push_back({ItemKind::Cycle, "Sort games by", sort_label,
                 "Order of the per-system game grid.",
                 OpSortMode});
+            const char* sys_sort_label = "Scanner order";
+            switch (library::config().system_sort_mode) {
+                case library::Config::SystemSortMode::ScannerOrder: sys_sort_label = "Scanner order"; break;
+                case library::Config::SystemSortMode::Alphabetical: sys_sort_label = "Alphabetical";  break;
+                case library::Config::SystemSortMode::GameCount:    sys_sort_label = "Game count";    break;
+                case library::Config::SystemSortMode::Custom:       sys_sort_label = "Custom";        break;
+            }
+            rows.push_back({ItemKind::Cycle, "Sort systems by", sys_sort_label,
+                "Order of the Home carousel tiles.",
+                OpSystemSortMode});
             break;
         }
         case Category::Emulator: {
@@ -2259,6 +2274,12 @@ OptionList build_option_list(int op, const std::string& data) {
             o.current_index = (int)library::config().sort_mode;
             break;
         }
+        case OpSystemSortMode: {
+            o.title = "Sort systems by";
+            o.options = { "Scanner order", "Alphabetical", "Game count", "Custom" };
+            o.current_index = (int)library::config().system_sort_mode;
+            break;
+        }
         case OpShader: {
             o.title = "Shader";
             o.options = { "none", "scanlines", "crt_simple",
@@ -2380,6 +2401,15 @@ std::string apply_option(int op, const std::string& data,
         }
         case OpSortMode: {
             library::set_sort_mode((library::Config::SortMode)chosen_index);
+            s.request_rescan = true;
+            break;
+        }
+        case OpSystemSortMode: {
+            library::set_system_sort_mode(
+                (library::Config::SystemSortMode)chosen_index);
+            // Trigger a rescan so the Home carousel re-orders right
+            // away — apply_system_sort runs in scan_library on both
+            // the cache-hit and full-scan paths.
             s.request_rescan = true;
             break;
         }
@@ -3325,6 +3355,47 @@ void update(State& s, const Library& lib,
                         n, n == 1 ? "" : "s");
                     s.banner_text = b;
                     s.banner_ttl  = 180;
+                    break;
+                }
+                case PopSystemMoveUp:
+                case PopSystemMoveDown: {
+                    if (s.view != View::Home) break;
+                    if (s.system_index >= lib.systems.size()) break;
+                    const auto& cur = lib.systems[s.system_index];
+                    if (!cur.def) break;
+                    if (library::is_virtual_system(*cur.def)) {
+                        s.banner_text = "Recents/Favorites can't be moved";
+                        s.banner_ttl  = 180;
+                        break;
+                    }
+                    // Build a fresh custom order seeded by whatever's
+                    // currently visible (skipping virtuals), then bump
+                    // the focused folder one slot. Switch sort mode to
+                    // Custom so subsequent rescans honour the order.
+                    std::vector<std::string> order;
+                    for (const auto& sys2 : lib.systems) {
+                        if (!sys2.def || library::is_virtual_system(*sys2.def))
+                            continue;
+                        order.emplace_back(sys2.def->folder_name);
+                    }
+                    auto it = std::find(order.begin(), order.end(),
+                                        std::string{cur.def->folder_name});
+                    if (it == order.end()) break;
+                    if (op == PopSystemMoveUp && it != order.begin()) {
+                        std::iter_swap(it, it - 1);
+                    } else if (op == PopSystemMoveDown && it + 1 != order.end()) {
+                        std::iter_swap(it, it + 1);
+                    } else {
+                        s.banner_text = "Already at the edge";
+                        s.banner_ttl  = 120;
+                        break;
+                    }
+                    library::set_system_custom_order(std::move(order));
+                    library::set_system_sort_mode(
+                        library::Config::SystemSortMode::Custom);
+                    s.request_rescan = true;
+                    s.banner_text = "System reordered";
+                    s.banner_ttl  = 120;
                     break;
                 }
                 case PopScrapeSystem: {

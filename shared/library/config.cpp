@@ -79,6 +79,24 @@ Config::SortMode str_to_sort(const char* s) {
     return Config::SortMode::Name;
 }
 
+const char* sys_sort_to_str(Config::SystemSortMode m) {
+    switch (m) {
+        case Config::SystemSortMode::ScannerOrder: return "scanner";
+        case Config::SystemSortMode::Alphabetical: return "alphabetical";
+        case Config::SystemSortMode::GameCount:    return "game_count";
+        case Config::SystemSortMode::Custom:       return "custom";
+    }
+    return "scanner";
+}
+
+Config::SystemSortMode str_to_sys_sort(const char* s) {
+    if (!s) return Config::SystemSortMode::ScannerOrder;
+    if (!std::strcmp(s, "alphabetical")) return Config::SystemSortMode::Alphabetical;
+    if (!std::strcmp(s, "game_count"))   return Config::SystemSortMode::GameCount;
+    if (!std::strcmp(s, "custom"))       return Config::SystemSortMode::Custom;
+    return Config::SystemSortMode::ScannerOrder;
+}
+
 void write_locked() {
     std::ofstream out{kPath, std::ios::trunc};
     if (!out) {
@@ -93,6 +111,18 @@ void write_locked() {
     out << "    \"rom_root\":          \"" << g_config.rom_root << "\",\n";
     out << "    \"theme\":             \"" << g_config.theme_name << "\",\n";
     out << "    \"sort_mode\":         \"" << sort_to_str(g_config.sort_mode) << "\",\n";
+    out << "    \"system_sort_mode\":  \""
+        << sys_sort_to_str(g_config.system_sort_mode) << "\",\n";
+    out << "    \"system_custom_order\": [";
+    {
+        bool sf = true;
+        for (const auto& f : g_config.system_custom_order) {
+            if (!sf) out << ",";
+            sf = false;
+            out << "\n        \"" << f << "\"";
+        }
+        out << (g_config.system_custom_order.empty() ? "],\n" : "\n    ],\n");
+    }
     out << "    \"shader\":            \"" << g_config.shader_name << "\",\n";
     out << "    \"runahead_frames\":   " << g_config.runahead_frames << ",\n";
     out << "    \"scan_subfolders\":   " << bstr(g_config.scan_subfolders) << ",\n";
@@ -159,6 +189,19 @@ void load_locked() {
     if (auto* v = yyjson_obj_get(root, "sort_mode");
         v && yyjson_is_str(v)) {
         g_config.sort_mode = str_to_sort(yyjson_get_str(v));
+    }
+    if (auto* v = yyjson_obj_get(root, "system_sort_mode");
+        v && yyjson_is_str(v)) {
+        g_config.system_sort_mode = str_to_sys_sort(yyjson_get_str(v));
+    }
+    if (auto* arr = yyjson_obj_get(root, "system_custom_order");
+        arr && yyjson_is_arr(arr)) {
+        g_config.system_custom_order.clear();
+        std::size_t i, n; yyjson_val* item;
+        yyjson_arr_foreach(arr, i, n, item) {
+            if (yyjson_is_str(item))
+                g_config.system_custom_order.emplace_back(yyjson_get_str(item));
+        }
     }
     if (auto* v = yyjson_obj_get(root, "shader");
         v && yyjson_is_str(v)) {
@@ -273,6 +316,18 @@ void set_preferred_scraper(Config::Scraper s) {
 void set_theme_name(std::string_view name) {
     std::scoped_lock lk{g_mutex};
     g_config.theme_name = std::string{name};
+    write_locked();
+}
+
+void set_system_sort_mode(Config::SystemSortMode mode) {
+    std::scoped_lock lk{g_mutex};
+    g_config.system_sort_mode = mode;
+    write_locked();
+}
+
+void set_system_custom_order(std::vector<std::string> order) {
+    std::scoped_lock lk{g_mutex};
+    g_config.system_custom_order = std::move(order);
     write_locked();
 }
 
