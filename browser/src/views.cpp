@@ -4372,6 +4372,12 @@ void update(State& s, const Library& lib,
                     }
                     case settings::ItemKind::Toggle:
                         settings::toggle_set(it.payload, !settings::toggle_get(it.payload));
+                        // Toggles that change which systems / games
+                        // appear in the library carousel need a
+                        // rescan so the change is visible without
+                        // a manual rebuild.
+                        if (it.payload == settings::OpHideEmpty)
+                            s.request_rescan = true;
                         break;
                     case settings::ItemKind::Action:
                         if (it.payload == settings::OpRescan) {

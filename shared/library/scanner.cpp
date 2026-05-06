@@ -340,9 +340,13 @@ std::vector<System> scan_library(const ScanOptions& opts) {
         // and rescanning is enough to re-order without restarting.
         sort_games(sys.games, config().sort_mode);
 
-        if (!sys.games.empty()) {
-            out.emplace_back(std::move(sys));
-        }
+        // Emit the system regardless of whether it has roms — the
+        // post-scan apply_hide_empty() decides whether to surface
+        // empty entries based on Config::hide_empty_systems. v0.4.0
+        // shipped an unconditional `if (!sys.games.empty())` guard
+        // here that defeated the toggle entirely; v0.4.x restores
+        // the user's choice.
+        out.emplace_back(std::move(sys));
     }
     ::closedir(root);
 

@@ -98,7 +98,11 @@ bool save_library_cache(std::string_view path,
     const auto seen = list_top_folders(rom_root);
 
     out << "{";
-    out << "\"v\":2,";
+    // v3: scanner now emits empty real systems too — apply_hide_empty
+    // post-scan respects Config::hide_empty_systems. Pre-v3 caches
+    // were saved without the empty entries so the toggle had nothing
+    // to surface; bumping forces a one-time rescan on upgrade.
+    out << "\"v\":3,";
     out << "\"rom_root\":\"" << rom_root << "\",";
     out << "\"rom_root_mtime\":" << mtime_of(rom_root) << ",";
     out << "\"seen_folders\":[";
@@ -155,7 +159,7 @@ load_library_cache(std::string_view path,
     // v2 added `seen_folders` so the loader can distinguish "no-op
     // empty folder still there" from "user added a real new system".
     if (auto* v = yyjson_obj_get(root, "v");
-        !v || !yyjson_is_int(v) || yyjson_get_int(v) != 2) {
+        !v || !yyjson_is_int(v) || yyjson_get_int(v) != 3) {
         yyjson_doc_free(doc);
         return std::nullopt;
     }
