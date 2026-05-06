@@ -13,6 +13,7 @@
 
 #include <chrono>
 #include <thread>
+#include "i18n/i18n.hpp"
 #include "library/scanner.hpp"
 #include "library/system_db.hpp"
 #include "library/config.hpp"
@@ -188,6 +189,12 @@ int main(int argc, char** argv) {
     // hangs at "Fetching manifest...". Boot-time foyer manifest
     // check is the trigger.
     foyer::net::init();
+    // i18n locale detection runs before any UI string is read. Pulls
+    // the Switch system language and picks one of the bundled
+    // catalogues — falls through to English when the user's locale
+    // doesn't have a translation yet. Cheap (one libnx Set service
+    // call) so no async work needed.
+    foyer::i18n::init();
     // Wire the per-byte UI pump. xferinfo (called from inside
     // curl_easy_perform) hits this every ~200ms; we throttle to ~30
     // fps so the progress bar redraws without blowing the frame

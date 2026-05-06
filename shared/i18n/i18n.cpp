@@ -8,12 +8,18 @@
 #endif
 
 namespace foyer::i18n {
-namespace {
 
-constexpr std::size_t kCount =
+// kCount + Catalogue alias live at namespace scope (external linkage)
+// so the `extern const Catalogue kSpanishStrings` forward decls below
+// match the definitions in i18n_es.cpp / i18n_pt_br.cpp. Putting them
+// inside an anonymous namespace would give the externs internal
+// linkage and produce link errors on the catalogue references.
+inline constexpr std::size_t kCount =
     static_cast<std::size_t>(StringId::kStringIdCount);
 
 using Catalogue = std::array<const char*, kCount>;
+
+namespace {
 
 // English — the source of truth. Every other catalogue uses this as
 // the fallback when an entry is missing (null) or empty.
@@ -84,20 +90,73 @@ constexpr Catalogue kEnglishStrings = [] {
     a[(std::size_t)StringId::Cancel]                     = "Cancel";
     a[(std::size_t)StringId::Confirm]                    = "Confirm";
     a[(std::size_t)StringId::Close]                      = "Close";
+    a[(std::size_t)StringId::Later]                      = "Later";
+    a[(std::size_t)StringId::Exit]                       = "Exit";
+
+    a[(std::size_t)StringId::EmptyNoSystemsFound]        = "No systems found";
+    a[(std::size_t)StringId::EmptyDropRomsHint]          =
+        "drop roms into /foyer/roms/<system>/ and rescan";
+    a[(std::size_t)StringId::EmptyNoSystems]             = "No systems";
+    a[(std::size_t)StringId::EmptyNoRomsInFolder]        = "no roms in this folder";
+    a[(std::size_t)StringId::EmptyNoCoverScrapeHint]     = "no cover (Y to scrape)";
+
+    a[(std::size_t)StringId::GamePublisher]              = "Publisher";
+    a[(std::size_t)StringId::GameDeveloper]              = "Developer";
+    a[(std::size_t)StringId::GamePlayers]                = "Players";
+    a[(std::size_t)StringId::GameRating]                 = "Rating";
+
+    a[(std::size_t)StringId::ActionResumeLast]           = "Resume Last";
+    a[(std::size_t)StringId::ActionMoveUp]               = "Move up";
+    a[(std::size_t)StringId::ActionMoveDown]             = "Move down";
+    a[(std::size_t)StringId::ActionRescanGames]          = "Rescan Games";
+    a[(std::size_t)StringId::ActionToggleFavorite]       = "Toggle Favorite";
+    a[(std::size_t)StringId::ActionPickCover]            = "Pick cover...";
+    a[(std::size_t)StringId::ActionFavoriteAll]          = "Favorite all";
+    a[(std::size_t)StringId::ActionClearAllFavorites]    = "Clear all favorites";
+    a[(std::size_t)StringId::ActionScrapeSystem]         = "Scrape this system";
+
+    a[(std::size_t)StringId::QuitConfirmTitle]           = "Quit foyer?";
+    a[(std::size_t)StringId::UpdateRestartTitle]         = "Restart foyer to apply v";
+    a[(std::size_t)StringId::UpdateRestartHint]          =
+        "Replaces foyer.nro and re-launches. No on-disk save loss.";
+    a[(std::size_t)StringId::UpdateFoyerTitle]           = "Update foyer to v";
+    a[(std::size_t)StringId::UpdateFoyerHint]            =
+        "Downloads foyer.nro to /switch/foyer/foyer.nro.new — applied next boot.";
+
+    a[(std::size_t)StringId::SettingsGeneral]            = "General";
+    a[(std::size_t)StringId::SettingsAudio]              = "Audio";
+    a[(std::size_t)StringId::SettingsAccounts]           = "Accounts";
+    a[(std::size_t)StringId::SettingsExperimental]       = "Experimental";
+    a[(std::size_t)StringId::SettingsPreferredScraper]   = "Preferred scraper";
+    a[(std::size_t)StringId::SettingsPreferredScraperHint] =
+        "Provider used when Y scrapes a game.";
+    a[(std::size_t)StringId::SettingsRomRoot]            = "Rom root";
+    a[(std::size_t)StringId::SettingsRomRootHint]        = "Where foyer scans for roms.";
+    a[(std::size_t)StringId::SettingsScanSubfolders]     = "Scan subfolders";
+    a[(std::size_t)StringId::SettingsScanSubfoldersHint] = "Walk subdirectories on scan.";
+    a[(std::size_t)StringId::SettingsTheme]              = "Theme";
+    a[(std::size_t)StringId::SettingsThemeHint]          = "Active palette + wallpaper.";
+    a[(std::size_t)StringId::SettingsShowClock]          = "Show clock";
+    a[(std::size_t)StringId::SettingsShowClockHint]      = "Top-bar clock.";
+    a[(std::size_t)StringId::SettingsLanguage]           = "Language";
+    a[(std::size_t)StringId::SettingsLanguageHint]       =
+        "Override the system language. Restart for full effect.";
     return a;
 }();
 
-// Forward-declare per-language catalogues that live in their own .cpp.
+} // namespace (close anon — externs need external linkage)
+
+// Forward-declare per-language catalogues defined in their own .cpp
+// at foyer::i18n scope (e.g. i18n_es.cpp). External linkage required.
 extern const Catalogue kSpanishStrings;
 extern const Catalogue kPortugueseBrazilStrings;
 
-// Catalogue table. Indexed by Language. Add per-language arrays here
-// as community translations land — declare them in their own .cpp
-// (e.g. i18n_es.cpp) and add the extern + table entry above.
-//
-// Slots that point to nullptr (or to empty strings inside an array)
-// fall through to English at lookup time, so a partial translation
-// is fine — nobody sees a blank space.
+namespace {
+
+// Catalogue table. Indexed by Language. Slots that point to nullptr
+// (or to empty strings inside an array) fall through to English at
+// lookup time, so a partial translation is fine — nobody sees a
+// blank space.
 const std::array<const Catalogue*, (std::size_t)Language::kLanguageCount>
     kCatalogues = {
         &kEnglishStrings,

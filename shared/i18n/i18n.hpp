@@ -97,6 +97,57 @@ enum class StringId : std::uint16_t {
     Cancel,
     Confirm,
     Close,
+    Later,
+    Exit,
+
+    // ----- Empty-state messages -----
+    EmptyNoSystemsFound,
+    EmptyDropRomsHint,
+    EmptyNoSystems,
+    EmptyNoRomsInFolder,
+    EmptyNoCoverScrapeHint,
+
+    // ----- Game detail panel labels -----
+    GamePublisher,
+    GameDeveloper,
+    GamePlayers,
+    GameRating,
+
+    // ----- System-row action menu -----
+    ActionResumeLast,
+    ActionMoveUp,
+    ActionMoveDown,
+    ActionRescanGames,
+    ActionToggleFavorite,
+    ActionPickCover,
+    ActionFavoriteAll,
+    ActionClearAllFavorites,
+    ActionScrapeSystem,
+
+    // ----- Quit / restart confirms -----
+    QuitConfirmTitle,
+    UpdateRestartTitle,
+    UpdateRestartHint,
+    UpdateFoyerTitle,
+    UpdateFoyerHint,
+
+    // ----- Settings sub-tabs / labels -----
+    SettingsGeneral,
+    SettingsAudio,
+    SettingsAccounts,
+    SettingsExperimental,
+    SettingsPreferredScraper,
+    SettingsPreferredScraperHint,
+    SettingsRomRoot,
+    SettingsRomRootHint,
+    SettingsScanSubfolders,
+    SettingsScanSubfoldersHint,
+    SettingsTheme,
+    SettingsThemeHint,
+    SettingsShowClock,
+    SettingsShowClockHint,
+    SettingsLanguage,
+    SettingsLanguageHint,
 
     // Sentinel — keep last.
     kStringIdCount,

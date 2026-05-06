@@ -86,6 +86,57 @@ const std::array<const char*, kCount> kSpanishStrings = [] {
     a[(std::size_t)StringId::Cancel]                     = "Cancelar";
     a[(std::size_t)StringId::Confirm]                    = "Confirmar";
     a[(std::size_t)StringId::Close]                      = "Cerrar";
+    a[(std::size_t)StringId::Later]                      = "Después";
+    a[(std::size_t)StringId::Exit]                       = "Salir";
+
+    a[(std::size_t)StringId::EmptyNoSystemsFound]        = "No hay sistemas";
+    a[(std::size_t)StringId::EmptyDropRomsHint]          =
+        "coloca roms en /foyer/roms/<sistema>/ y vuelve a escanear";
+    a[(std::size_t)StringId::EmptyNoSystems]             = "Sin sistemas";
+    a[(std::size_t)StringId::EmptyNoRomsInFolder]        = "no hay roms en esta carpeta";
+    a[(std::size_t)StringId::EmptyNoCoverScrapeHint]     = "sin portada (Y para buscar)";
+
+    a[(std::size_t)StringId::GamePublisher]              = "Distribuidor";
+    a[(std::size_t)StringId::GameDeveloper]              = "Desarrollador";
+    a[(std::size_t)StringId::GamePlayers]                = "Jugadores";
+    a[(std::size_t)StringId::GameRating]                 = "Clasificación";
+
+    a[(std::size_t)StringId::ActionResumeLast]           = "Reanudar último";
+    a[(std::size_t)StringId::ActionMoveUp]               = "Subir";
+    a[(std::size_t)StringId::ActionMoveDown]             = "Bajar";
+    a[(std::size_t)StringId::ActionRescanGames]          = "Escanear juegos";
+    a[(std::size_t)StringId::ActionToggleFavorite]       = "Alternar favorito";
+    a[(std::size_t)StringId::ActionPickCover]            = "Elegir portada...";
+    a[(std::size_t)StringId::ActionFavoriteAll]          = "Marcar todos como favoritos";
+    a[(std::size_t)StringId::ActionClearAllFavorites]    = "Quitar todos los favoritos";
+    a[(std::size_t)StringId::ActionScrapeSystem]         = "Buscar metadatos del sistema";
+
+    a[(std::size_t)StringId::QuitConfirmTitle]           = "¿Salir de foyer?";
+    a[(std::size_t)StringId::UpdateRestartTitle]         = "Reinicia foyer para aplicar v";
+    a[(std::size_t)StringId::UpdateRestartHint]          =
+        "Reemplaza foyer.nro y se relanza. No se pierden datos guardados.";
+    a[(std::size_t)StringId::UpdateFoyerTitle]           = "Actualizar foyer a v";
+    a[(std::size_t)StringId::UpdateFoyerHint]            =
+        "Descarga foyer.nro a /switch/foyer/foyer.nro.new — se aplica al próximo arranque.";
+
+    a[(std::size_t)StringId::SettingsGeneral]            = "General";
+    a[(std::size_t)StringId::SettingsAudio]              = "Audio";
+    a[(std::size_t)StringId::SettingsAccounts]           = "Cuentas";
+    a[(std::size_t)StringId::SettingsExperimental]       = "Experimental";
+    a[(std::size_t)StringId::SettingsPreferredScraper]   = "Scraper preferido";
+    a[(std::size_t)StringId::SettingsPreferredScraperHint] =
+        "Proveedor usado al pulsar Y para buscar.";
+    a[(std::size_t)StringId::SettingsRomRoot]            = "Carpeta de roms";
+    a[(std::size_t)StringId::SettingsRomRootHint]        = "Dónde foyer escanea las roms.";
+    a[(std::size_t)StringId::SettingsScanSubfolders]     = "Escanear subcarpetas";
+    a[(std::size_t)StringId::SettingsScanSubfoldersHint] = "Recorrer subdirectorios al escanear.";
+    a[(std::size_t)StringId::SettingsTheme]              = "Tema";
+    a[(std::size_t)StringId::SettingsThemeHint]          = "Paleta y fondo activos.";
+    a[(std::size_t)StringId::SettingsShowClock]          = "Mostrar reloj";
+    a[(std::size_t)StringId::SettingsShowClockHint]      = "Reloj en la barra superior.";
+    a[(std::size_t)StringId::SettingsLanguage]           = "Idioma";
+    a[(std::size_t)StringId::SettingsLanguageHint]       =
+        "Anula el idioma del sistema. Reinicia para que surta pleno efecto.";
     return a;
 }();
 

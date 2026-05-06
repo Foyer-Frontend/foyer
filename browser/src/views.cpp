@@ -2,6 +2,7 @@
 #include "theme.hpp"
 #include "launch.hpp"
 #include "mtp.hpp"
+#include "i18n/i18n.hpp"
 #include "library/system_db.hpp"
 #include "library/config.hpp"
 #include "library/per_game.hpp"
@@ -30,6 +31,15 @@
 
 namespace foyer::browser {
 namespace {
+
+// Short alias for the i18n lookup so the migrated call sites read
+// like `_(SId::Settings)` instead of
+// `foyer::i18n::tr(foyer::i18n::StringId::Settings)`. Use `_` rather
+// than `tr` to side-step ADL: SId lives in foyer::i18n, so a local
+// `tr` clashes with foyer::i18n::tr the moment ADL kicks in. `_`
+// has no other meaning in our codebase and reads cleanly enough.
+using SId = foyer::i18n::StringId;
+inline const char* _(SId id) { return foyer::i18n::tr(id); }
 
 // Cover image cache keyed by absolute path. Lazily populated on first draw
 // where a cover file exists; entries with handle 0 indicate "tried + not on
@@ -480,8 +490,8 @@ int home_hit_test(float w, float h, std::size_t count,
 void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& lib) {
     if (lib.systems.empty()) {
         draw_empty(vg, w, h,
-            "No systems found",
-            "drop roms into /foyer/roms/<system>/ and rescan");
+            _(SId::EmptyNoSystemsFound),
+            _(SId::EmptyDropRomsHint));
         return;
     }
 
@@ -638,7 +648,7 @@ int system_row_hit_test(float w, float h, const library::System& sys,
 void draw_system(NVGcontext* vg, float w, float h, const State& s, const Library& lib) {
     const auto& th = theme();
     if (lib.systems.empty()) {
-        draw_empty(vg, w, h, "No systems", "");
+        draw_empty(vg, w, h, _(SId::EmptyNoSystems), "");
         return;
     }
     const auto& sys = lib.systems[s.system_index];
@@ -680,7 +690,7 @@ void draw_system(NVGcontext* vg, float w, float h, const State& s, const Library
         nvgFillColor(vg, th.text_dim);
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
         nvgText(vg, th.pad + list_w * 0.5f, content_y + content_h * 0.5f,
-            "no roms in this folder", nullptr);
+            _(SId::EmptyNoRomsInFolder), nullptr);
         return;
     }
 
@@ -780,7 +790,7 @@ void draw_system(NVGcontext* vg, float w, float h, const State& s, const Library
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
         nvgText(vg, cover_x + cover_w * 0.5f,
                 cover_y + cover_h * 0.5f,
-                "no cover (Y to scrape)", nullptr);
+                _(SId::EmptyNoCoverScrapeHint), nullptr);
     }
 
     // ---- info block under the cover ----
@@ -843,10 +853,10 @@ void draw_system(NVGcontext* vg, float w, float h, const State& s, const Library
         nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_TOP);
         info_y += th.label_size + 8.0f;
     };
-    stat_row("Publisher", meta_info.publisher);
-    stat_row("Developer", meta_info.developer);
-    stat_row("Players",   meta_info.players);
-    stat_row("Rating",    meta_info.rating);
+    stat_row(_(SId::GamePublisher), meta_info.publisher);
+    stat_row(_(SId::GameDeveloper), meta_info.developer);
+    stat_row(_(SId::GamePlayers),   meta_info.players);
+    stat_row(_(SId::GameRating),    meta_info.rating);
 
     // Achievements — pulled from the rcheevos-written sidecar. Only shows
     // when the player has booted this rom at least once with valid creds.
@@ -902,29 +912,29 @@ enum PopupOp {
 std::vector<PopupItem> popup_items_for(View v) {
     switch (v) {
         case View::Home:
-            return { {"Search",        PopSearch},
-                     {"Resume Last",   PopResume},
-                     {"Move up",       PopSystemMoveUp},
-                     {"Move down",     PopSystemMoveDown},
-                     {"Rescan Games",  PopRescan},
-                     {"Settings",      PopSettings},
-                     {"Exit",          PopExit} };
+            return { {_(SId::Search),                PopSearch},
+                     {_(SId::ActionResumeLast),      PopResume},
+                     {_(SId::ActionMoveUp),          PopSystemMoveUp},
+                     {_(SId::ActionMoveDown),        PopSystemMoveDown},
+                     {_(SId::ActionRescanGames),     PopRescan},
+                     {_(SId::Settings),              PopSettings},
+                     {_(SId::Exit),                  PopExit} };
         case View::System:
-            return { {"Toggle Favorite",       PopToggleFavorite},
-                     {"Pick cover...",         PopPickCover},
-                     {"Favorite all",          PopFavoriteAll},
-                     {"Clear all favorites",   PopUnfavoriteAll},
-                     {"Scrape this system",    PopScrapeSystem},
-                     {"Clear playtime",        PopClearPlaytime},
-                     {"Search",                PopSearch},
-                     {"Rescan Games",          PopRescan},
-                     {"Settings",              PopSettings},
-                     {"Back",                  PopBack} };
+            return { {_(SId::ActionToggleFavorite),  PopToggleFavorite},
+                     {_(SId::ActionPickCover),       PopPickCover},
+                     {_(SId::ActionFavoriteAll),     PopFavoriteAll},
+                     {_(SId::ActionClearAllFavorites), PopUnfavoriteAll},
+                     {_(SId::ActionScrapeSystem),    PopScrapeSystem},
+                     {_(SId::GameClearPlaytime),     PopClearPlaytime},
+                     {_(SId::Search),                PopSearch},
+                     {_(SId::ActionRescanGames),     PopRescan},
+                     {_(SId::Settings),              PopSettings},
+                     {_(SId::Back),                  PopBack} };
         default:
-            return { {"Search",        PopSearch},
-                     {"Rescan Games",  PopRescan},
-                     {"Settings",      PopSettings},
-                     {"Back",          PopBack} };
+            return { {_(SId::Search),                PopSearch},
+                     {_(SId::ActionRescanGames),     PopRescan},
+                     {_(SId::Settings),              PopSettings},
+                     {_(SId::Back),                  PopBack} };
     }
 }
 
@@ -948,7 +958,7 @@ void draw_quit_confirm(NVGcontext* vg, float w, float h, const State& s) {
     nvgFontSize(vg, th.head_size);
     nvgFillColor(vg, th.text_strong);
     nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
-    nvgText(vg, cx + kCardW * 0.5f, cy + 28, "Quit foyer?", nullptr);
+    nvgText(vg, cx + kCardW * 0.5f, cy + 28, _(SId::QuitConfirmTitle), nullptr);
 
     constexpr float kBtnW = 140.0f;
     constexpr float kBtnH = 56.0f;
@@ -1063,7 +1073,7 @@ void draw_restart_confirm(NVGcontext* vg, float w, float h, const State& s) {
         nvgText(vg, bx + kBtnW * 0.5f, by + kBtnH * 0.5f, label, nullptr);
     };
     button(yes_x, "Restart now", s.restart_confirm_index == 0);
-    button(no_x,  "Later",       s.restart_confirm_index == 1);
+    button(no_x,  _(SId::Later),   s.restart_confirm_index == 1);
 }
 
 void draw_popup(NVGcontext* vg, float w, float h, const State& s) {
