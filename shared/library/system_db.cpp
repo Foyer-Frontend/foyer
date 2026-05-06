@@ -118,6 +118,15 @@ constexpr CoreDef kCoresMsx[]         = { { "fmsx",              "fMSX"         
 // 3DO Interactive Multiplayer.
 constexpr CoreDef kCores3do[]         = { { "opera",             "Opera"              } };
 
+// MAME 2003-Plus — covers most arcade titles up to ~2003.
+constexpr CoreDef kCoresMame[]        = { { "mame2003_plus",     "MAME 2003-Plus"     } };
+
+// ScummVM — point-and-click adventures.
+constexpr CoreDef kCoresScummvm[]     = { { "scummvm",           "ScummVM"            } };
+
+// Amiga family (PUAE — Amiga 500/1200/2000/3000/4000/CD32/CDTV).
+constexpr CoreDef kCoresAmiga[]       = { { "puae",              "PUAE"               } };
+
 // nxengine (Cave Story) ships as a core but has no SystemDef entry —
 // the theme has no cavestory tile. Add the SystemDef once a tile lands.
 
@@ -305,6 +314,34 @@ constexpr SystemDef kSystems[] = {
     { "3do",          "3DO",                          "3DO",
       "The 3DO Company - 3DO",
       "iso|chd|cue|m3u",   kCores3do },
+
+    { "arcade",       "Arcade",                       "ARC",
+      "MAME 2003-Plus",
+      "zip|7z|chd",        kCoresMame },
+
+    { "scummvm",      "ScummVM",                      "SVM",
+      "ScummVM",
+      "scummvm|svm|exe|com|bat|pkg|m3u", kCoresScummvm },
+
+    { "amiga",        "Amiga",                        "Amiga",
+      "Commodore - Amiga",
+      "adf|adz|ipf|dms|fdi|hdf|hdz|lha|slave|info|cue|ccd|nrg|mds|iso|chd|uae|m3u|zip|7z", kCoresAmiga },
+
+    { "amiga600",     "Amiga 600",                    "A600",
+      "Commodore - Amiga",
+      "adf|adz|ipf|dms|fdi|hdf|hdz|lha|m3u",  kCoresAmiga },
+
+    { "amiga1200",    "Amiga 1200",                   "A1200",
+      "Commodore - Amiga",
+      "adf|adz|ipf|dms|fdi|hdf|hdz|lha|m3u",  kCoresAmiga },
+
+    { "amigacd32",    "Amiga CD32",                   "CD32",
+      "Commodore - Amiga CD32",
+      "cue|ccd|nrg|mds|iso|chd|m3u",          kCoresAmiga },
+
+    { "cdtv",         "Commodore CDTV",               "CDTV",
+      "Commodore - CDTV",
+      "cue|ccd|nrg|mds|iso|chd|m3u",          kCoresAmiga },
 };
 
 bool iequal(std::string_view a, std::string_view b) {
