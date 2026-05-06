@@ -1275,6 +1275,26 @@ std::time_t& last_scrape_at() {
     return t;
 }
 
+// Cached pending-updates snapshot. compute_pending_updates() reopens
+// ~120 sidecar files (one per core/bezel/cheat manifest entry) AND
+// re-parses /foyer/data/skipped_versions.json once per entry — and
+// build_items() runs every frame for both update() and draw(). On
+// Switch FAT/exFAT each fopen is ~1ms, so an uncached Updates page
+// burned ~240ms/frame ≈ 4 fps. Cache the full UpdateBuckets and
+// only recompute when something invalidates it (manifest cache
+// update, skip_version, install completion, OpUpdRescrape).
+struct PendingUpdatesCache {
+    library::UpdateBuckets data;
+    bool                   valid = false;
+};
+PendingUpdatesCache& pending_updates_cache() {
+    static PendingUpdatesCache c;
+    return c;
+}
+void invalidate_pending_updates_cache() {
+    pending_updates_cache().valid = false;
+}
+
 const char* scraper_label(library::Config::Scraper sc) {
     switch (sc) {
         case library::Config::Scraper::ScreenScraper: return "ScreenScraper";
@@ -1366,22 +1386,38 @@ std::vector<Item> build_items(Category cat, const State& s) {
     switch (cat) {
         case Category::General:
             rows.push_back({ItemKind::Cycle,  "Preferred scraper", scraper_label(cfg.preferred_scraper),
-                "Y on a game scrapes via this provider.",            OpScraper});
+                "Provider used when you press Y on a game to fetch box art "
+                "and metadata.",
+                OpScraper});
             rows.push_back({ItemKind::Static, "Rom root",          cfg.rom_root,
-                "Edit /foyer/config/general.jsonc to change.",       OpRomRoot});
-            rows.push_back({ItemKind::Toggle, "Scan subfolders",   "", "",     OpScanSub});
+                "Where foyer scans for systems and roms. Edit "
+                "/foyer/config/general.jsonc on SD to change.",
+                OpRomRoot});
+            rows.push_back({ItemKind::Toggle, "Scan subfolders",   "",
+                "Walk into subdirectories under each system folder when "
+                "building the library. Off keeps scans flat.",
+                OpScanSub});
             break;
         case Category::Display: {
             rows.push_back({ItemKind::Cycle,  "Theme",        cfg.theme_name,
-                "Drop palettes into /foyer/config/themes/.",          OpTheme});
-            rows.push_back({ItemKind::Toggle, "Show clock",       "", "",     OpShowClock});
+                "Active palette + wallpaper. Drop custom packs into "
+                "/foyer/config/themes/<name>/ to add to this list.",
+                OpTheme});
+            rows.push_back({ItemKind::Toggle, "Show clock",       "",
+                "Display the current time in the top-bar.",
+                OpShowClock});
             rows.push_back({ItemKind::Toggle, "Show backgrounds", "",
-                "Use /foyer/assets/backgrounds/<sys>/<stem>.jpg.",    OpShowBg});
-            rows.push_back({ItemKind::Toggle, "Show covers",      "", "",     OpShowCovers});
+                "Render the per-game backdrop behind the System view from "
+                "/foyer/assets/backgrounds/<sys>/<stem>.jpg.",
+                OpShowBg});
+            rows.push_back({ItemKind::Toggle, "Show covers",      "",
+                "Render box-art tiles in the game grid from "
+                "/foyer/assets/covers/<sys>/<stem>.png.",
+                OpShowCovers});
             rows.push_back({ItemKind::Toggle, "Show bezels",      "",
-                "Off skips the per-system / default.png frame around the "
-                "emulator output. Drop a custom PNG at "
-                "/foyer/bezels/<system>.png to override per system.",
+                "Overlay the per-system PNG around emulator output. Off "
+                "keeps the screen clean. Pick a bezel under "
+                "Emulator -> Bezel per system.",
                 OpShowBezels});
             // Post-process shader, applied per-frame in every player.
             // Built-in presets ship with the player binary; users can
@@ -1419,8 +1455,14 @@ std::vector<Item> build_items(Category cat, const State& s) {
                 "", "Per-core audio settings are exposed in the in-game pause overlay.", 0});
             break;
         case Category::Library: {
-            rows.push_back({ItemKind::Action, "Rescan library",         "run",     "", OpRescan});
-            rows.push_back({ItemKind::Action, "Invalidate cover cache", "refresh", "", OpInvalidateCovers});
+            rows.push_back({ItemKind::Action, "Rescan library",         "run",
+                "Walks /foyer/roms/ again and rebuilds library.cache.json. "
+                "Use after adding or removing roms via MTP.",
+                OpRescan});
+            rows.push_back({ItemKind::Action, "Invalidate cover cache", "refresh",
+                "Drops every cached box-art handle so newly-scraped covers "
+                "show without restarting the browser.",
+                OpInvalidateCovers});
             // Sort cycle. Cycling triggers a rescan so the new order
             // takes effect immediately.
             const char* sort_label = "Name";
@@ -1483,9 +1525,8 @@ std::vector<Item> build_items(Category cat, const State& s) {
 
             if (s.settings_subpage == 1) {
                 // Per-system default core picker — Cycle row per
-                // system that has at least one core.
-                rows.push_back({ItemKind::Static, "Default core per system",
-                    "", "", 0});
+                // system that has at least one core. (No header row
+                // — the breadcrumb topbar already names the page.)
                 for (const auto& sys : library::all_systems()) {
                     if (sys.cores.empty()) continue;
                     std::string current = std::string{sys.cores.front().name};
@@ -1511,10 +1552,6 @@ std::vector<Item> build_items(Category cat, const State& s) {
 
                 const auto& mc = manifest_cache();
                 if (mc.loaded && !mc.data.cores.empty()) {
-                    rows.push_back({ItemKind::Static,
-                        std::string{"Available cores (manifest "}
-                            + mc.data.version + ")",
-                        "", "", 0});
                     for (const auto& c : mc.data.cores) {
                         const bool installed =
                             file_present(std::string{"/foyer/cores/"} + c.nro);
@@ -1555,10 +1592,6 @@ std::vector<Item> build_items(Category cat, const State& s) {
 
                 const auto& bmc = bezels_manifest_cache();
                 if (bmc.loaded && !bmc.data.packs.empty()) {
-                    rows.push_back({ItemKind::Static,
-                        std::string{"Bezel packs (manifest "}
-                            + bmc.data.version + ")",
-                        "", "", 0});
                     for (const auto& p : bmc.data.packs) {
                         Item it;
                         it.kind  = ItemKind::Action;
@@ -1596,10 +1629,6 @@ std::vector<Item> build_items(Category cat, const State& s) {
 
                 const auto& cmc = cheats_manifest_cache();
                 if (cmc.loaded && !cmc.data.packs.empty()) {
-                    rows.push_back({ItemKind::Static,
-                        std::string{"Cheat packs (manifest "}
-                            + cmc.data.version + ")",
-                        "", "", 0});
                     for (const auto& p : cmc.data.packs) {
                         Item it;
                         it.kind  = ItemKind::Action;
@@ -1655,8 +1684,6 @@ std::vector<Item> build_items(Category cat, const State& s) {
                 // now opt into bezels per system, which is what this
                 // page exists for.
                 rows.push_back({ItemKind::Static,
-                    "Bezel per system", "", "", 0});
-                rows.push_back({ItemKind::Static,
                     "Pick a PNG to overlay around the emulator output. "
                     "(none) keeps the system clean.",
                     "", "", 0});
@@ -1680,8 +1707,6 @@ std::vector<Item> build_items(Category cat, const State& s) {
             if (s.settings_subpage == 6) {
                 // External standalones — read-only status list per
                 // configured external_cores entry.
-                rows.push_back({ItemKind::Static,
-                    "External standalone emulators", "", "", 0});
                 if (library::config().external_cores.empty()) {
                     rows.push_back({ItemKind::Static,
                         "(none configured — edit "
@@ -1744,11 +1769,23 @@ std::vector<Item> build_items(Category cat, const State& s) {
                 fm.version = s.foyer_update_version;
             }
 
-            const auto pending = library::compute_pending_updates(
-                fm, FOYER_VERSION,
-                mc.loaded  ? mc.data  : library::CoreManifest{},
-                bmc.loaded ? bmc.data : library::BezelManifest{},
-                cmc.loaded ? cmc.data : library::CheatManifest{});
+            // Pending-list cache: build_items runs every frame for
+            // both update() and draw(); recomputing the buckets
+            // hammered ~120 fopen()s per call (one per manifest
+            // entry's `.version` sidecar + skipped_versions.json
+            // re-parse). Cache + invalidate on the events that
+            // could change the answer (manifest setter, install
+            // completion, skip_version, OpUpdRescrape).
+            auto& cache = pending_updates_cache();
+            if (!cache.valid) {
+                cache.data = library::compute_pending_updates(
+                    fm, FOYER_VERSION,
+                    mc.loaded  ? mc.data  : library::CoreManifest{},
+                    bmc.loaded ? bmc.data : library::BezelManifest{},
+                    cmc.loaded ? cmc.data : library::CheatManifest{});
+                cache.valid = true;
+            }
+            const auto& pending = cache.data;
 
             // Active job sticky row stays — gives the user a Cancel
             // for the in-flight transfer.
@@ -2418,6 +2455,7 @@ std::string apply_option(int op, const std::string& data,
                     else if (kind == "bezel") sk = library::SkipKind::Bezel;
                     else if (kind == "cheat") sk = library::SkipKind::Cheat;
                     library::skip_version(sk, id, ver);
+                    invalidate_pending_updates_cache();
                 }
                 return std::string{"Skipped "} + id;
             }
@@ -4026,6 +4064,7 @@ void set_manifest_cache(library::CoreManifest manifest) {
     mc.data   = std::move(manifest);
     mc.loaded = true;
     settings::last_scrape_at() = std::time(nullptr);
+    settings::invalidate_pending_updates_cache();
 }
 
 void set_cheats_manifest_cache(library::CheatManifest manifest) {
@@ -4033,6 +4072,7 @@ void set_cheats_manifest_cache(library::CheatManifest manifest) {
     mc.data   = std::move(manifest);
     mc.loaded = true;
     settings::last_scrape_at() = std::time(nullptr);
+    settings::invalidate_pending_updates_cache();
 }
 
 void set_bezels_manifest_cache(library::BezelManifest manifest) {
@@ -4040,6 +4080,7 @@ void set_bezels_manifest_cache(library::BezelManifest manifest) {
     mc.data   = std::move(manifest);
     mc.loaded = true;
     settings::last_scrape_at() = std::time(nullptr);
+    settings::invalidate_pending_updates_cache();
 }
 
 void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) {
