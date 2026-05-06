@@ -35,25 +35,45 @@ The final 0.2.x tag is whichever release has every box above checked.
 
 ## 0.3.0 — extra cores
 
-Broaden the catalogue. Targets, in rough priority:
+Broaden the catalogue. Per-core stability gating same as 0.2.x: each
+one boots a known-good rom on Switch hardware before it ships in the
+manifest.
 
-- `beetle_psx_hw` (PS1, hardware renderer — better accuracy than
-  `pcsx_rearmed` on tricky titles)
-- `beetle_saturn` (Saturn — fills the gap above `yabasanshiro`)
-- `beetle_pce` (TG16 / PC Engine + CD)
-- `sameboy` — back on the matrix once boot-rom assets pipeline lands
+**Landed in 0.3.0:**
+
+- `prboom` (Doom engine, with HAVE_LIBMAD music)
+- `tyrquake` (Quake 1)
 - `stella2014` (Atari 2600 — lighter than `stella` for older Switch
   thermal cases)
-- `citra` (3DS — Switch CPU is plausibly fast enough for select titles)
-- `tyrquake` / `prboom` polish so id-software classics ship out of the
-  box
-- `scummvm` (point-and-click adventures)
+- `beetle_pce` (TG16 / PC Engine + CD with libchdr)
 - `dosbox_pure` (DOS via libretro, single-file zip rom workflow)
 - `caprice32` (Amstrad CPC)
-- `vice` (Commodore 64 family)
 
-Per-core stability gating same as 0.2.x: each one boots a known-good
-rom on Switch hardware before it ships in the manifest.
+`beetle_psx_hw` already shipped in 0.2.x as `mednafen_psx_hw` (the
+matrix name); it's the same recipe.
+
+**Deferred — need ExternalProject_Add wrapping `make platform=libnx`
+rather than a hand-rolled CMake source list:**
+
+- `scummvm` — configure + module.mk recursion + libdetect/libdeps
+  split (~1500+ engine source files). Pattern matches what we did for
+  ppsspp.cmake.
+- `vice` — Makefile.common (~400 srcs) × 9 EMUTYPE variants
+  (x64/x128/x64sc/xpet/xplus4/xvic/xscpu64/xcbm2/xcbm5x0). Each
+  variant ships as a separate libretro core.
+
+**Deferred — needs upstream / thermal work before it's worth the
+porting effort:**
+
+- `beetle_saturn` — upstream Makefile has no `platform=libnx` target,
+  and Saturn's SH-2 + 68k + DSP combo is borderline impractical on
+  Switch (yabasanshiro already covers the lighter Saturn need).
+- `citra` (3DS) — likely to require a JIT capability (NACP) and Mesa
+  GL improvements before being worth shipping; Switch CPU is in the
+  ballpark but every test on Yuzu/Atmosphère today is below
+  playable on the most-demanded titles.
+- `sameboy` — bootrom assets pipeline still pending; the recipe
+  itself works.
 
 ## 0.4.0 — UI translations
 
