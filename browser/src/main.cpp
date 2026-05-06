@@ -12,6 +12,7 @@
 #include "boot_splash.hpp"
 
 #include <chrono>
+#include <thread>
 #include "library/scanner.hpp"
 #include "library/system_db.hpp"
 #include "library/config.hpp"
@@ -97,14 +98,28 @@ void scrub_legacy_default_bezel_once() {
 // If the previous run staged an update, swap it in before we boot the
 // rest of the app. We're not the loaded-into-memory image; renaming the
 // SD-side file is safe — the next launch picks up the new bytes.
+//
+// devkitA64's FAT/exFAT-backed rename(2) doesn't honour the POSIX
+// "atomic replace" rule — when the destination exists it returns
+// EEXIST instead of overwriting. Same workaround as
+// shared/net/http.cpp's stream_to_file: try direct rename first, then
+// unlink-then-rename on failure. Brief window where dest doesn't
+// exist between the two syscalls but the staged file is fully on
+// disk by this point so a power-cut won't lose data.
 void apply_staged_update_if_present() {
     struct stat st{};
     if (::stat(g_foyer_nro_new_path.c_str(), &st) != 0) return;
     if (::rename(g_foyer_nro_new_path.c_str(),
                  g_foyer_nro_path.c_str()) != 0) {
-        foyer::log::write("[foyer_update] rename of staged nro failed errno=%d\n",
-            errno);
-        return;
+        ::unlink(g_foyer_nro_path.c_str());
+        if (::rename(g_foyer_nro_new_path.c_str(),
+                     g_foyer_nro_path.c_str()) != 0) {
+            foyer::log::write(
+                "[foyer_update] rename of staged nro failed errno=%d\n",
+                errno);
+            ::unlink(g_foyer_nro_new_path.c_str());
+            return;
+        }
     }
     foyer::log::write("[foyer_update] applied staged nro -> %s\n",
         g_foyer_nro_path.c_str());
@@ -173,14 +188,29 @@ int main(int argc, char** argv) {
     // hangs at "Fetching manifest...". Boot-time foyer manifest
     // check is the trigger.
     foyer::net::init();
-    // Wire the per-byte UI pump. xferinfo (called from inside curl_-
-    // easy_perform on this thread) hits this every ~200ms; we
-    // throttle to ~30 fps so the progress bar redraws without us
-    // blowing the frame budget on every single curl tick.
+    // Wire the per-byte UI pump. xferinfo (called from inside
+    // curl_easy_perform) hits this every ~200ms; we throttle to ~30
+    // fps so the progress bar redraws without blowing the frame
+    // budget on every curl tick.
+    //
+    // Crucial: app.tick() drives deko3d's swap chain, which is bound
+    // to the thread that constructed the App (this thread = main).
+    // Some downloaders run inside a Worker thread (foyer self-update,
+    // cores install when invoked async, scrape jobs that fetch
+    // assets) — when xferinfo fires from there, calling app.tick()
+    // crashes the GPU. Compare std::this_thread::get_id() against
+    // the main-thread id captured here and fall through to a
+    // no-op pump on worker threads. The main-thread loop polling
+    // worker state already pumps app.tick() at the right cadence;
+    // worker-side downloads still update g_download progress
+    // counters atomically (set inside stream_to_file) so the UI
+    // sees fresh numbers even without the per-byte tick.
     {
+        static const auto main_tid = std::this_thread::get_id();
         static auto last_pump = std::chrono::steady_clock::now()
             - std::chrono::milliseconds(100);
         foyer::net::set_pump_callback([&app]() {
+            if (std::this_thread::get_id() != main_tid) return;
             const auto now = std::chrono::steady_clock::now();
             if (now - last_pump >=
                 std::chrono::milliseconds(33)) {
