@@ -328,17 +328,41 @@ int main(int argc, char** argv) {
             continue;
         }
 
-        // "Restart now" from the post-download confirm modal. Apply
-        // the staged .new -> .nro swap right here, then chain-launch
-        // the freshly-renamed binary via libnx's envSetNextLoad — the
-        // hbloader picks it up on our exit and runs the new bytes.
-        // No-op fallback if the rename fails (rare; we still apply
-        // on exit via apply_staged_update_if_present below).
+        // "Restart now" from the post-download confirm modal.
+        //
+        // Critical: do NOT try to swap foyer.nro.new -> foyer.nro
+        // in-place from inside the running process. devkitA64's
+        // FAT/exFAT backing of the SD doesn't let us unlink the
+        // currently-running .nro (the file IS the directory entry on
+        // FAT — there are no POSIX inodes that survive a deleted
+        // directory entry). The swap silently fails with EEXIST and
+        // we end up chain-launching the SAME old foyer.nro back into
+        // itself — which on hardware fully crashes Atmosphère hard
+        // enough to need a power-cycle (observed in v0.4.0 user
+        // report: romfsInit + nvgCreateDk both fail on the second
+        // session after the chain-launch).
+        //
+        // Correct flow: chain-launch foyer.nro.new directly. hbloader
+        // copies its bytes into memory + closes the file before the
+        // new process starts main(). The new binary's
+        // apply_staged_update_if_present() at boot then renames
+        // foyer.nro.new -> foyer.nro from a state where neither file
+        // is open, which works fine on FAT.
         if (state.request_restart_now) {
             state.request_restart_now = false;
             foyer::browser::mtp_stop();
-            apply_staged_update_if_present();
-            const std::string load_path = std::string{"sdmc:"} + g_foyer_nro_path;
+
+            struct stat st{};
+            std::string target = g_foyer_nro_path;
+            if (::stat(g_foyer_nro_new_path.c_str(), &st) == 0 &&
+                st.st_size > 0) {
+                target = g_foyer_nro_new_path;
+                foyer::log::write(
+                    "[foyer_update] staged update detected; chain-launching "
+                    "%s directly (rename happens on its boot)\n",
+                    target.c_str());
+            }
+            const std::string load_path = std::string{"sdmc:"} + target;
             envSetNextLoad(load_path.c_str(), "\"foyer-restart\"");
             foyer::log::write("[foyer_update] chain-launching %s\n",
                 load_path.c_str());
