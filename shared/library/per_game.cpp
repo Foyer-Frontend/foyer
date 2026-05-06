@@ -240,6 +240,13 @@ void add_per_game_playtime(std::string_view rom_path, std::uint64_t seconds) {
     mutate(rom_path, [&](Entry& e) { e.playtime += seconds; });
 }
 
+void clear_per_game_playtime(std::string_view rom_path) {
+    mutate(rom_path, [&](Entry& e) {
+        e.playtime    = 0;
+        e.last_played = 0;
+    });
+}
+
 std::string per_game_shader(std::string_view rom_path) {
     ensure_loaded();
     std::scoped_lock lk{g_mutex};

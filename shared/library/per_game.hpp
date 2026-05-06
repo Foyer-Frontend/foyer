@@ -46,6 +46,9 @@ void          mark_per_game_played(std::string_view rom_path);
 // the sort-by-playtime UI is wired end-to-end already.
 std::uint64_t per_game_playtime(std::string_view rom_path);
 void          add_per_game_playtime(std::string_view rom_path, std::uint64_t seconds);
+// Reset both playtime AND last_played to zero — used by the System
+// view's "Clear playtime" bulk action.
+void          clear_per_game_playtime(std::string_view rom_path);
 
 // Per-game shader override (built-in name or *.glsl stem). Empty
 // string means "fall back to Config::shader_name". Resolution order

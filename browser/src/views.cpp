@@ -890,6 +890,10 @@ enum PopupOp {
     PopToggleFavorite,   // System view: flips favorite on the focused game
     PopResume,           // Home: jumps to + launches the most-recently-played
     PopSearch,           // Any: opens the Search view
+    PopFavoriteAll,      // System view: marks every game in the system as favorite
+    PopUnfavoriteAll,    // System view: clears every favorite in the system
+    PopClearPlaytime,    // System view: zeros last_played + playtime for every rom
+    PopScrapeSystem,     // System view: kicks off a bulk scrape of the focused system
 };
 
 std::vector<PopupItem> popup_items_for(View v) {
@@ -901,11 +905,15 @@ std::vector<PopupItem> popup_items_for(View v) {
                      {"Settings",      PopSettings},
                      {"Exit",          PopExit} };
         case View::System:
-            return { {"Toggle Favorite", PopToggleFavorite},
-                     {"Search",          PopSearch},
-                     {"Rescan Games",    PopRescan},
-                     {"Settings",        PopSettings},
-                     {"Back",            PopBack} };
+            return { {"Toggle Favorite",       PopToggleFavorite},
+                     {"Favorite all",          PopFavoriteAll},
+                     {"Clear all favorites",   PopUnfavoriteAll},
+                     {"Scrape this system",    PopScrapeSystem},
+                     {"Clear playtime",        PopClearPlaytime},
+                     {"Search",                PopSearch},
+                     {"Rescan Games",          PopRescan},
+                     {"Settings",              PopSettings},
+                     {"Back",                  PopBack} };
         default:
             return { {"Search",        PopSearch},
                      {"Rescan Games",  PopRescan},
@@ -3257,6 +3265,90 @@ void update(State& s, const Library& lib,
                     s.view = View::Search;
                     s.search_dirty = true;
                     break;
+                case PopFavoriteAll: {
+                    if (s.view != View::System) break;
+                    if (s.system_index >= lib.systems.size()) break;
+                    auto& sys2 = const_cast<library::System&>(
+                        lib.systems[s.system_index]);
+                    int n = 0;
+                    for (auto& g : sys2.games) {
+                        if (!g.favorite) {
+                            g.favorite = true;
+                            library::set_per_game_favorite(g.path, true);
+                            n++;
+                        }
+                    }
+                    s.request_rescan = true;
+                    char b[80];
+                    std::snprintf(b, sizeof(b),
+                        "Marked %d game%s as favorite", n, n == 1 ? "" : "s");
+                    s.banner_text = b;
+                    s.banner_ttl  = 180;
+                    break;
+                }
+                case PopUnfavoriteAll: {
+                    if (s.view != View::System) break;
+                    if (s.system_index >= lib.systems.size()) break;
+                    auto& sys2 = const_cast<library::System&>(
+                        lib.systems[s.system_index]);
+                    int n = 0;
+                    for (auto& g : sys2.games) {
+                        if (g.favorite) {
+                            g.favorite = false;
+                            library::set_per_game_favorite(g.path, false);
+                            n++;
+                        }
+                    }
+                    s.request_rescan = true;
+                    char b[80];
+                    std::snprintf(b, sizeof(b),
+                        "Cleared %d favorite%s", n, n == 1 ? "" : "s");
+                    s.banner_text = b;
+                    s.banner_ttl  = 180;
+                    break;
+                }
+                case PopClearPlaytime: {
+                    if (s.view != View::System) break;
+                    if (s.system_index >= lib.systems.size()) break;
+                    auto& sys2 = const_cast<library::System&>(
+                        lib.systems[s.system_index]);
+                    int n = 0;
+                    for (auto& g : sys2.games) {
+                        if (g.last_played > 0) n++;
+                        library::clear_per_game_playtime(g.path);
+                        g.last_played = 0;
+                    }
+                    s.request_rescan = true;
+                    char b[80];
+                    std::snprintf(b, sizeof(b),
+                        "Cleared playtime for %d game%s",
+                        n, n == 1 ? "" : "s");
+                    s.banner_text = b;
+                    s.banner_ttl  = 180;
+                    break;
+                }
+                case PopScrapeSystem: {
+                    if (s.view != View::System) break;
+                    // Reuse the bulk-scrape path the existing Y action
+                    // triggers per-game, but route through ScrapeKind so
+                    // main.cpp's loop walks every rom in the focused
+                    // system instead of just the cursor's game.
+                    switch (foyer::library::config().preferred_scraper) {
+                        case foyer::library::Config::Scraper::ScreenScraper:
+                            s.request_scrape_kind = State::ScrapeKind::ScreenScraper;
+                            break;
+                        case foyer::library::Config::Scraper::SteamGridDB:
+                            s.request_scrape_kind = State::ScrapeKind::SteamGridDB;
+                            break;
+                        case foyer::library::Config::Scraper::Libretro:
+                        default:
+                            s.request_scrape_kind = State::ScrapeKind::Libretro;
+                            break;
+                    }
+                    s.banner_text = "Scrape queued — runs on next pass";
+                    s.banner_ttl  = 180;
+                    break;
+                }
             }
         }
         return;
