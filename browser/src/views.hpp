@@ -175,6 +175,8 @@ struct State {
     // the cadence accelerates again past 90 (~1.5s) for the "spin" feel.
     int hold_l_frames = 0;
     int hold_r_frames = 0;
+    int hold_up_frames   = 0;
+    int hold_down_frames = 0;
 
     // Touch gesture tracking. A gesture begins on tap_started, evolves while
     // a finger remains down, and resolves to either a tap or a swipe/flick

@@ -2952,9 +2952,34 @@ int shoulder_step(State& s, std::uint64_t held, std::uint64_t down) {
     return 0;
 }
 
+// Same hold-to-spin curve as shoulder_step, but for D-pad up/down so
+// a long-held arrow scrolls a system's romlist without the user
+// having to mash. Returns -1 (up), +1 (down), or 0 (idle/initial
+// press already consumed).
+int dpad_vertical_step(State& s, std::uint64_t held, std::uint64_t down) {
+    const bool U = (held & HidNpadButton_AnyUp)   != 0;
+    const bool D = (held & HidNpadButton_AnyDown) != 0;
+    s.hold_up_frames   = U ? s.hold_up_frames   + 1 : 0;
+    s.hold_down_frames = D ? s.hold_down_frames + 1 : 0;
+
+    if (down & HidNpadButton_AnyUp)   return -1;
+    if (down & HidNpadButton_AnyDown) return +1;
+
+    auto repeat = [](int hold) -> bool {
+        if (hold <= 30) return false;
+        const int interval = (hold < 90) ? 8 : 3;
+        return ((hold - 30) % interval) == 0;
+    };
+    if (U && repeat(s.hold_up_frames))   return -1;
+    if (D && repeat(s.hold_down_frames)) return +1;
+    return 0;
+}
+
 void reset_input_state(State& s) {
     s.hold_l_frames = 0;
     s.hold_r_frames = 0;
+    s.hold_up_frames   = 0;
+    s.hold_down_frames = 0;
     s.touch_active  = false;
     s.touch_was_swipe = false;
     s.touch_swipe_acc = 0.0f;
@@ -3312,10 +3337,17 @@ void update(State& s, const Library& lib,
         const auto& sys = lib.systems[s.system_index];
         if (!sys.games.empty()) {
             const auto total = sys.games.size();
-            if (down & HidNpadButton_AnyDown) {
-                if (s.game_index + 1 < total) s.game_index++;
-            } else if (down & HidNpadButton_AnyUp) {
-                if (s.game_index > 0) s.game_index--;
+            // Up/Down wrap around the list and auto-repeat on hold —
+            // dpad_vertical_step uses the same hold-to-spin curve as
+            // the shoulders so long-held arrows scroll a 200-game
+            // system without the user mashing.
+            if (const int v = dpad_vertical_step(s, held, down); v != 0) {
+                if (v > 0) {
+                    s.game_index = (s.game_index + 1) % total;
+                } else {
+                    s.game_index = (s.game_index == 0) ? total - 1
+                                                       : s.game_index - 1;
+                }
             } else if (down & HidNpadButton_AnyRight) {
                 s.game_index = std::min(s.game_index + 10, total - 1);
             } else if (down & HidNpadButton_AnyLeft) {
