@@ -118,37 +118,60 @@ bool HwContext::ensure_context(unsigned width, unsigned height) {
              m_callback->version_major >= 3)
                 ? EGL_OPENGL_ES3_BIT : EGL_OPENGL_ES2_BIT;
 
-        struct AttribProbe { EGLint depth; EGLint stencil; EGLint renderable; };
+        // surface_type: -1 = don't filter by surface type at all; 0 =
+        // window only; otherwise a specific bit. v0.2.55 always asked
+        // for EGL_PBUFFER_BIT, but Switch's mesa portlibs don't ship
+        // configs that advertise pbuffer support — every probe came
+        // back with 0 matches and EGL_SUCCESS. Walk progressively-
+        // looser surface filters too: pbuffer first (some platforms
+        // do have it and pbuffer is the cleanest off-screen surface),
+        // then window (the swapchain we already own from deko3d),
+        // then no filter at all.
+        struct AttribProbe {
+            EGLint depth;
+            EGLint stencil;
+            EGLint renderable;
+            EGLint surface_type;   // -1 = unfiltered
+        };
         const AttribProbe probes[] = {
-            { want_depth, want_stencil, renderable },          // exact ask
-            { want_depth, 0,            renderable },          // drop stencil
-            { 16,         0,            renderable },          // depth16, no stencil
-            { 0,          0,            renderable },          // colour only
-            { 0,          0,            EGL_OPENGL_ES2_BIT },  // GLES2 fallback
+            { want_depth, want_stencil, renderable,          EGL_PBUFFER_BIT },
+            { want_depth, 0,            renderable,          EGL_PBUFFER_BIT },
+            { want_depth, want_stencil, renderable,          -1 },              // any surface
+            { want_depth, 0,            renderable,          -1 },
+            { 16,         0,            renderable,          -1 },
+            { 0,          0,            renderable,          -1 },
+            { 0,          0,            EGL_OPENGL_ES2_BIT,  -1 },
         };
 
         EGLConfig config{};
         EGLint    n_configs = 0;
-        bool      picked    = false;
+        EGLint    picked_surface = -1;
+        bool      picked         = false;
         for (const auto& p : probes) {
-            const EGLint cfg_attribs[] = {
-                EGL_RENDERABLE_TYPE,   p.renderable,
-                EGL_SURFACE_TYPE,      EGL_PBUFFER_BIT,
-                EGL_RED_SIZE,          8,
-                EGL_GREEN_SIZE,        8,
-                EGL_BLUE_SIZE,         8,
-                EGL_ALPHA_SIZE,        8,
-                EGL_DEPTH_SIZE,        p.depth,
-                EGL_STENCIL_SIZE,      p.stencil,
-                EGL_NONE
+            std::vector<EGLint> attribs = {
+                EGL_RENDERABLE_TYPE, p.renderable,
+                EGL_RED_SIZE,        8,
+                EGL_GREEN_SIZE,      8,
+                EGL_BLUE_SIZE,       8,
+                EGL_ALPHA_SIZE,      8,
+                EGL_DEPTH_SIZE,      p.depth,
+                EGL_STENCIL_SIZE,    p.stencil,
             };
-            if (eglChooseConfig((EGLDisplay)m_egl_display, cfg_attribs,
+            if (p.surface_type != -1) {
+                attribs.push_back(EGL_SURFACE_TYPE);
+                attribs.push_back(p.surface_type);
+            }
+            attribs.push_back(EGL_NONE);
+            if (eglChooseConfig((EGLDisplay)m_egl_display, attribs.data(),
                                 &config, 1, &n_configs) && n_configs >= 1) {
                 foyer::log::write(
-                    "[hw_render] config picked: depth=%d stencil=%d gles=%s\n",
+                    "[hw_render] config picked: depth=%d stencil=%d gles=%s surface=%s\n",
                     (int)p.depth, (int)p.stencil,
-                    p.renderable == EGL_OPENGL_ES3_BIT ? "3" : "2");
-                picked = true;
+                    p.renderable == EGL_OPENGL_ES3_BIT ? "3" : "2",
+                    p.surface_type == EGL_PBUFFER_BIT ? "pbuffer" :
+                    p.surface_type == EGL_WINDOW_BIT  ? "window"  : "any");
+                picked         = true;
+                picked_surface = p.surface_type;
                 break;
             }
         }
@@ -161,18 +184,25 @@ bool HwContext::ensure_context(unsigned width, unsigned height) {
         }
 
         // 1×1 pbuffer surface — we render to FBOs, never to the
-        // window. eglMakeCurrent still needs a surface, hence pbuffer.
-        const EGLint pb_attribs[] = {
-            EGL_WIDTH,  1,
-            EGL_HEIGHT, 1,
-            EGL_NONE
-        };
-        m_egl_surface = eglCreatePbufferSurface(
-            (EGLDisplay)m_egl_display, config, pb_attribs);
-        if (m_egl_surface == EGL_NO_SURFACE) {
-            foyer::log::write("[hw_render] eglCreatePbufferSurface failed: %s\n",
-                egl_err_str(eglGetError()));
-            return false;
+        // window, so any tiny surface that eglMakeCurrent will accept
+        // is fine. Try pbuffer first; if the chosen config doesn't
+        // support pbuffer fall back to EGL_NO_SURFACE (relies on
+        // EGL_KHR_surfaceless_context, which mesa-on-Switch ships).
+        m_egl_surface = EGL_NO_SURFACE;
+        if (picked_surface != EGL_WINDOW_BIT) {
+            const EGLint pb_attribs[] = {
+                EGL_WIDTH,  1,
+                EGL_HEIGHT, 1,
+                EGL_NONE
+            };
+            m_egl_surface = eglCreatePbufferSurface(
+                (EGLDisplay)m_egl_display, config, pb_attribs);
+            if (m_egl_surface == EGL_NO_SURFACE) {
+                foyer::log::write(
+                    "[hw_render] pbuffer surface unavailable (%s); trying "
+                    "surfaceless context\n",
+                    egl_err_str(eglGetError()));
+            }
         }
 
         const EGLint ctx_attribs[] = {
