@@ -3345,6 +3345,30 @@ void update(State& s, const Library& lib,
             s.view = View::System;
             s.game_index = 0;
         }
+        if (down & HidNpadButton_Y) {
+            // Quick-resume: launch the most-recently-played game
+            // straight from Home without going through the carousel.
+            // Same logic as the popup's "Resume Last" entry — kept
+            // there too so the discoverability path still works.
+            std::size_t best_sys = 0, best_game = 0;
+            std::uint64_t best_t = 0;
+            for (std::size_t si = 0; si < lib.systems.size(); si++) {
+                const auto& sysr = lib.systems[si];
+                for (std::size_t gi = 0; gi < sysr.games.size(); gi++) {
+                    const auto t = sysr.games[gi].last_played;
+                    if (t > best_t) { best_t = t; best_sys = si; best_game = gi; }
+                }
+            }
+            if (best_t == 0) {
+                s.banner_text = "No recently played games";
+                s.banner_ttl  = 180;
+            } else {
+                s.system_index = best_sys;
+                s.game_index   = best_game;
+                s.request_resume_slot = -1;
+                s.request_launch = true;
+            }
+        }
         if (down & HidNpadButton_B) {
             s.quit_confirm_open  = true;
             s.quit_confirm_index = 1; // default to "No"
