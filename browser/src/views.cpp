@@ -1644,22 +1644,70 @@ std::vector<Item> build_items(Category cat, const State& s) {
             }
 
             if (s.settings_subpage == 2) {
-                // Cores catalog: refresh + per-core install rows.
+                // Cores catalog: refresh + (optional) update-all + per-core install rows.
                 rows.push_back({ItemKind::Action, _(SId::EmuRefreshManifest), _(SId::VerbFetch),
                     "Pulls the latest foyer-cores release listing from GitHub.",
                     OpUpdRefreshManifest});
 
                 const auto& mc = manifest_cache();
                 if (mc.loaded && !mc.data.cores.empty()) {
+                    // First pass: count cores that have a real
+                    // update-pending so we know whether to surface
+                    // the "Update all" row at the top.
+                    int n_updates = 0;
+                    for (const auto& c : mc.data.cores) {
+                        const bool installed =
+                            file_present(std::string{"/foyer/cores/"} + c.nro);
+                        if (!installed) continue;
+                        const auto local_v =
+                            library::installed_core_version(c.nro);
+                        if (!local_v.empty() && local_v != c.version) n_updates++;
+                    }
+                    if (n_updates > 0) {
+                        char banner[64];
+                        std::snprintf(banner, sizeof(banner),
+                            "%d update%s available",
+                            n_updates, n_updates == 1 ? "" : "s");
+                        rows.push_back({ItemKind::Action,
+                            "Update all available cores",
+                            banner,
+                            "Walks every core flagged update-available and "
+                            "downloads them in order.",
+                            OpUpdInstallCores});  // existing bulk-install op
+                    }
                     for (const auto& c : mc.data.cores) {
                         const bool installed =
                             file_present(std::string{"/foyer/cores/"} + c.nro);
                         Item it;
                         it.kind  = ItemKind::Action;
-                        it.label = c.name;
+                        // Display "<core> (<system>)" when the core
+                        // resolves to a system in foyer's table.
+                        // Multi-system cores (gambatte → gb + gbc,
+                        // genesisplusgx → 4 systems) still show only
+                        // the FIRST hit; full system list would be
+                        // too long for one row.
+                        std::string display{c.name};
+                        if (auto look = library::find_core(c.name); look.sys) {
+                            display += " (";
+                            display += std::string{look.sys->short_name};
+                            display += ")";
+                        }
+                        it.label = std::move(display);
                         it.data  = c.name;
+                        // Format the manifest size — round to MB
+                        // when ≥ 1 MiB, otherwise KB. Bytes is too
+                        // noisy for a row label.
+                        char sz[32] = {};
+                        if (c.size >= 1024u * 1024u) {
+                            std::snprintf(sz, sizeof(sz), "%.1f MB",
+                                c.size / (1024.0 * 1024.0));
+                        } else if (c.size > 0) {
+                            std::snprintf(sz, sizeof(sz), "%zu KB",
+                                c.size / 1024u);
+                        }
                         if (!installed) {
-                            it.value   = _(SId::VerbDownload);
+                            it.value   = sz[0] ? std::string{_(SId::VerbDownload)} + " · " + sz
+                                               : std::string{_(SId::VerbDownload)};
                             it.payload = OpUpdInstallSingleCore;
                         } else {
                             const auto local_v =
@@ -1670,7 +1718,9 @@ std::vector<Item> build_items(Category cat, const State& s) {
                                 it.value   = _(SId::VerbInstalledReinstall);
                                 it.payload = OpUpdReinstallSingleCore;
                             } else {
-                                it.value   = _(SId::VerbUpdateAvailable);
+                                it.value   = sz[0]
+                                    ? std::string{_(SId::VerbUpdateAvailable)} + " · " + sz
+                                    : std::string{_(SId::VerbUpdateAvailable)};
                                 it.payload = OpUpdInstallSingleCore;
                             }
                         }

@@ -286,21 +286,30 @@ int main(int argc, char** argv) {
     foyer::browser::load_and_consume_session(state,
         foyer::browser::argv_has_resume_marker(argc, argv));
 
+    const bool resuming_from_player =
+        foyer::browser::argv_has_resume_marker(argc, argv);
+
     // One-shot self-update check on boot. Off-thread so the UI is up
     // immediately even on a slow CDN; the result is processed by the
     // foyer_job poll block in the main loop below.
-    state.foyer_job.start_check(foyer::library::config().foyer_manifest_url);
-
-    // Boot-time manifest scrape: fire the same request flags that
-    // Settings → Updates → "Refresh manifest" raises, so the user
-    // arrives at a UI that already knows what's installable / out of
-    // date without having to enter any settings page first. Cores
-    // refresh runs on a Worker (async) so the UI stays responsive; the
-    // cheats / bezels paths are sync today but cheap (small JSON pulls)
-    // and only block the first frames of the main loop.
-    state.request_refresh_manifest         = true;
-    state.request_refresh_cheats_manifest  = true;
-    state.request_refresh_bezels_manifest  = true;
+    //
+    // Skip the manifest scrapes entirely when we're resuming from a
+    // player nro (the "foyer-resume" argv marker the player passes
+    // when chain-launching back to the browser). The user already
+    // saw the boot-time check on the cold launch a few minutes ago;
+    // re-running it on every game-exit costs them several seconds
+    // of network latency for data that's almost certainly unchanged.
+    // The Cores Catalog page still has an explicit "Refresh
+    // manifest" action when the user actually wants fresh data.
+    if (!resuming_from_player) {
+        state.foyer_job.start_check(foyer::library::config().foyer_manifest_url);
+        state.request_refresh_manifest         = true;
+        state.request_refresh_cheats_manifest  = true;
+        state.request_refresh_bezels_manifest  = true;
+    } else {
+        foyer::log::write(
+            "[boot] resume-from-player: skipping manifest fetches\n");
+    }
 
     app.set_draw_fn([&](NVGcontext* vg, float w, float h) {
         foyer::browser::draw(vg, w, h, state, lib);
