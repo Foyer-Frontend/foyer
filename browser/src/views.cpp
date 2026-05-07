@@ -1076,6 +1076,61 @@ void draw_restart_confirm(NVGcontext* vg, float w, float h, const State& s) {
     button(no_x,  _(SId::Later),   s.restart_confirm_index == 1);
 }
 
+void draw_update_prompt(NVGcontext* vg, float w, float h, const State& s) {
+    if (!s.update_prompt_open) return;
+    const auto& th = theme();
+
+    nvgBeginPath(vg);
+    nvgRect(vg, 0, 0, w, h);
+    nvgFillColor(vg, nvgRGBAf(0, 0, 0, 0.55f));
+    nvgFill(vg);
+
+    constexpr float kCardW = 600.0f;
+    constexpr float kCardH = 260.0f;
+    const float cx = (w - kCardW) * 0.5f;
+    const float cy = (h - kCardH) * 0.5f;
+
+    rrect        (vg, cx, cy, kCardW, kCardH, 14.0f, th.bg_panel);
+    rrect_outline(vg, cx, cy, kCardW, kCardH, 14.0f, th.border, 1.0f);
+
+    char title[200];
+    std::snprintf(title, sizeof(title),
+        _(SId::UpdatePromptTitle), s.update_prompt_core_name.c_str());
+    nvgFontSize(vg, th.head_size);
+    nvgFillColor(vg, th.text_strong);
+    nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
+    nvgText(vg, cx + kCardW * 0.5f, cy + 24, title, nullptr);
+
+    char hint[160];
+    std::snprintf(hint, sizeof(hint),
+        _(SId::UpdatePromptHint), s.update_prompt_core_version.c_str());
+    nvgFontSize(vg, th.label_size);
+    nvgFillColor(vg, th.text_dim);
+    nvgText(vg, cx + kCardW * 0.5f, cy + 24 + th.head_size + 12,
+        hint, nullptr);
+
+    constexpr float kBtnW = 160.0f;
+    constexpr float kBtnH = 56.0f;
+    const float by = cy + kCardH - 28 - kBtnH;
+    // Three buttons evenly spaced — Update / Play anyway / Cancel.
+    const float gap = (kCardW - 3 * kBtnW) / 4.0f;
+    const float bx0 = cx + gap;
+    const float bx1 = bx0 + kBtnW + gap;
+    const float bx2 = bx1 + kBtnW + gap;
+
+    auto button = [&](float bx, const char* label, bool sel) {
+        rrect(vg, bx, by, kBtnW, kBtnH, 10.0f,
+              sel ? th.accent : th.bg_panel_hi);
+        nvgFontSize(vg, th.body_size);
+        nvgFillColor(vg, sel ? th.bg : th.text_strong);
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+        nvgText(vg, bx + kBtnW * 0.5f, by + kBtnH * 0.5f, label, nullptr);
+    };
+    button(bx0, _(SId::UpdatePromptUpdate),     s.update_prompt_index == 0);
+    button(bx1, _(SId::UpdatePromptPlayAnyway), s.update_prompt_index == 1);
+    button(bx2, _(SId::Cancel),                 s.update_prompt_index == 2);
+}
+
 void draw_popup(NVGcontext* vg, float w, float h, const State& s) {
     if (!s.popup_open) return;
     const auto& th = theme();
@@ -1669,10 +1724,9 @@ std::vector<Item> build_items(Category cat, const State& s) {
                             "%d update%s available",
                             n_updates, n_updates == 1 ? "" : "s");
                         rows.push_back({ItemKind::Action,
-                            "Update all available cores",
+                            _(SId::UpdateAllAvailableCores),
                             banner,
-                            "Walks every core flagged update-available and "
-                            "downloads them in order.",
+                            _(SId::UpdateAllAvailableCoresHint),
                             OpUpdInstallCores});  // existing bulk-install op
                     }
                     for (const auto& c : mc.data.cores) {
@@ -2670,7 +2724,10 @@ std::string apply_option(int op, const std::string& data,
             std::fclose(in);
             std::fclose(out);
             s.request_invalidate_covers = true;
-            return std::string{"Cover saved for "} + stem;
+            char banner[200];
+            std::snprintf(banner, sizeof(banner),
+                _(SId::BannerCoverSaved), stem.c_str());
+            return std::string{banner};
         }
         case OpBezelForSystem: {
             // chosen_index 0 = "(none)", >0 = base name of a PNG
@@ -2682,7 +2739,10 @@ std::string apply_option(int op, const std::string& data,
                                   + data + ".png";
             if (chosen_index == 0) {
                 ::unlink(dst.c_str());
-                return std::string{"Cleared bezel for "} + data;
+                char buf[200];
+                std::snprintf(buf, sizeof(buf),
+                    _(SId::BannerClearedBezel), data.c_str());
+                return std::string{buf};
             }
             const std::string src = std::string{"/foyer/bezels/"}
                                   + chosen + ".png";
@@ -2738,7 +2798,10 @@ std::string apply_option(int op, const std::string& data,
                     library::skip_version(sk, id, ver);
                     invalidate_pending_updates_cache();
                 }
-                return std::string{"Skipped "} + id;
+                char buf[160];
+                std::snprintf(buf, sizeof(buf),
+                    _(SId::BannerSkippedItem), id.c_str());
+                return std::string{buf};
             }
 
             const bool force = (verb == _(SId::VerbReinstall));
@@ -2755,11 +2818,14 @@ std::string apply_option(int op, const std::string& data,
                 s.request_install_cheats = true;
                 s.install_only_cheat     = id;
             }
-            const char* prefix =
-                (verb == "Install")    ? "Installing "    :
-                (verb == _(SId::VerbReinstall)) ? "Re-installing " :
-                                         "Updating ";
-            return std::string{prefix} + id;
+            SId tid = SId::BannerUpdatingItem;
+            if (verb == "Install" || verb == _(SId::VerbInstall))
+                tid = SId::BannerInstallingItem;
+            else if (verb == _(SId::VerbReinstall))
+                tid = SId::BannerReinstallingItem;
+            char buf[200];
+            std::snprintf(buf, sizeof(buf), _(tid), id.c_str());
+            return std::string{buf};
         }
         default: return {};
     }
@@ -2888,7 +2954,7 @@ void draw_option_picker(NVGcontext* vg, float w, float h, const State& s) {
             nvgFillColor(vg, th.accent);
             nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
             nvgText(vg, px + pw - 32.0f, ry + kRowH * 0.5f,
-                "● current", nullptr);
+                _(SId::PickerCurrentMarker), nullptr);
             nvgFontSize(vg, th.body_size);
             nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
         }
@@ -2952,8 +3018,8 @@ void draw_search(NVGcontext* vg, float w, float h, const State& s, const Library
     nvgFillColor(vg, th.text_strong);
     nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_TOP);
     const std::string head = s.search_query.empty()
-        ? std::string{"Search"}
-        : std::string{"Search: \""} + s.search_query + "\"";
+        ? std::string{_(SId::Search)}
+        : std::string{_(SId::SearchTitlePrefix)} + "\"" + s.search_query + "\"";
     nvgText(vg, th.pad, content_y, head.c_str(), nullptr);
 
     nvgFontSize(vg, th.label_size);
@@ -2966,12 +3032,12 @@ void draw_search(NVGcontext* vg, float w, float h, const State& s, const Library
     if (s.search_results.empty()) {
         if (s.search_query.empty()) {
             draw_empty(vg, w, h,
-                "Type to search",
-                "Press Y to enter a query");
+                _(SId::SearchTypeToSearch),
+                _(SId::SearchPressYToEnter));
         } else {
             draw_empty(vg, w, h,
-                "No matches",
-                "Press Y to refine the query");
+                _(SId::SearchNoMatches),
+                _(SId::SearchPressYToRefine));
         }
         return;
     }
@@ -3025,7 +3091,7 @@ void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Li
     const auto& th = theme();
     if (lib.systems.empty()) { draw_empty(vg, w, h, "No systems", ""); return; }
     const auto& sys = lib.systems[s.system_index];
-    if (sys.games.empty())  { draw_empty(vg, w, h, "No games", "");   return; }
+    if (sys.games.empty())  { draw_empty(vg, w, h, _(SId::GridNoGames), "");   return; }
     const auto& g = sys.games[s.game_index];
     // When the user opens a game from a virtual carousel tile (Recent /
     // Favorites), `sys.def` is the synthetic SystemDef with no cores.
@@ -3091,7 +3157,7 @@ void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Li
         nvgFontSize(vg, th.label_size);
         nvgFillColor(vg, th.text_dim);
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-        nvgText(vg, cx + cw * 0.5f, cy + ch * 0.5f, "no cover", nullptr);
+        nvgText(vg, cx + cw * 0.5f, cy + ch * 0.5f, _(SId::GridNoCover), nullptr);
     }
 
     // File ext + per-game stats below the cover. last_played is in
@@ -3106,25 +3172,33 @@ void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Li
     nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_BOTTOM);
     nvgText(vg, cx, cy + ch + 24, meta, nullptr);
 
-    auto fmt_relative = [](std::uint64_t when) -> std::string {
-        if (!when) return std::string{"never played"};
+    auto fmt_one = [](SId id, int n) -> std::string {
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), _(id), n);
+        return std::string{buf};
+    };
+    auto fmt_relative = [&](std::uint64_t when) -> std::string {
+        if (!when) return std::string{_(SId::NeverPlayed)};
         const auto now  = (std::uint64_t)std::time(nullptr);
         const auto diff = (now > when) ? (now - when) : 0;
-        if (diff < 60)         return std::string{"played just now"};
-        if (diff < 3600)       return "played " + std::to_string(diff / 60)   + " min ago";
-        if (diff < 86400)      return "played " + std::to_string(diff / 3600) + " hr ago";
-        if (diff < 86400 * 7)  return "played " + std::to_string(diff / 86400) + " days ago";
-        if (diff < 86400 * 30) return "played " + std::to_string(diff / (86400*7)) + " wk ago";
-        return "played " + std::to_string(diff / (86400 * 30)) + " mo ago";
+        if (diff < 60)         return std::string{_(SId::PlayedJustNow)};
+        if (diff < 3600)       return fmt_one(SId::PlayedMinAgo,  (int)(diff / 60));
+        if (diff < 86400)      return fmt_one(SId::PlayedHrAgo,   (int)(diff / 3600));
+        if (diff < 86400 * 7)  return fmt_one(SId::PlayedDaysAgo, (int)(diff / 86400));
+        if (diff < 86400 * 30) return fmt_one(SId::PlayedWkAgo,   (int)(diff / (86400 * 7)));
+        return fmt_one(SId::PlayedMoAgo, (int)(diff / (86400 * 30)));
     };
-    auto fmt_playtime = [](std::uint64_t secs) -> std::string {
-        if (!secs) return std::string{"no playtime"};
-        if (secs < 60)    return std::to_string(secs) + " sec";
-        if (secs < 3600)  return std::to_string(secs / 60)   + " min";
+    auto fmt_playtime = [&](std::uint64_t secs) -> std::string {
+        if (!secs) return std::string{_(SId::NoPlaytime)};
+        if (secs < 60)    return fmt_one(SId::PlaytimeSec, (int)secs);
+        if (secs < 3600)  return fmt_one(SId::PlaytimeMin, (int)(secs / 60));
         const auto h = secs / 3600;
         const auto m = (secs % 3600) / 60;
-        if (m == 0) return std::to_string(h) + " hr";
-        return std::to_string(h) + " hr " + std::to_string(m) + " min";
+        if (m == 0) return fmt_one(SId::PlaytimeHr, (int)h);
+        char buf[64];
+        std::snprintf(buf, sizeof(buf),
+            _(SId::PlaytimeHrMin), (int)h, (int)m);
+        return std::string{buf};
     };
     nvgText(vg, cx, cy + ch + 44, fmt_relative(g.last_played).c_str(), nullptr);
     nvgText(vg, cx, cy + ch + 60,
@@ -3540,6 +3614,63 @@ void update(State& s, const Library& lib,
             s.restart_confirm_open = false;
             if (yes) {
                 s.request_restart_now = true;
+            }
+        }
+        return;
+    }
+
+    // Pre-launch core-update prompt. Three buttons (Update / Play
+    // anyway / Cancel). D-pad L/R cycles selection, A confirms, B
+    // cancels (same as Cancel button). The actual side effects fire
+    // from main.cpp when it observes the cleared prompt + the
+    // request_launch / request_install_cores flags we raise here.
+    if (s.update_prompt_open) {
+        reset_input_state(s);
+        if (down & HidNpadButton_AnyLeft) {
+            s.update_prompt_index =
+                (s.update_prompt_index + 2) % 3;  // wrap
+        }
+        if (down & HidNpadButton_AnyRight) {
+            s.update_prompt_index = (s.update_prompt_index + 1) % 3;
+        }
+        if (down & HidNpadButton_B) {
+            s.update_prompt_open = false;
+            s.request_launch     = false;
+            s.launch_after_core_install = false;
+            return;
+        }
+        if (down & HidNpadButton_A) {
+            const int pick = s.update_prompt_index;
+            s.update_prompt_open = false;
+            if (pick == 0) {
+                // Update — fire single-core install with the
+                // pending launch context kept on State. main.cpp
+                // sees launch_after_core_install + the install
+                // completion and re-fires request_launch from
+                // there.
+                s.request_install_cores      = true;
+                s.install_only_core          = s.update_prompt_core_name;
+                s.install_force              = false;
+                s.launch_after_core_install  = true;
+                s.request_launch             = false;  // suspend; resume after install
+                char buf[200];
+                std::snprintf(buf, sizeof(buf),
+                    _(SId::BannerInstallingItem),
+                    s.update_prompt_core_name.c_str());
+                s.banner_text = buf;
+                s.banner_ttl  = 360;
+            } else if (pick == 1) {
+                // Play anyway — record skip so we don't re-prompt
+                // for this exact version, then let request_launch
+                // proceed (main.cpp processes it next frame).
+                library::skip_version(library::SkipKind::Core,
+                    s.update_prompt_core_name,
+                    s.update_prompt_core_version);
+                // request_launch already true — leave as-is.
+            } else {
+                // Cancel — drop the queued launch.
+                s.request_launch = false;
+                s.launch_after_core_install = false;
             }
         }
         return;
@@ -4515,13 +4646,19 @@ void update(State& s, const Library& lib,
                             s.request_install_cores = true;
                             s.install_only_core    = it.data;
                             s.install_force        = false;
-                            s.banner_text = std::string{"Installing "} + it.data + "...";
+                            char bb[200];
+                            std::snprintf(bb, sizeof(bb),
+                                _(SId::BannerInstallingItem), it.data.c_str());
+                            s.banner_text = bb;
                             s.banner_ttl  = 180;
                         } else if (it.payload == settings::OpUpdReinstallSingleCore) {
                             s.request_install_cores = true;
                             s.install_only_core    = it.data;
                             s.install_force        = true;
-                            s.banner_text = std::string{"Re-installing "} + it.data + "...";
+                            char bb[200];
+                            std::snprintf(bb, sizeof(bb),
+                                _(SId::BannerReinstallingItem), it.data.c_str());
+                            s.banner_text = bb;
                             s.banner_ttl  = 180;
                         } else if (it.payload == settings::OpUpdCheckFoyer) {
                             s.request_check_foyer_update = true;
@@ -5052,6 +5189,7 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
     draw_quit_confirm(vg, w, h, s);
     draw_update_confirm(vg, w, h, s);
     draw_restart_confirm(vg, w, h, s);
+    draw_update_prompt(vg, w, h, s);
     settings::draw_option_picker(vg, w, h, s);
 
     // Banner (e.g., "Scraping NES…  3 / 24"). Drawn last so nothing
@@ -5139,6 +5277,15 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
             }
         }
     }
+}
+
+// Read-only accessor used by main.cpp's pre-launch core-update prompt.
+// Lives at foyer::browser scope (not inside settings::) so external
+// TUs can call it without dragging the rest of settings::*. Returns
+// nullptr when the manifest hasn't been fetched yet this session.
+const library::CoreManifest* cached_core_manifest() {
+    auto& c = settings::manifest_cache();
+    return c.loaded ? &c.data : nullptr;
 }
 
 } // namespace foyer::browser

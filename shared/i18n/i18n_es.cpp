@@ -316,6 +316,46 @@ const std::array<const char*, kCount> kSpanishStrings = [] {
     a[(std::size_t)StringId::VerbSkipVersion]            = "Omitir esta versión";
     a[(std::size_t)StringId::VerbUpdateNow]              = "Actualizar ahora";
     a[(std::size_t)StringId::VerbReinstall]              = "Reinstalar";
+
+    a[(std::size_t)StringId::UpdateAllAvailableCores]    = "Actualizar todos los núcleos disponibles";
+    a[(std::size_t)StringId::UpdateAllAvailableCoresHint] =
+        "Recorre cada núcleo marcado como actualización disponible y los descarga en orden.";
+
+    a[(std::size_t)StringId::SearchTitlePrefix]          = "Buscar: ";
+    a[(std::size_t)StringId::SearchTypeToSearch]         = "Escribe para buscar";
+    a[(std::size_t)StringId::SearchPressYToEnter]        = "Pulsa Y para escribir una consulta";
+    a[(std::size_t)StringId::SearchNoMatches]            = "Sin coincidencias";
+    a[(std::size_t)StringId::SearchPressYToRefine]       = "Pulsa Y para refinar la búsqueda";
+
+    a[(std::size_t)StringId::GridNoGames]                = "Sin juegos";
+    a[(std::size_t)StringId::GridNoCover]                = "sin portada";
+
+    a[(std::size_t)StringId::BannerCoverSaved]           = "Portada guardada para %s";
+    a[(std::size_t)StringId::BannerClearedBezel]         = "Marco quitado de %s";
+    a[(std::size_t)StringId::BannerSkippedItem]          = "Omitido %s";
+    a[(std::size_t)StringId::BannerInstallingItem]       = "Instalando %s...";
+    a[(std::size_t)StringId::BannerReinstallingItem]     = "Reinstalando %s...";
+    a[(std::size_t)StringId::BannerUpdatingItem]         = "Actualizando %s...";
+
+    a[(std::size_t)StringId::PickerCurrentMarker]        = "● actual";
+
+    a[(std::size_t)StringId::NeverPlayed]                = "nunca jugado";
+    a[(std::size_t)StringId::PlayedJustNow]              = "jugado ahora mismo";
+    a[(std::size_t)StringId::PlayedMinAgo]               = "jugado hace %d min";
+    a[(std::size_t)StringId::PlayedHrAgo]                = "jugado hace %d h";
+    a[(std::size_t)StringId::PlayedDaysAgo]              = "jugado hace %d días";
+    a[(std::size_t)StringId::PlayedWkAgo]                = "jugado hace %d sem";
+    a[(std::size_t)StringId::PlayedMoAgo]                = "jugado hace %d meses";
+    a[(std::size_t)StringId::NoPlaytime]                 = "sin tiempo de juego";
+    a[(std::size_t)StringId::PlaytimeSec]                = "%d s";
+    a[(std::size_t)StringId::PlaytimeMin]                = "%d min";
+    a[(std::size_t)StringId::PlaytimeHr]                 = "%d h";
+    a[(std::size_t)StringId::PlaytimeHrMin]              = "%d h %d min";
+
+    a[(std::size_t)StringId::UpdatePromptTitle]          = "¿Actualizar %s antes de jugar?";
+    a[(std::size_t)StringId::UpdatePromptHint]           = "La versión %s está disponible.";
+    a[(std::size_t)StringId::UpdatePromptUpdate]         = "Actualizar";
+    a[(std::size_t)StringId::UpdatePromptPlayAnyway]     = "Jugar ya";
     return a;
 }();
 

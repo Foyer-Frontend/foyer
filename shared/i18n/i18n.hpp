@@ -330,6 +330,52 @@ enum class StringId : std::uint16_t {
     VerbUpdateNow,
     VerbReinstall,
 
+    // ----- Cores Catalog -----
+    UpdateAllAvailableCores,
+    UpdateAllAvailableCoresHint,
+
+    // ----- Search view -----
+    SearchTitlePrefix,            // "Search: "
+    SearchTypeToSearch,
+    SearchPressYToEnter,
+    SearchNoMatches,
+    SearchPressYToRefine,
+
+    // ----- Game grid / system view -----
+    GridNoGames,
+    GridNoCover,
+
+    // ----- Banner / status verbs (with %s for item name) -----
+    BannerCoverSaved,             // "Cover saved for %s"
+    BannerClearedBezel,           // "Cleared bezel for %s"
+    BannerSkippedItem,            // "Skipped %s"
+    BannerInstallingItem,         // "Installing %s..."
+    BannerReinstallingItem,       // "Re-installing %s..."
+    BannerUpdatingItem,           // "Updating %s..."
+
+    // ----- Picker decoration -----
+    PickerCurrentMarker,          // "● current"
+
+    // ----- Last-played / playtime relative time -----
+    NeverPlayed,
+    PlayedJustNow,
+    PlayedMinAgo,                 // "played %d min ago"
+    PlayedHrAgo,
+    PlayedDaysAgo,
+    PlayedWkAgo,
+    PlayedMoAgo,
+    NoPlaytime,
+    PlaytimeSec,                  // "%d sec"
+    PlaytimeMin,                  // "%d min"
+    PlaytimeHr,                   // "%d hr"
+    PlaytimeHrMin,                // "%d hr %d min"
+
+    // ----- Pre-launch core-update prompt -----
+    UpdatePromptTitle,            // "Update %s before playing?"
+    UpdatePromptHint,             // "Version %s is available."
+    UpdatePromptUpdate,
+    UpdatePromptPlayAnyway,
+
     // Sentinel — keep last.
     kStringIdCount,
 };

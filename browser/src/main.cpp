@@ -23,6 +23,7 @@
 #include "library/shader_installer.hpp"
 #include "library/cheat_installer.hpp"
 #include "library/bezel_installer.hpp"
+#include "library/skipped_versions.hpp"
 #include "net/http.hpp"
 #include "scrapers/cache.hpp"
 #include "scrapers/libretro_thumbnails.hpp"
@@ -639,6 +640,20 @@ int main(int argc, char** argv) {
                     foyer::browser::set_manifest_cache(
                         foyer::library::fetch_manifest(
                             foyer::library::config().cores_manifest_url));
+                    // If the install was triggered by the pre-launch
+                    // update prompt ("Update before playing?"), the
+                    // pending launch is suspended on State. Re-fire
+                    // it now so the user sees the game boot through
+                    // immediately after the core finishes downloading.
+                    if (state.launch_after_core_install) {
+                        state.launch_after_core_install = false;
+                        if (totals.failed == 0) {
+                            state.request_launch = true;
+                        } else {
+                            // Install failed — keep them in foyer with
+                            // the failure banner already on State.
+                        }
+                    }
                 }
             }
         }
@@ -833,29 +848,78 @@ int main(int argc, char** argv) {
         }
 
         if (state.request_launch) {
-            state.request_launch = false;
             const auto& sys  = lib.systems[state.system_index];
             const auto& game = sys.games[state.game_index];
-            const int   resume = state.request_resume_slot;
-            state.request_resume_slot = -1;
-            // Stamp last_played BEFORE launch_game (which usually
-            // app.quit()s on success and doesn't return). Powers the
-            // home view's Recent virtual system + the Resume action.
-            foyer::library::mark_per_game_played(game.path);
-            // Stash the current view + cursor so foyer's next boot
-            // (after the core exits and chains back) lands the user
-            // exactly where they were. One-shot file with a 1h TTL,
-            // consumed + deleted on the next load_and_consume_session
-            // call. Cold launch still defaults to Home.
-            foyer::browser::save_session(state);
-            if (foyer::browser::launch_game(sys, game, resume)) {
-                foyer::browser::mtp_stop();
-                app.quit();
-            } else {
+
+            // Pre-launch core-update prompt. If the chosen core has
+            // an update pending in the cached manifest AND the user
+            // hasn't already pressed "Play anyway" for this exact
+            // version, surface the prompt before consuming
+            // request_launch — let them pick Update / Play / Cancel.
+            // The prompt's input handler in views.cpp drives the
+            // follow-up: Update raises request_install_cores +
+            // launch_after_core_install, Play anyway records
+            // skip_version + lets request_launch re-fire next frame,
+            // Cancel just drops the launch.
+            //
+            // launch_after_core_install short-circuits the check
+            // when we're resuming after the install Worker finished
+            // — at that point the core IS up-to-date.
+            bool defer_to_prompt = false;
+            if (!state.update_prompt_open
+                && !state.launch_after_core_install
+                && sys.def) {
                 const auto* core = foyer::library::resolve_core(*sys.def, game.path);
-                state.banner_text = std::string{"Core not installed: foyer-"}
-                    + (core ? std::string{core->name} : "?") + ".nro";
-                state.banner_ttl  = 180;
+                const auto* mc   = foyer::browser::cached_core_manifest();
+                if (core && mc) {
+                    for (const auto& c : mc->cores) {
+                        if (c.name != std::string{core->name}) continue;
+                        const auto local =
+                            foyer::library::installed_core_version(c.nro);
+                        const bool has_update =
+                            !local.empty() && local != c.version;
+                        const bool skipped =
+                            foyer::library::is_version_skipped(
+                                foyer::library::SkipKind::Core,
+                                c.name, c.version);
+                        if (has_update && !skipped) {
+                            state.update_prompt_open = true;
+                            state.update_prompt_index = 1;
+                            state.update_prompt_core_name    = c.name;
+                            state.update_prompt_core_version = c.version;
+                            // Leave request_launch set so the
+                            // "Play anyway" path resumes seamlessly.
+                            defer_to_prompt = true;
+                        }
+                        break;
+                    }
+                }
+            }
+            if (!defer_to_prompt) {
+                state.request_launch = false;
+                const int resume = state.request_resume_slot;
+                state.request_resume_slot = -1;
+                // Stamp last_played BEFORE launch_game (which
+                // usually app.quit()s on success and doesn't
+                // return). Powers the home view's Recent virtual
+                // system + the Resume action.
+                foyer::library::mark_per_game_played(game.path);
+                // Stash the current view + cursor so foyer's next
+                // boot (after the core exits and chains back)
+                // lands the user exactly where they were. One-
+                // shot file with a 1h TTL, consumed + deleted on
+                // the next load_and_consume_session call. Cold
+                // launch still defaults to Home.
+                foyer::browser::save_session(state);
+                if (foyer::browser::launch_game(sys, game, resume)) {
+                    foyer::browser::mtp_stop();
+                    app.quit();
+                } else {
+                    const auto* core = foyer::library::resolve_core(*sys.def, game.path);
+                    state.banner_text = std::string{"Core not installed: foyer-"}
+                        + (core ? std::string{core->name} : "?") + ".nro";
+                    state.banner_ttl  = 180;
+                }
             }
         }
 

@@ -320,6 +320,46 @@ constexpr Catalogue kEnglishStrings = [] {
     a[(std::size_t)StringId::VerbSkipVersion]            = "Skip this version";
     a[(std::size_t)StringId::VerbUpdateNow]              = "Update now";
     a[(std::size_t)StringId::VerbReinstall]              = "Re-install";
+
+    a[(std::size_t)StringId::UpdateAllAvailableCores]    = "Update all available cores";
+    a[(std::size_t)StringId::UpdateAllAvailableCoresHint] =
+        "Walks every core flagged update-available and downloads them in order.";
+
+    a[(std::size_t)StringId::SearchTitlePrefix]          = "Search: ";
+    a[(std::size_t)StringId::SearchTypeToSearch]         = "Type to search";
+    a[(std::size_t)StringId::SearchPressYToEnter]        = "Press Y to enter a query";
+    a[(std::size_t)StringId::SearchNoMatches]            = "No matches";
+    a[(std::size_t)StringId::SearchPressYToRefine]       = "Press Y to refine the query";
+
+    a[(std::size_t)StringId::GridNoGames]                = "No games";
+    a[(std::size_t)StringId::GridNoCover]                = "no cover";
+
+    a[(std::size_t)StringId::BannerCoverSaved]           = "Cover saved for %s";
+    a[(std::size_t)StringId::BannerClearedBezel]         = "Cleared bezel for %s";
+    a[(std::size_t)StringId::BannerSkippedItem]          = "Skipped %s";
+    a[(std::size_t)StringId::BannerInstallingItem]       = "Installing %s...";
+    a[(std::size_t)StringId::BannerReinstallingItem]     = "Re-installing %s...";
+    a[(std::size_t)StringId::BannerUpdatingItem]         = "Updating %s...";
+
+    a[(std::size_t)StringId::PickerCurrentMarker]        = "● current";
+
+    a[(std::size_t)StringId::NeverPlayed]                = "never played";
+    a[(std::size_t)StringId::PlayedJustNow]              = "played just now";
+    a[(std::size_t)StringId::PlayedMinAgo]               = "played %d min ago";
+    a[(std::size_t)StringId::PlayedHrAgo]                = "played %d hr ago";
+    a[(std::size_t)StringId::PlayedDaysAgo]              = "played %d days ago";
+    a[(std::size_t)StringId::PlayedWkAgo]                = "played %d wk ago";
+    a[(std::size_t)StringId::PlayedMoAgo]                = "played %d mo ago";
+    a[(std::size_t)StringId::NoPlaytime]                 = "no playtime";
+    a[(std::size_t)StringId::PlaytimeSec]                = "%d sec";
+    a[(std::size_t)StringId::PlaytimeMin]                = "%d min";
+    a[(std::size_t)StringId::PlaytimeHr]                 = "%d hr";
+    a[(std::size_t)StringId::PlaytimeHrMin]              = "%d hr %d min";
+
+    a[(std::size_t)StringId::UpdatePromptTitle]          = "Update %s before playing?";
+    a[(std::size_t)StringId::UpdatePromptHint]           = "Version %s is available.";
+    a[(std::size_t)StringId::UpdatePromptUpdate]         = "Update";
+    a[(std::size_t)StringId::UpdatePromptPlayAnyway]     = "Play anyway";
     return a;
 }();
 

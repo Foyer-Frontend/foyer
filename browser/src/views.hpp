@@ -77,6 +77,27 @@ struct State {
     bool restart_confirm_open = false;
     int  restart_confirm_index = 0; // default to "Yes" — they just opted in
 
+    // Pre-launch core-update prompt. Opens when the user picks A on a
+    // game whose chosen libretro core has an update available in the
+    // cached manifest AND that exact version isn't already on the
+    // user's "skipped" list. Three buttons:
+    //   0 = Update    — kick off single-core install, then re-fire
+    //                   the launch when the install Worker finishes.
+    //   1 = Play anyway — record skip_version(Core, name, version)
+    //                   so this same release won't re-prompt; fall
+    //                   through to launch_game.
+    //   2 = Cancel    — close the prompt, leave the user where they
+    //                   were.
+    bool update_prompt_open    = false;
+    int  update_prompt_index   = 1;   // default focus on "Play anyway"
+    std::string update_prompt_core_name;
+    std::string update_prompt_core_version;
+    // When the user picks "Update", set this so the install-completion
+    // path knows to re-fire request_launch once the new core is on
+    // disk. Pending launch context (system_index / game_index /
+    // request_resume_slot) stays on State as-is.
+    bool launch_after_core_install = false;
+
     // Modal option picker. Opened from a Settings Cycle row when the
     // user presses A — instead of cycling one step, we surface the
     // full list as a scrollable menu so they can see / pick directly.
@@ -246,6 +267,12 @@ void invalidate_cover_cache(NVGcontext* vg);
 // render per-core install rows. main.cpp calls this after the user
 // triggers the "Refresh manifest" action.
 void set_manifest_cache(library::CoreManifest manifest);
+
+// Read-only accessors for the cached cores manifest — the pre-launch
+// update prompt in main.cpp uses these to decide whether the chosen
+// core has a version newer than what's installed locally. nullptr =
+// no manifest fetched yet this session.
+const library::CoreManifest* cached_core_manifest();
 
 // Same shape for the cheat- and bezel-pack catalogues. Settings reads
 // these to render per-pack install rows.
