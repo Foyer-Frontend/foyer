@@ -370,8 +370,19 @@ int main(int argc, char** argv) {
                     "%s directly (rename happens on its boot)\n",
                     target.c_str());
             }
+            // argv MUST start with the NRO path itself — libnx's
+            // romfsInit() parses argv[0] to locate the .nro on disk
+            // and opens it to read the romfs section. Earlier
+            // versions passed "\"foyer-restart\"" alone, which
+            // matches no file: romfsInit failed, nvg/deko3d aborted
+            // with no fonts/textures, and the whole NRO crashed
+            // hard enough to take Atmosphère with it. Match the
+            // shape launch.cpp already uses for player-NRO chain-
+            // launches: quoted-NRO-path followed by the marker arg.
             const std::string load_path = std::string{"sdmc:"} + target;
-            envSetNextLoad(load_path.c_str(), "\"foyer-restart\"");
+            const std::string argv =
+                std::string{"\""} + load_path + "\" \"foyer-restart\"";
+            envSetNextLoad(load_path.c_str(), argv.c_str());
             foyer::log::write("[foyer_update] chain-launching %s\n",
                 load_path.c_str());
             app.quit();
