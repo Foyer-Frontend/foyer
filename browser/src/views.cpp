@@ -2857,14 +2857,27 @@ void draw_option_picker(NVGcontext* vg, float w, float h, const State& s) {
             rows_top + kVisible * kRowH + 22.0f, "▼", nullptr);
     }
 
-    // Hint footer above the rounded bottom edge.
+    // Hint footer above the rounded bottom edge. Use the Switch
+    // shared-font button glyphs (D-pad / A / B) instead of the
+    // literal letters — every other view in foyer renders these
+    // with the actual on-screen icons via the NintendoExt fallback,
+    // and the picker was the only spot still emitting plain ASCII
+    // (user report: "the multi-option dialog has not glyphs just
+    // text DPad A B").
     rrect(vg, px + 16.0f, py + ph - kPad - kFooter + 4.0f,
           pw - 32.0f, 1.0f, 0.0f, th.border);
     nvgFontSize(vg, th.label_size);
     nvgFillColor(vg, th.text_dim);
     nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM);
-    nvgText(vg, px + pw * 0.5f, py + ph - kPad,
-        "DPad navigate     A select     B cancel", nullptr);
+    {
+        using namespace foyer::ui::icons;
+        const std::string hint =
+            std::string{DPad} + " navigate     "
+            + A + " select     "
+            + B + " cancel";
+        nvgText(vg, px + pw * 0.5f, py + ph - kPad,
+            hint.c_str(), nullptr);
+    }
 }
 
 } // namespace settings
