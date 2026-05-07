@@ -205,17 +205,31 @@ bool HwContext::ensure_context(unsigned width, unsigned height) {
             }
         }
 
+        // EGL_CONTEXT_CLIENT_VERSION must be 2 or 3 — passing 0
+        // (which is what cores like PPSSPP register with when they
+        // don't care about a specific minor version) makes Mesa
+        // bounce eglCreateContext with EGL_BAD_MATCH and PPSSPP
+        // null-derefs deep in its graphics init. Coerce 0 → 2/3
+        // based on which renderable type we actually picked above.
+        const EGLint ctx_version =
+            m_callback->version_major >= 2
+                ? (EGLint)m_callback->version_major
+                : (renderable == EGL_OPENGL_ES3_BIT ? 3 : 2);
         const EGLint ctx_attribs[] = {
-            EGL_CONTEXT_CLIENT_VERSION, (EGLint)m_callback->version_major,
+            EGL_CONTEXT_CLIENT_VERSION, ctx_version,
             EGL_NONE
         };
         m_egl_context = eglCreateContext(
             (EGLDisplay)m_egl_display, config, EGL_NO_CONTEXT, ctx_attribs);
         if (m_egl_context == EGL_NO_CONTEXT) {
-            foyer::log::write("[hw_render] eglCreateContext failed: %s\n",
-                egl_err_str(eglGetError()));
+            foyer::log::write(
+                "[hw_render] eglCreateContext(client_ver=%d) failed: %s\n",
+                (int)ctx_version, egl_err_str(eglGetError()));
             return false;
         }
+        foyer::log::write(
+            "[hw_render] eglCreateContext ok (client_ver=%d)\n",
+            (int)ctx_version);
 
         if (!eglMakeCurrent((EGLDisplay)m_egl_display,
                             (EGLSurface)m_egl_surface,
