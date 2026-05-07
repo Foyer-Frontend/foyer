@@ -1072,7 +1072,7 @@ void draw_restart_confirm(NVGcontext* vg, float w, float h, const State& s) {
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
         nvgText(vg, bx + kBtnW * 0.5f, by + kBtnH * 0.5f, label, nullptr);
     };
-    button(yes_x, "Restart now", s.restart_confirm_index == 0);
+    button(yes_x, _(SId::RestartNow), s.restart_confirm_index == 0);
     button(no_x,  _(SId::Later),   s.restart_confirm_index == 1);
 }
 
@@ -3566,7 +3566,7 @@ void update(State& s, const Library& lib,
             s.update_confirm_open = false;
             if (yes) {
                 s.request_install_foyer_update = true;
-                s.banner_text = "Downloading foyer update...";
+                s.banner_text = _(SId::BannerDownloadingFoyerUpdate);
                 s.banner_ttl  = 180;
             }
         }
@@ -3720,7 +3720,7 @@ void update(State& s, const Library& lib,
             switch (op) {
                 case PopRescan:
                     s.request_rescan = true;
-                    s.banner_text = "Rescanning library...";
+                    s.banner_text = _(SId::BannerRescanning);
                     s.banner_ttl  = 180;
                     break;
                 case PopSettings:
@@ -3770,7 +3770,7 @@ void update(State& s, const Library& lib,
                         }
                     }
                     if (best_t == 0) {
-                        s.banner_text = "No recently played games";
+                        s.banner_text = _(SId::BannerNoRecentlyPlayed);
                         s.banner_ttl  = 180;
                     } else {
                         s.system_index = best_sys;
@@ -3852,12 +3852,12 @@ void update(State& s, const Library& lib,
                     const auto& sys2 = lib.systems[s.system_index];
                     if (sys2.games.empty()) break;
                     if (!foyer::scrapers::accounts().steamgriddb.ready()) {
-                        s.banner_text = "Set steamgriddb.api_key in accounts.jsonc first";
+                        s.banner_text = _(SId::BannerSetSteamgriddbApiKey);
                         s.banner_ttl  = 300;
                         break;
                     }
                     s.request_pick_cover = true;
-                    s.banner_text = "Fetching cover candidates...";
+                    s.banner_text = _(SId::BannerFetchingCovers);
                     s.banner_ttl  = 240;
                     break;
                 }
@@ -3868,7 +3868,7 @@ void update(State& s, const Library& lib,
                     const auto& cur = lib.systems[s.system_index];
                     if (!cur.def) break;
                     if (library::is_virtual_system(*cur.def)) {
-                        s.banner_text = "Recents/Favorites can't be moved";
+                        s.banner_text = _(SId::BannerVirtualSystemReorderBlock);
                         s.banner_ttl  = 180;
                         break;
                     }
@@ -3890,7 +3890,7 @@ void update(State& s, const Library& lib,
                     } else if (op == PopSystemMoveDown && it + 1 != order.end()) {
                         std::iter_swap(it, it + 1);
                     } else {
-                        s.banner_text = "Already at the edge";
+                        s.banner_text = _(SId::BannerAlreadyAtEdge);
                         s.banner_ttl  = 120;
                         break;
                     }
@@ -3898,7 +3898,7 @@ void update(State& s, const Library& lib,
                     library::set_system_sort_mode(
                         library::Config::SystemSortMode::Custom);
                     s.request_rescan = true;
-                    s.banner_text = "System reordered";
+                    s.banner_text = _(SId::BannerSystemReordered);
                     s.banner_ttl  = 120;
                     break;
                 }
@@ -3920,7 +3920,7 @@ void update(State& s, const Library& lib,
                             s.request_scrape_kind = State::ScrapeKind::Libretro;
                             break;
                     }
-                    s.banner_text = "Scrape queued — runs on next pass";
+                    s.banner_text = _(SId::BannerScrapeQueued);
                     s.banner_ttl  = 180;
                     break;
                 }
@@ -4027,7 +4027,7 @@ void update(State& s, const Library& lib,
                 }
             }
             if (best_t == 0) {
-                s.banner_text = "No recently played games";
+                s.banner_text = _(SId::BannerNoRecentlyPlayed);
                 s.banner_ttl  = 180;
             } else {
                 s.system_index = best_sys;
@@ -4306,11 +4306,11 @@ void update(State& s, const Library& lib,
                 s.request_launch      = true;
             } else if (on_shader) {
                 library::set_per_game_shader(g.path, "");
-                s.banner_text = "Shader override cleared (uses general default)";
+                s.banner_text = _(SId::BannerShaderOverrideCleared);
                 s.banner_ttl  = 180;
             } else if (on_runahead) {
                 library::set_per_game_runahead(g.path, -1);
-                s.banner_text = "Run-ahead override cleared (uses general default)";
+                s.banner_text = _(SId::BannerRunaheadOverrideCleared);
                 s.banner_ttl  = 180;
             } else if (on_core) {
                 const auto& chosen = def->cores[core_idx];
@@ -4329,7 +4329,7 @@ void update(State& s, const Library& lib,
         }
         if (on_core && (down & HidNpadButton_X)) {
             library::set_per_game_core(g.path, "");
-            s.banner_text = "Per-game override cleared";
+            s.banner_text = _(SId::BannerPerGameOverrideCleared);
             s.banner_ttl  = 180;
         }
     } else if (s.view == View::Settings) {
@@ -4520,7 +4520,7 @@ void update(State& s, const Library& lib,
                     library::set_sort_mode((library::Config::SortMode)n);
                     // Trigger a rescan so the new order takes effect.
                     s.request_rescan = true;
-                    s.banner_text = "Sort changed - rescanning...";
+                    s.banner_text = _(SId::BannerSortChanged);
                     s.banner_ttl  = 180;
                 } else if (it.payload == settings::OpShader) {
                     static const char* kShaderNames[] = {
@@ -4586,7 +4586,7 @@ void update(State& s, const Library& lib,
                     case settings::ItemKind::Action:
                         if (it.payload == settings::OpRescan) {
                             s.request_rescan = true;
-                            s.banner_text = "Rescanning library...";
+                            s.banner_text = _(SId::BannerRescanning);
                             s.banner_ttl  = 180;
                         } else if (it.payload == settings::OpInvalidateCovers) {
                             s.request_invalidate_covers = true;
@@ -4662,7 +4662,7 @@ void update(State& s, const Library& lib,
                             s.banner_ttl  = 180;
                         } else if (it.payload == settings::OpUpdCheckFoyer) {
                             s.request_check_foyer_update = true;
-                            s.banner_text = "Checking for foyer update...";
+                            s.banner_text = _(SId::BannerCheckingFoyerUpdate);
                             s.banner_ttl  = 180;
                         } else if (it.payload == settings::OpUpdInstallFoyer) {
                             s.update_confirm_open  = true;
@@ -4703,7 +4703,7 @@ void update(State& s, const Library& lib,
                             s.request_refresh_cheats_manifest  = true;
                             s.request_refresh_bezels_manifest  = true;
                             s.request_check_foyer_update       = true;
-                            s.banner_text = "Re-scraping manifests...";
+                            s.banner_text = _(SId::BannerRescraping);
                             s.banner_ttl  = 180;
                         } else if (it.payload == settings::OpBezelClearAll) {
                             // Walk /foyer/bezels and delete every

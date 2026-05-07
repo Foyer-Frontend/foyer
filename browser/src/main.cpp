@@ -66,6 +66,19 @@ std::string detect_foyer_nro_path() {
     }
     if (p.compare(0, 5, "sdmc:") == 0) p.erase(0, 5);
     if (p.empty()) p = "/switch/foyer/foyer.nro";
+    // Canonicalise: when the chain-launch path ended in ".new"
+    // (which is what the foyer self-update Restart-now path
+    // produces — see envSetNextLoad("sdmc:.../foyer.nro.new")),
+    // strip the suffix so g_foyer_nro_path always names the
+    // CANONICAL on-disk file. Otherwise apply_staged_update_if_-
+    // present would compute g_foyer_nro_new_path = ".../foyer.nro.new.new"
+    // and find no staged file to apply — the user's foyer.nro
+    // would stay at the old version forever even after the new
+    // bytes were running successfully.
+    if (p.size() > 4 &&
+        p.compare(p.size() - 4, 4, ".new") == 0) {
+        p.erase(p.size() - 4);
+    }
     return p;
 }
 
@@ -415,7 +428,7 @@ int main(int argc, char** argv) {
             if (state.system_index >= lib.systems.size()) state.system_index = 0;
             state.game_index = 0;
             foyer::browser::invalidate_cover_cache(app.vg());
-            state.banner_text = "Library rescanned";
+            state.banner_text = foyer::i18n::tr(foyer::i18n::StringId::BannerLibraryRescanned);
             state.banner_ttl  = 120;
         }
         if (state.request_invalidate_covers) {
@@ -525,7 +538,7 @@ int main(int argc, char** argv) {
             if (state.refresh_job.done()) {
                 state.refresh_job.finish();
                 if (state.refresh_result.cores.empty()) {
-                    state.banner_text = "Manifest fetch failed - check log";
+                    state.banner_text = foyer::i18n::tr(foyer::i18n::StringId::BannerManifestFetchFail);
                     state.banner_ttl  = 240;
                 } else {
                     char b[160];
@@ -596,7 +609,7 @@ int main(int argc, char** argv) {
                 "[install_cores] manifest=%zu cores; only=%s; force=%d\n",
                 manifest.cores.size(), only.c_str(), (int)force);
             if (manifest.cores.empty()) {
-                state.banner_text = "Cores manifest fetch failed";
+                state.banner_text = foyer::i18n::tr(foyer::i18n::StringId::BannerCoresManifestFetchFail);
                 state.banner_ttl  = 240;
             } else {
                 if (!only.empty()) {
@@ -666,13 +679,13 @@ int main(int argc, char** argv) {
         // /foyer/shaders/<name>/.
         if (state.request_install_shaders) {
             state.request_install_shaders = false;
-            state.banner_text = "Fetching shader manifest...";
+            state.banner_text = foyer::i18n::tr(foyer::i18n::StringId::BannerFetchingShaderManifest);
             state.banner_ttl  = 60;
             app.tick();
             auto sm = foyer::library::fetch_shader_manifest(
                 foyer::library::config().shaders_manifest_url);
             if (sm.presets.empty()) {
-                state.banner_text = "Shader manifest fetch failed";
+                state.banner_text = foyer::i18n::tr(foyer::i18n::StringId::BannerShadersManifestFetchFail);
                 state.banner_ttl  = 240;
             } else {
                 const auto totals = foyer::library::install_shaders(sm,
@@ -713,7 +726,7 @@ int main(int argc, char** argv) {
             auto cm = foyer::library::fetch_cheat_manifest(
                 foyer::library::config().cheats_manifest_url);
             if (cm.packs.empty()) {
-                state.banner_text = "Cheats manifest fetch failed";
+                state.banner_text = foyer::i18n::tr(foyer::i18n::StringId::BannerCheatsManifestFetchFail);
                 state.banner_ttl  = 240;
             } else {
                 char b[160];
@@ -732,7 +745,7 @@ int main(int argc, char** argv) {
             auto bm = foyer::library::fetch_bezel_manifest(
                 foyer::library::config().bezels_manifest_url);
             if (bm.packs.empty()) {
-                state.banner_text = "Bezels manifest fetch failed";
+                state.banner_text = foyer::i18n::tr(foyer::i18n::StringId::BannerBezelsManifestFetchFail);
                 state.banner_ttl  = 240;
             } else {
                 char b[160];
@@ -753,13 +766,13 @@ int main(int argc, char** argv) {
             state.request_install_cheats = false;
             const auto only = std::move(state.install_only_cheat);
             state.install_only_cheat.clear();
-            state.banner_text = "Fetching cheats manifest...";
+            state.banner_text = foyer::i18n::tr(foyer::i18n::StringId::BannerFetchingCheatsManifest);
             state.banner_ttl  = 60;
             app.tick();
             auto cm = foyer::library::fetch_cheat_manifest(
                 foyer::library::config().cheats_manifest_url);
             if (cm.packs.empty()) {
-                state.banner_text = "Cheats manifest fetch failed";
+                state.banner_text = foyer::i18n::tr(foyer::i18n::StringId::BannerCheatsManifestFetchFail);
                 state.banner_ttl  = 240;
             } else {
                 // Refresh the cache so per-pack rows reflect the
@@ -804,13 +817,13 @@ int main(int argc, char** argv) {
             state.request_install_bezels = false;
             const auto only = std::move(state.install_only_bezel);
             state.install_only_bezel.clear();
-            state.banner_text = "Fetching bezels manifest...";
+            state.banner_text = foyer::i18n::tr(foyer::i18n::StringId::BannerFetchingBezelsManifest);
             state.banner_ttl  = 60;
             app.tick();
             auto bm = foyer::library::fetch_bezel_manifest(
                 foyer::library::config().bezels_manifest_url);
             if (bm.packs.empty()) {
-                state.banner_text = "Bezels manifest fetch failed";
+                state.banner_text = foyer::i18n::tr(foyer::i18n::StringId::BannerBezelsManifestFetchFail);
                 state.banner_ttl  = 240;
             } else {
                 foyer::browser::set_bezels_manifest_cache(bm);
@@ -956,7 +969,7 @@ int main(int argc, char** argv) {
                         auto cands = foyer::scrapers::steamgriddb
                             ::fetch_cover_candidates(g.stem, kCacheDir, 8);
                         if (cands.empty()) {
-                            state.banner_text = "No cover candidates found";
+                            state.banner_text = foyer::i18n::tr(foyer::i18n::StringId::BannerNoCoverCandidates);
                             state.banner_ttl  = 240;
                         } else {
                             // views.cpp owns the OpPickCover enum
@@ -988,12 +1001,12 @@ int main(int argc, char** argv) {
                     ? foyer::library::ScrapeJob::Source::SteamGridDB :
                       foyer::library::ScrapeJob::Source::Libretro;
             if (!state.scrape_job.start(sys, src)) {
-                state.banner_text = "Scrape worker failed to start";
+                state.banner_text = foyer::i18n::tr(foyer::i18n::StringId::BannerScrapeWorkerFailed);
                 state.banner_ttl  = 240;
             }
         } else if (state.request_scrape_kind != foyer::browser::State::ScrapeKind::None) {
             state.request_scrape_kind = foyer::browser::State::ScrapeKind::None;
-            state.banner_text = "Scrape already in progress";
+            state.banner_text = foyer::i18n::tr(foyer::i18n::StringId::BannerScrapeAlreadyRunning);
             state.banner_ttl  = 180;
         }
         if (state.scrape_job.active()) {
@@ -1013,7 +1026,7 @@ int main(int argc, char** argv) {
                 // usually means the chosen scraper has no data for this
                 // system / wrong account credentials.
                 if (hits == 0) {
-                    state.banner_text = "Scrape found no covers - check log";
+                    state.banner_text = foyer::i18n::tr(foyer::i18n::StringId::BannerScrapeNoCovers);
                     state.banner_ttl  = 240;
                 }
             }

@@ -360,6 +360,50 @@ constexpr Catalogue kEnglishStrings = [] {
     a[(std::size_t)StringId::UpdatePromptHint]           = "Version %s is available.";
     a[(std::size_t)StringId::UpdatePromptUpdate]         = "Update";
     a[(std::size_t)StringId::UpdatePromptPlayAnyway]     = "Play anyway";
+
+    a[(std::size_t)StringId::BannerLibraryRescanned]        = "Library rescanned";
+    a[(std::size_t)StringId::BannerManifestFetchFail]       = "Manifest fetch failed - check log";
+    a[(std::size_t)StringId::BannerCoresManifestFetchFail]  = "Cores manifest fetch failed";
+    a[(std::size_t)StringId::BannerCheatsManifestFetchFail] = "Cheats manifest fetch failed";
+    a[(std::size_t)StringId::BannerBezelsManifestFetchFail] = "Bezels manifest fetch failed";
+    a[(std::size_t)StringId::BannerShadersManifestFetchFail] = "Shader manifest fetch failed";
+    a[(std::size_t)StringId::BannerFetchingShaderManifest]  = "Fetching shader manifest...";
+    a[(std::size_t)StringId::BannerFetchingCheatsManifest]  = "Fetching cheats manifest...";
+    a[(std::size_t)StringId::BannerFetchingBezelsManifest]  = "Fetching bezels manifest...";
+    a[(std::size_t)StringId::BannerNoCoverCandidates]       = "No cover candidates found";
+    a[(std::size_t)StringId::BannerScrapeWorkerFailed]      = "Scrape worker failed to start";
+    a[(std::size_t)StringId::BannerScrapeAlreadyRunning]    = "Scrape already in progress";
+    a[(std::size_t)StringId::BannerScrapeNoCovers]          = "Scrape found no covers - check log";
+    a[(std::size_t)StringId::BannerDownloadingFoyerUpdate]  = "Downloading foyer update...";
+    a[(std::size_t)StringId::BannerRescanning]              = "Rescanning library...";
+    a[(std::size_t)StringId::BannerCheckingFoyerUpdate]     = "Checking for foyer update...";
+    a[(std::size_t)StringId::BannerNoRecentlyPlayed]        = "No recently played games";
+    a[(std::size_t)StringId::BannerSetSteamgriddbApiKey]    =
+        "Set steamgriddb.api_key in accounts.jsonc first";
+    a[(std::size_t)StringId::BannerFetchingCovers]          = "Fetching cover candidates...";
+    a[(std::size_t)StringId::BannerVirtualSystemReorderBlock] =
+        "Recents/Favorites can't be moved";
+    a[(std::size_t)StringId::BannerAlreadyAtEdge]           = "Already at the edge";
+    a[(std::size_t)StringId::BannerSystemReordered]         = "System reordered";
+    a[(std::size_t)StringId::BannerScrapeQueued]            =
+        "Scrape queued — runs on next pass";
+    a[(std::size_t)StringId::BannerShaderOverrideCleared]   =
+        "Shader override cleared (uses general default)";
+    a[(std::size_t)StringId::BannerRunaheadOverrideCleared] =
+        "Run-ahead override cleared (uses general default)";
+    a[(std::size_t)StringId::BannerPerGameOverrideCleared]  = "Per-game override cleared";
+    a[(std::size_t)StringId::BannerSortChanged]             = "Sort changed - rescanning...";
+    a[(std::size_t)StringId::BannerRescraping]              = "Re-scraping manifests...";
+    a[(std::size_t)StringId::BannerInstallingBezelPack]     = "Installing bezel pack: %s...";
+    a[(std::size_t)StringId::BannerCoresFailedCheckLog]     = "%d core%s failed - check log";
+    a[(std::size_t)StringId::BannerBezelPacksFailed]        =
+        "%d bezel pack%s failed - check log";
+    a[(std::size_t)StringId::BannerBezelPacksReady]         =
+        "Bezel packs ready (%d new, %d updated, %d skipped)";
+    a[(std::size_t)StringId::BannerCoreNotInManifest]       = "Core not in manifest: %s";
+    a[(std::size_t)StringId::BannerCoreNotInstalled]        = "Core not installed: foyer-%s.nro";
+
+    a[(std::size_t)StringId::RestartNow]                    = "Restart now";
     return a;
 }();
 

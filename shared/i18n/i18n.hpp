@@ -376,6 +376,45 @@ enum class StringId : std::uint16_t {
     UpdatePromptUpdate,
     UpdatePromptPlayAnyway,
 
+    // ----- Sweep: banners (main.cpp + views.cpp) -----
+    BannerLibraryRescanned,
+    BannerManifestFetchFail,
+    BannerCoresManifestFetchFail,
+    BannerCheatsManifestFetchFail,
+    BannerBezelsManifestFetchFail,
+    BannerShadersManifestFetchFail,
+    BannerFetchingShaderManifest,
+    BannerFetchingCheatsManifest,
+    BannerFetchingBezelsManifest,
+    BannerNoCoverCandidates,
+    BannerScrapeWorkerFailed,
+    BannerScrapeAlreadyRunning,
+    BannerScrapeNoCovers,
+    BannerDownloadingFoyerUpdate,
+    BannerRescanning,
+    BannerCheckingFoyerUpdate,
+    BannerNoRecentlyPlayed,
+    BannerSetSteamgriddbApiKey,
+    BannerFetchingCovers,
+    BannerVirtualSystemReorderBlock,  // "Recents/Favorites can't be moved"
+    BannerAlreadyAtEdge,
+    BannerSystemReordered,
+    BannerScrapeQueued,
+    BannerShaderOverrideCleared,
+    BannerRunaheadOverrideCleared,
+    BannerPerGameOverrideCleared,
+    BannerSortChanged,
+    BannerRescraping,
+    BannerInstallingBezelPack,    // "Installing bezel pack: %s..."
+    BannerCoresFailedCheckLog,    // "%d cores failed - check log"
+    BannerBezelPacksFailed,       // "%d bezel packs failed - check log"
+    BannerBezelPacksReady,        // "Bezel packs ready (%d new, %d updated, %d skipped)"
+    BannerCoreNotInManifest,      // "Core not in manifest: %s"
+    BannerCoreNotInstalled,       // "Core not installed: foyer-%s.nro"
+
+    // ----- Restart-confirm button label -----
+    RestartNow,
+
     // Sentinel — keep last.
     kStringIdCount,
 };

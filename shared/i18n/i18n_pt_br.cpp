@@ -355,6 +355,50 @@ const std::array<const char*, kCount> kPortugueseBrazilStrings = [] {
     a[(std::size_t)StringId::UpdatePromptHint]           = "A versão %s está disponível.";
     a[(std::size_t)StringId::UpdatePromptUpdate]         = "Atualizar";
     a[(std::size_t)StringId::UpdatePromptPlayAnyway]     = "Jogar mesmo assim";
+
+    a[(std::size_t)StringId::BannerLibraryRescanned]        = "Biblioteca reescaneada";
+    a[(std::size_t)StringId::BannerManifestFetchFail]       = "Falha ao buscar manifesto - veja o log";
+    a[(std::size_t)StringId::BannerCoresManifestFetchFail]  = "Falha ao buscar manifesto de cores";
+    a[(std::size_t)StringId::BannerCheatsManifestFetchFail] = "Falha ao buscar manifesto de cheats";
+    a[(std::size_t)StringId::BannerBezelsManifestFetchFail] = "Falha ao buscar manifesto de molduras";
+    a[(std::size_t)StringId::BannerShadersManifestFetchFail] = "Falha ao buscar manifesto de shaders";
+    a[(std::size_t)StringId::BannerFetchingShaderManifest]  = "Buscando manifesto de shaders...";
+    a[(std::size_t)StringId::BannerFetchingCheatsManifest]  = "Buscando manifesto de cheats...";
+    a[(std::size_t)StringId::BannerFetchingBezelsManifest]  = "Buscando manifesto de molduras...";
+    a[(std::size_t)StringId::BannerNoCoverCandidates]       = "Sem candidatos de capa";
+    a[(std::size_t)StringId::BannerScrapeWorkerFailed]      = "Worker de scrape não iniciou";
+    a[(std::size_t)StringId::BannerScrapeAlreadyRunning]    = "Já há um scrape em andamento";
+    a[(std::size_t)StringId::BannerScrapeNoCovers]          = "Scrape sem capas - veja o log";
+    a[(std::size_t)StringId::BannerDownloadingFoyerUpdate]  = "Baixando atualização do foyer...";
+    a[(std::size_t)StringId::BannerRescanning]              = "Reescaneando biblioteca...";
+    a[(std::size_t)StringId::BannerCheckingFoyerUpdate]     = "Verificando atualização do foyer...";
+    a[(std::size_t)StringId::BannerNoRecentlyPlayed]        = "Sem jogos recentes";
+    a[(std::size_t)StringId::BannerSetSteamgriddbApiKey]    =
+        "Configure steamgriddb.api_key em accounts.jsonc primeiro";
+    a[(std::size_t)StringId::BannerFetchingCovers]          = "Buscando candidatos de capa...";
+    a[(std::size_t)StringId::BannerVirtualSystemReorderBlock] =
+        "Recentes/Favoritos não podem ser movidos";
+    a[(std::size_t)StringId::BannerAlreadyAtEdge]           = "Já está na borda";
+    a[(std::size_t)StringId::BannerSystemReordered]         = "Sistema reordenado";
+    a[(std::size_t)StringId::BannerScrapeQueued]            =
+        "Scrape em fila — roda na próxima passagem";
+    a[(std::size_t)StringId::BannerShaderOverrideCleared]   =
+        "Override de shader limpo (usa o geral)";
+    a[(std::size_t)StringId::BannerRunaheadOverrideCleared] =
+        "Override de run-ahead limpo (usa o geral)";
+    a[(std::size_t)StringId::BannerPerGameOverrideCleared]  = "Override por jogo limpo";
+    a[(std::size_t)StringId::BannerSortChanged]             = "Ordem alterada - reescaneando...";
+    a[(std::size_t)StringId::BannerRescraping]              = "Re-buscando manifestos...";
+    a[(std::size_t)StringId::BannerInstallingBezelPack]     = "Instalando pacote de molduras: %s...";
+    a[(std::size_t)StringId::BannerCoresFailedCheckLog]     = "%d core%s falharam - veja o log";
+    a[(std::size_t)StringId::BannerBezelPacksFailed]        =
+        "%d pacote%s de molduras falharam - veja o log";
+    a[(std::size_t)StringId::BannerBezelPacksReady]         =
+        "Molduras prontas (%d novas, %d atualizadas, %d puladas)";
+    a[(std::size_t)StringId::BannerCoreNotInManifest]       = "Core não está no manifesto: %s";
+    a[(std::size_t)StringId::BannerCoreNotInstalled]        = "Core não instalado: foyer-%s.nro";
+
+    a[(std::size_t)StringId::RestartNow]                    = "Reiniciar agora";
     return a;
 }();
 
