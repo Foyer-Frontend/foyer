@@ -863,7 +863,7 @@ void draw_system(NVGcontext* vg, float w, float h, const State& s, const Library
     if (meta_info.cheevos_total >= 0) {
         char ach[64];
         const int unlocked = meta_info.cheevos_unlocked < 0 ? 0 : meta_info.cheevos_unlocked;
-        std::snprintf(ach, sizeof(ach), "%d / %d achievements",
+        std::snprintf(ach, sizeof(ach), _(SId::CountAchievements),
             unlocked, meta_info.cheevos_total);
         nvgFontSize(vg, th.label_size);
         nvgFillColor(vg, (meta_info.cheevos_total > 0
@@ -998,13 +998,14 @@ void draw_update_confirm(NVGcontext* vg, float w, float h, const State& s) {
     nvgFontSize(vg, th.head_size);
     nvgFillColor(vg, th.text_strong);
     nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
-    const std::string title = "Update foyer to v" + s.foyer_update_version + "?";
+    const std::string title = std::string{_(SId::UpdateFoyerTitle)}
+                            + s.foyer_update_version + "?";
     nvgText(vg, cx + kCardW * 0.5f, cy + 24, title.c_str(), nullptr);
 
     nvgFontSize(vg, th.label_size);
     nvgFillColor(vg, th.text_dim);
     nvgText(vg, cx + kCardW * 0.5f, cy + 24 + th.head_size + 12,
-        "Downloads foyer.nro to /switch/foyer/foyer.nro.new — applied next boot.",
+        _(SId::UpdateFoyerHintFull),
         nullptr);
 
     constexpr float kBtnW = 140.0f;
@@ -1021,8 +1022,8 @@ void draw_update_confirm(NVGcontext* vg, float w, float h, const State& s) {
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
         nvgText(vg, bx + kBtnW * 0.5f, by + kBtnH * 0.5f, label, nullptr);
     };
-    button(yes_x, "Yes", s.update_confirm_index == 0);
-    button(no_x,  "No",  s.update_confirm_index == 1);
+    button(yes_x, _(SId::Yes), s.update_confirm_index == 0);
+    button(no_x,  _(SId::No),  s.update_confirm_index == 1);
 }
 
 // Post-download restart confirmation. Opened by main.cpp's foyer_job
@@ -1049,13 +1050,14 @@ void draw_restart_confirm(NVGcontext* vg, float w, float h, const State& s) {
     nvgFontSize(vg, th.head_size);
     nvgFillColor(vg, th.text_strong);
     nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
-    const std::string title = "Restart foyer to apply v" + s.foyer_update_version + "?";
+    const std::string title = std::string{_(SId::UpdateRestartTitle)}
+                            + s.foyer_update_version + "?";
     nvgText(vg, cx + kCardW * 0.5f, cy + 24, title.c_str(), nullptr);
 
     nvgFontSize(vg, th.label_size);
     nvgFillColor(vg, th.text_dim);
     nvgText(vg, cx + kCardW * 0.5f, cy + 24 + th.head_size + 12,
-        "Replaces foyer.nro and re-launches. No on-disk save loss.",
+        _(SId::UpdateRestartHintFull),
         nullptr);
 
     constexpr float kBtnW = 140.0f;
@@ -1489,13 +1491,13 @@ struct AccountField {
 AccountField account_field_for(int op) {
     const auto& a = scrapers::accounts();
     switch (op) {
-        case OpAccSsDevId: return { "screenscraper.devid",       "ScreenScraper dev ID",         a.screenscraper.devid };
-        case OpAccSsDevPw: return { "screenscraper.devpassword", "ScreenScraper dev password",   a.screenscraper.devpassword };
-        case OpAccSsUser:  return { "screenscraper.ssid",        "ScreenScraper username",       a.screenscraper.ssid };
-        case OpAccSsPw:    return { "screenscraper.sspassword",  "ScreenScraper password",       a.screenscraper.sspassword };
-        case OpAccSgKey:   return { "steamgriddb.api_key",       "SteamGridDB API key",          a.steamgriddb.api_key };
-        case OpAccRaUser:  return { "retroachievements.user",    "RetroAchievements username",   a.retroachievements.user };
-        case OpAccRaToken: return { "retroachievements.token",   "RetroAchievements API token",  a.retroachievements.token };
+        case OpAccSsDevId: return { "screenscraper.devid",       _(SId::AccScreenscraperDevId),  a.screenscraper.devid };
+        case OpAccSsDevPw: return { "screenscraper.devpassword", _(SId::AccScreenscraperDevPwd), a.screenscraper.devpassword };
+        case OpAccSsUser:  return { "screenscraper.ssid",        _(SId::AccScreenscraperUser),   a.screenscraper.ssid };
+        case OpAccSsPw:    return { "screenscraper.sspassword",  _(SId::AccScreenscraperPwd),    a.screenscraper.sspassword };
+        case OpAccSgKey:   return { "steamgriddb.api_key",       _(SId::AccSteamgriddbApiKey),   a.steamgriddb.api_key };
+        case OpAccRaUser:  return { "retroachievements.user",    _(SId::AccRetroachUser),        a.retroachievements.user };
+        case OpAccRaToken: return { "retroachievements.token",   _(SId::AccRetroachToken),       a.retroachievements.token };
     }
     return { nullptr, nullptr, {} };
 }
@@ -1935,20 +1937,20 @@ std::vector<Item> build_items(Category cat, const State& s) {
         }
         case Category::Accounts: {
             const auto& a = scrapers::accounts();
-            rows.push_back({ItemKind::Drill, "ScreenScraper dev ID",
+            rows.push_back({ItemKind::Drill, _(SId::AccScreenscraperDevId),
                 mask_credential(a.screenscraper.devid),
                 _(SId::AccEditedViaOsk), OpAccSsDevId});
-            rows.push_back({ItemKind::Drill, "ScreenScraper dev password",
+            rows.push_back({ItemKind::Drill, _(SId::AccScreenscraperDevPwd),
                 mask_credential(a.screenscraper.devpassword), "", OpAccSsDevPw});
-            rows.push_back({ItemKind::Drill, "ScreenScraper username",
+            rows.push_back({ItemKind::Drill, _(SId::AccScreenscraperUser),
                 mask_credential(a.screenscraper.ssid), "", OpAccSsUser});
-            rows.push_back({ItemKind::Drill, "ScreenScraper password",
+            rows.push_back({ItemKind::Drill, _(SId::AccScreenscraperPwd),
                 mask_credential(a.screenscraper.sspassword), "", OpAccSsPw});
-            rows.push_back({ItemKind::Drill, "SteamGridDB API key",
+            rows.push_back({ItemKind::Drill, _(SId::AccSteamgriddbApiKey),
                 mask_credential(a.steamgriddb.api_key), "", OpAccSgKey});
-            rows.push_back({ItemKind::Drill, "RetroAchievements username",
+            rows.push_back({ItemKind::Drill, _(SId::AccRetroachUser),
                 mask_credential(a.retroachievements.user), "", OpAccRaUser});
-            rows.push_back({ItemKind::Drill, "RetroAchievements API token",
+            rows.push_back({ItemKind::Drill, _(SId::AccRetroachToken),
                 mask_credential(a.retroachievements.token), "", OpAccRaToken});
             break;
         }
@@ -2001,7 +2003,7 @@ std::vector<Item> build_items(Category cat, const State& s) {
             if (any_job_active) {
                 rows.push_back({ItemKind::Static,
                     _(SId::WorkerBackgroundRunning), "", "", 0});
-                rows.push_back({ItemKind::Action, "Cancel", "stop",
+                rows.push_back({ItemKind::Action, _(SId::Cancel), "stop",
                     _(SId::WorkerCancelHint),
                     OpUpdCancelJob});
             }
@@ -2078,10 +2080,10 @@ std::vector<Item> build_items(Category cat, const State& s) {
                 }
             };
 
-            render_bucket("Foyer",  pending.foyer,  "foyer");
-            render_bucket("Cores",  pending.cores,  "core");
-            render_bucket("Bezels", pending.bezels, "bezel");
-            render_bucket("Cheats", pending.cheats, "cheat");
+            render_bucket(_(SId::UpdatesFoyerSelf),  pending.foyer,  "foyer");
+            render_bucket(_(SId::UpdatesCores),      pending.cores,  "core");
+            render_bucket(_(SId::UpdatesBezels),     pending.bezels, "bezel");
+            render_bucket(_(SId::UpdatesCheats),     pending.cheats, "cheat");
 
             if (pending.total() == 0 && !any_job_active) {
                 rows.push_back({ItemKind::Static,
@@ -2102,16 +2104,16 @@ std::vector<Item> build_items(Category cat, const State& s) {
                 char val[80];
                 if (total_bytes >= (1ull << 20))
                     std::snprintf(val, sizeof(val),
-                        "%zu items   ~%.0f MB",
+                        _(SId::CountItemsWithMb),
                         pending.total(),
                         (double)total_bytes / (1ull << 20));
                 else if (total_bytes > 0)
                     std::snprintf(val, sizeof(val),
-                        "%zu items   ~%llu KB",
+                        _(SId::CountItemsWithKb),
                         pending.total(),
                         (unsigned long long)(total_bytes / 1024));
                 else
-                    std::snprintf(val, sizeof(val), "%zu items",
+                    std::snprintf(val, sizeof(val), _(SId::CountItemsPlural),
                         pending.total());
                 rows.push_back({ItemKind::Action, _(SId::UpdatesUpdateEverything),
                     val, "", OpUpdAll});
@@ -2135,14 +2137,14 @@ std::vector<Item> build_items(Category cat, const State& s) {
                         "Last: %lld hr ago",
                         static_cast<long long>(secs / 3600));
             }
-            rows.push_back({ItemKind::Action, "Re-scrape now",
+            rows.push_back({ItemKind::Action, _(SId::UpdatesRescrapeNow),
                 rescrape_hint,
                 _(SId::UpdatesRescrapeHint),
                 OpUpdRescrape});
 
             // Bulk scrape (game metadata) is conceptually different
             // from manifest scrape — keep it but tuck it at the end.
-            rows.push_back({ItemKind::Action, "Scrape all systems",
+            rows.push_back({ItemKind::Action, _(SId::UpdatesScrapeAllSystems),
                 "metadata",
                 _(SId::UpdatesScrapeAllSystemsHint),
                 OpUpdScrapeAll});
@@ -2457,7 +2459,7 @@ OptionList build_option_list(int op, const std::string& data) {
             break;
         }
         case OpTheme: {
-            o.title   = "Theme";
+            o.title   = _(SId::SettingsTheme);
             o.options = list_themes();
             o.image_paths.reserve(o.options.size());
             for (auto& name : o.options) {
@@ -2499,19 +2501,25 @@ OptionList build_option_list(int op, const std::string& data) {
             break;
         }
         case OpSortMode: {
-            o.title = "Sort games by";
-            o.options = { "Name", "Recently played", "Playtime", "Favorites first" };
+            o.title = _(SId::LibrarySortGames);
+            o.options = { _(SId::SortByName),
+                          _(SId::SortByRecent),
+                          _(SId::SortByPlaytime),
+                          _(SId::SortByFavoritesFirst) };
             o.current_index = (int)library::config().sort_mode;
             break;
         }
         case OpSystemSortMode: {
-            o.title = "Sort systems by";
-            o.options = { "Scanner order", "Alphabetical", "Game count", "Custom" };
+            o.title = _(SId::LibrarySortSystems);
+            o.options = { _(SId::SystemSortScannerOrder),
+                          _(SId::SystemSortAlphabetical),
+                          _(SId::SystemSortGameCount),
+                          _(SId::SystemSortCustom) };
             o.current_index = (int)library::config().system_sort_mode;
             break;
         }
         case OpShader: {
-            o.title = "Shader";
+            o.title = _(SId::DisplayShader);
             o.options = { "none", "scanlines", "crt_simple",
                           "lcd_grid", "gb_dmg", "gba_correct" };
             const auto& cur = library::config().shader_name;
@@ -2576,7 +2584,7 @@ OptionList build_option_list(int op, const std::string& data) {
             // are downloaded — this builder isn't called through the
             // normal Cycle-row path. Returning an empty OptionList
             // signals "don't auto-open".
-            o.title = "Pick cover";
+            o.title = _(SId::PickCoverTitle);
             break;
         }
         case OpUpdSingleItem: {
@@ -2608,11 +2616,18 @@ OptionList build_option_list(int op, const std::string& data) {
                 installed = !library::installed_cheat_version(id).empty();
             }
 
-            o.title = id.empty() ? std::string{"Action"}
-                                 : ((installed ? std::string{"Update "}
-                                              : std::string{"Install "}) + id);
+            if (id.empty()) {
+                o.title = _(SId::PickerActionTitle);
+            } else {
+                char tbuf[200];
+                std::snprintf(tbuf, sizeof(tbuf),
+                    _(installed ? SId::PickerUpdateTitle
+                                : SId::PickerInstallTitle),
+                    id.c_str());
+                o.title = tbuf;
+            }
             if (!installed) {
-                o.options = { "Install", _(SId::VerbSkipVersion) };
+                o.options = { _(SId::VerbInstall), _(SId::VerbSkipVersion) };
             } else if (kind == "foyer") {
                 o.options = { _(SId::VerbUpdateNow), _(SId::VerbSkipVersion) };
             } else {
@@ -3025,8 +3040,10 @@ void draw_search(NVGcontext* vg, float w, float h, const State& s, const Library
     nvgFontSize(vg, th.label_size);
     nvgFillColor(vg, th.text_dim);
     char count[64];
-    std::snprintf(count, sizeof(count), "%zu match%s",
-        s.search_results.size(), s.search_results.size() == 1 ? "" : "es");
+    std::snprintf(count, sizeof(count),
+        _(s.search_results.size() == 1 ? SId::CountMatchSingular
+                                       : SId::CountMatchPlural),
+        s.search_results.size());
     nvgText(vg, th.pad, content_y + th.head_size + 6, count, nullptr);
 
     if (s.search_results.empty()) {
@@ -3089,7 +3106,7 @@ void draw_search(NVGcontext* vg, float w, float h, const State& s, const Library
 
 void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Library& lib) {
     const auto& th = theme();
-    if (lib.systems.empty()) { draw_empty(vg, w, h, "No systems", ""); return; }
+    if (lib.systems.empty()) { draw_empty(vg, w, h, _(SId::EmptyNoSystems), ""); return; }
     const auto& sys = lib.systems[s.system_index];
     if (sys.games.empty())  { draw_empty(vg, w, h, _(SId::GridNoGames), "");   return; }
     const auto& g = sys.games[s.game_index];
@@ -3232,12 +3249,12 @@ void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Li
                          : library::config().runahead_frames;
 
     auto pretty_shader = [](std::string_view name) -> std::string {
-        if (name.empty() || name == "none") return "Off";
-        if (name == "scanlines")   return "Scanlines";
-        if (name == "crt_simple")  return "CRT (simple)";
-        if (name == "lcd_grid")    return "LCD grid";
-        if (name == "gb_dmg")      return "Game Boy DMG";
-        if (name == "gba_correct") return "GBA correction";
+        if (name.empty() || name == "none") return _(SId::ShaderPrettyNone);
+        if (name == "scanlines")   return _(SId::ShaderPrettyScanlines);
+        if (name == "crt_simple")  return _(SId::ShaderPrettyCrtSimple);
+        if (name == "lcd_grid")    return _(SId::ShaderPrettyLcdGrid);
+        if (name == "gb_dmg")      return _(SId::ShaderPrettyGbDmg);
+        if (name == "gba_correct") return _(SId::ShaderPrettyGbaCorrect);
         return std::string{name};
     };
 
@@ -3245,7 +3262,8 @@ void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Li
     nvgFillColor(vg, th.text_strong);
     nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_TOP);
     nvgText(vg, right_x + th.pad, content_y + th.pad,
-            has_resume ? "Continue / Core" : "Core", nullptr);
+            has_resume ? _(SId::DetailHeaderResumeAndCore)
+                       : _(SId::DetailHeaderCoreOnly), nullptr);
 
     constexpr float kRow = 56.0f;
     float ry = content_y + th.pad + 40.0f;
@@ -3261,11 +3279,13 @@ void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Li
         nvgFillColor(vg, sel ? th.text_strong : th.text);
         nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
         nvgText(vg, right_x + th.pad + 8, ry + (kRow - 6) * 0.5f - 8,
-                "Continue", nullptr);
+                _(SId::GameDetailContinueLabel), nullptr);
 
-        char hint[48];
-        if (resume_slot == 0) std::snprintf(hint, sizeof(hint), "quick slot");
-        else                  std::snprintf(hint, sizeof(hint), "slot %d", resume_slot);
+        char hint[64];
+        if (resume_slot == 0) std::snprintf(hint, sizeof(hint), "%s",
+                                           _(SId::ResumeQuickSlot));
+        else                  std::snprintf(hint, sizeof(hint),
+                                           _(SId::ResumeSlotN), resume_slot);
         nvgFontSize(vg, th.label_size);
         nvgFillColor(vg, th.text_dim);
         nvgText(vg, right_x + th.pad + 8, ry + (kRow - 6) * 0.5f + 12,
@@ -3275,7 +3295,7 @@ void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Li
         nvgFillColor(vg, th.accent);
         nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
         nvgText(vg, right_x + right_w - th.pad,
-                ry + (kRow - 6) * 0.5f, "resume", nullptr);
+                ry + (kRow - 6) * 0.5f, _(SId::ResumeBadge), nullptr);
 
         ry += kRow;
         row++;
@@ -3311,20 +3331,25 @@ void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Li
         nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
         nvgText(vg, right_x + right_w - th.pad,
                 ry + (kRow - 6) * 0.5f,
-                overridden ? "per-game" : "default", nullptr);
+                overridden ? _(SId::KnobBadgePerGame)
+                           : _(SId::KnobBadgeDefault), nullptr);
         ry += kRow;
         row++;
     };
 
-    draw_knob_row("Shader", pretty_shader(eff_shader), !pg_shader.empty());
+    draw_knob_row(_(SId::DetailShaderRowLabel),
+                  pretty_shader(eff_shader), !pg_shader.empty());
 
     {
-        char buf[24];
-        if (eff_runahead == 0)      std::snprintf(buf, sizeof(buf), "Off");
-        else if (eff_runahead == 1) std::snprintf(buf, sizeof(buf), "1 frame");
+        char buf[40];
+        if (eff_runahead == 0)      std::snprintf(buf, sizeof(buf), "%s",
+                                        _(SId::DetailRunaheadOff));
+        else if (eff_runahead == 1) std::snprintf(buf, sizeof(buf), "%s",
+                                        _(SId::DetailRunaheadOneFrame));
         else                        std::snprintf(buf, sizeof(buf),
-                                        "%d frames", eff_runahead);
-        draw_knob_row("Run-ahead", buf, pg_runahead >= 0);
+                                        _(SId::DetailRunaheadNFrames),
+                                        eff_runahead);
+        draw_knob_row(_(SId::DetailRunaheadRowLabel), buf, pg_runahead >= 0);
     }
 
     for (const auto& c : def->cores) {
@@ -3750,8 +3775,8 @@ void update(State& s, const Library& lib,
                     // before a freshly-added favorite shows up on
                     // the Home carousel.
                     s.request_rescan = true;
-                    s.banner_text = g2.favorite ? "Added to favorites"
-                                                : "Removed from favorites";
+                    s.banner_text = _(g2.favorite ? SId::BannerAddedToFavorites
+                                                  : SId::BannerRemovedFromFavorites);
                     s.banner_ttl  = 120;
                     break;
                 }
@@ -4271,8 +4296,10 @@ void update(State& s, const Library& lib,
                 }
                 cur = ((cur + sh) % kCount + kCount) % kCount;
                 library::set_per_game_shader(g.path, kShaderNames[cur]);
-                s.banner_text = std::string{"Per-game shader: "}
-                              + kShaderNames[cur];
+                char bb[120];
+                std::snprintf(bb, sizeof(bb),
+                    _(SId::BannerPerGameShaderSet), kShaderNames[cur]);
+                s.banner_text = bb;
                 s.banner_ttl  = 120;
             } else if (on_runahead) {
                 constexpr int kMax = 4;
@@ -4284,12 +4311,17 @@ void update(State& s, const Library& lib,
                 if (next < 0)    next = kMax;
                 if (next > kMax) next = 0;
                 library::set_per_game_runahead(g.path, next);
-                char buf[40];
-                std::snprintf(buf, sizeof(buf),
-                    next == 0 ? "Per-game run-ahead: off"
-                              : (next == 1 ? "Per-game run-ahead: 1 frame"
-                                            : "Per-game run-ahead: %d frames"),
-                    next);
+                char buf[80];
+                if (next == 0) {
+                    std::snprintf(buf, sizeof(buf),
+                        "%s", _(SId::BannerPerGameRunaheadOff));
+                } else if (next == 1) {
+                    std::snprintf(buf, sizeof(buf),
+                        "%s", _(SId::BannerPerGameRunaheadOneFrame));
+                } else {
+                    std::snprintf(buf, sizeof(buf),
+                        _(SId::BannerPerGameRunaheadNFrames), next);
+                }
                 s.banner_text = buf;
                 s.banner_ttl  = 120;
             } else if (row_count > 0) {
@@ -4315,16 +4347,22 @@ void update(State& s, const Library& lib,
             } else if (on_core) {
                 const auto& chosen = def->cores[core_idx];
                 library::set_per_game_core(g.path, chosen.name);
-                s.banner_text = std::string{"Per-game core set: "}
-                              + std::string{chosen.name};
+                char bb[120];
+                std::snprintf(bb, sizeof(bb),
+                    _(SId::BannerPerGameCoreSet),
+                    std::string{chosen.name}.c_str());
+                s.banner_text = bb;
                 s.banner_ttl  = 180;
             }
         }
         if (on_core && (down & HidNpadButton_Y)) {
             const auto& chosen = def->cores[core_idx];
             library::set_default_core_for(def->folder_name, chosen.name);
-            s.banner_text = std::string{"System default core set: "}
-                          + std::string{chosen.name};
+            char bb[120];
+            std::snprintf(bb, sizeof(bb),
+                _(SId::BannerSystemDefaultCoreSet),
+                std::string{chosen.name}.c_str());
+            s.banner_text = bb;
             s.banner_ttl  = 180;
         }
         if (on_core && (down & HidNpadButton_X)) {
@@ -4510,7 +4548,10 @@ void update(State& s, const Library& lib,
                         library::set_theme_name(themes[cur]);
                         load_theme(themes[cur]);
                         s.request_invalidate_covers = true; // refresh theme_bg
-                        s.banner_text = std::string{"Theme: "} + themes[cur];
+                        char bb[120];
+                        std::snprintf(bb, sizeof(bb),
+                            _(SId::BannerThemeChanged), themes[cur].c_str());
+                        s.banner_text = bb;
                         s.banner_ttl  = 120;
                     }
                 } else if (it.payload == settings::OpSortMode) {
@@ -4535,7 +4576,10 @@ void update(State& s, const Library& lib,
                     }
                     cur = ((cur + delta) % kCount + kCount) % kCount;
                     library::set_shader_name(kShaderNames[cur]);
-                    s.banner_text = std::string{"Shader: "} + kShaderNames[cur];
+                    char bb[120];
+                    std::snprintf(bb, sizeof(bb),
+                        _(SId::BannerShaderChanged), kShaderNames[cur]);
+                    s.banner_text = bb;
                     s.banner_ttl  = 120;
                 } else if (it.payload == settings::OpRunahead) {
                     constexpr int kMax = 4;
@@ -4543,11 +4587,17 @@ void update(State& s, const Library& lib,
                     if (n < 0)    n = kMax;
                     if (n > kMax) n = 0;
                     library::set_runahead_frames(n);
-                    char buf[40];
-                    if (n == 0) std::snprintf(buf, sizeof(buf), "Run-ahead: off");
-                    else        std::snprintf(buf, sizeof(buf),
-                                    n == 1 ? "Run-ahead: %d frame"
-                                           : "Run-ahead: %d frames", n);
+                    char buf[80];
+                    if (n == 0) {
+                        std::snprintf(buf, sizeof(buf),
+                            "%s", _(SId::BannerRunaheadOff));
+                    } else if (n == 1) {
+                        std::snprintf(buf, sizeof(buf),
+                            _(SId::BannerRunaheadOneFrame), n);
+                    } else {
+                        std::snprintf(buf, sizeof(buf),
+                            _(SId::BannerRunaheadNFrames), n);
+                    }
                     s.banner_text = buf;
                     s.banner_ttl  = 120;
                 }
@@ -4590,56 +4640,56 @@ void update(State& s, const Library& lib,
                             s.banner_ttl  = 180;
                         } else if (it.payload == settings::OpInvalidateCovers) {
                             s.request_invalidate_covers = true;
-                            s.banner_text = "Cover cache cleared";
+                            s.banner_text = _(SId::BannerCoverCacheCleared);
                             s.banner_ttl  = 120;
                         } else if (it.payload == settings::OpUpdScrapeAll) {
-                            s.banner_text = "Open a system and press Y — bulk scrape next pass";
+                            s.banner_text = _(SId::BannerScrapeBulkHint);
                             s.banner_ttl  = 240;
                         } else if (it.payload == settings::OpUpdInstallCores) {
                             s.request_install_cores = true;
                             s.install_only_core.clear();
-                            s.banner_text = "Fetching cores manifest...";
+                            s.banner_text = _(SId::BannerFetchingCoresManifest);
                             s.banner_ttl  = 180;
                         } else if (it.payload == settings::OpUpdRefreshManifest) {
                             s.request_refresh_manifest = true;
-                            s.banner_text = "Fetching cores manifest...";
+                            s.banner_text = _(SId::BannerFetchingCoresManifest);
                             s.banner_ttl  = 180;
                         } else if (it.payload == settings::OpInstallShaderPresets) {
                             s.request_install_shaders = true;
-                            s.banner_text = "Fetching shader manifest...";
+                            s.banner_text = _(SId::BannerFetchingShaderManifest);
                             s.banner_ttl  = 180;
                         } else if (it.payload == settings::OpInstallCheatPacks) {
                             s.request_install_cheats = true;
                             s.install_only_cheat.clear();
-                            s.banner_text = "Installing all cheat packs...";
+                            s.banner_text = _(SId::BannerInstallingCheatPacks);
                             s.banner_ttl  = 180;
                         } else if (it.payload == settings::OpInstallBezelPacks) {
                             s.request_install_bezels = true;
                             s.install_only_bezel.clear();
-                            s.banner_text = "Installing all bezel packs...";
+                            s.banner_text = _(SId::BannerInstallingBezelPacks);
                             s.banner_ttl  = 180;
                         } else if (it.payload == settings::OpRefreshCheatsManifest) {
                             s.request_refresh_cheats_manifest = true;
-                            s.banner_text = "Fetching cheats manifest...";
+                            s.banner_text = _(SId::BannerFetchingCheatsManifest);
                             s.banner_ttl  = 180;
                         } else if (it.payload == settings::OpRefreshBezelsManifest) {
                             s.request_refresh_bezels_manifest = true;
-                            s.banner_text = "Fetching bezels manifest...";
+                            s.banner_text = _(SId::BannerFetchingBezelsManifest);
                             s.banner_ttl  = 180;
                         } else if (it.payload == settings::OpInstallSingleCheatPack) {
                             s.request_install_cheats = true;
                             s.install_only_cheat = it.data;
-                            char buf[160];
+                            char buf[200];
                             std::snprintf(buf, sizeof(buf),
-                                "Installing cheat pack: %s...", it.data.c_str());
+                                _(SId::BannerInstallingCheatPack), it.data.c_str());
                             s.banner_text = buf;
                             s.banner_ttl  = 180;
                         } else if (it.payload == settings::OpInstallSingleBezelPack) {
                             s.request_install_bezels = true;
                             s.install_only_bezel = it.data;
-                            char buf[160];
+                            char buf[200];
                             std::snprintf(buf, sizeof(buf),
-                                "Installing bezel pack: %s...", it.data.c_str());
+                                _(SId::BannerInstallingBezelPack), it.data.c_str());
                             s.banner_text = buf;
                             s.banner_ttl  = 180;
                         } else if (it.payload == settings::OpUpdInstallSingleCore) {
@@ -4674,7 +4724,7 @@ void update(State& s, const Library& lib,
                             s.foyer_job.cancel();
                             s.scrape_job.cancel();
                             s.refresh_job.cancel();
-                            s.banner_text = "Cancelling...";
+                            s.banner_text = _(SId::BannerCancelling);
                             s.banner_ttl  = 180;
                         } else if (it.payload == settings::OpUpdSingleItem) {
                             // Surface the per-row picker (Update /
@@ -4696,7 +4746,7 @@ void update(State& s, const Library& lib,
                             // Bulk update everything pending —
                             // main.cpp sequences the kinds.
                             s.request_update_all = true;
-                            s.banner_text = "Updating everything...";
+                            s.banner_text = _(SId::BannerUpdatingEverything);
                             s.banner_ttl  = 180;
                         } else if (it.payload == settings::OpUpdRescrape) {
                             s.request_refresh_manifest         = true;
@@ -4795,11 +4845,14 @@ void update(State& s, const Library& lib,
                             if (!entered.empty() || !field.current.empty()) {
                                 scrapers::set_account_field(field.path, entered);
                                 scrapers::reload_accounts();
-                                s.banner_text = std::string{field.guide} + " saved";
+                                char bb[200];
+                                std::snprintf(bb, sizeof(bb),
+                                    _(SId::BannerScraperFieldSaved), field.guide);
+                                s.banner_text = bb;
                                 s.banner_ttl  = 120;
                             }
                         } else {
-                            s.banner_text = "Drill-down view comes in the next pass";
+                            s.banner_text = _(SId::BannerDrillDownComingNextPass);
                             s.banner_ttl  = 180;
                         }
                         break;
@@ -4830,7 +4883,7 @@ void update(State& s, const Library& lib,
         if (s.search_dirty) {
             s.search_dirty = false;
             const auto entered = settings::swkbd_prompt(
-                "Search games by name", s.search_query);
+                _(SId::SwkbdSearchGuide), s.search_query);
             s.search_query = entered;
             s.search_results.clear();
             s.search_index = 0;
@@ -4935,8 +4988,10 @@ void open_cover_picker(State& s,
     s.option_picker.options.clear();
     s.option_picker.options.reserve(candidate_paths.size());
     for (std::size_t i = 0; i < candidate_paths.size(); i++) {
-        s.option_picker.options.emplace_back(
-            "Candidate " + std::to_string(i + 1));
+        char cb[40];
+        std::snprintf(cb, sizeof(cb),
+            _(SId::PickerCandidatePrefix), (int)(i + 1));
+        s.option_picker.options.emplace_back(cb);
     }
     s.option_picker.image_paths = std::move(candidate_paths);
     s.option_picker.current     = -1;
@@ -5003,7 +5058,9 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
             if (!lib.systems.empty()) {
                 const auto& sys = lib.systems[s.system_index];
                 char rhs[180];
-                const char* gword = (sys.games.size() == 1) ? "game" : "games";
+                const char* gword = _(sys.games.size() == 1
+                                          ? SId::CountGameSingular
+                                          : SId::CountGamePlural);
                 if (clock.empty()) {
                     std::snprintf(rhs, sizeof(rhs), "%.*s  ·  %zu %s",
                         (int)sys.def->display_name.size(),
@@ -5021,12 +5078,15 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
             // systems there's nothing to "enter", so drop the DPad/A
             // pair; otherwise show the full carousel action set.
             if (lib.systems.empty()) {
-                hint = std::string{Minus} + " settings   "
-                     + Plus + " menu   " + B + " quit";
+                hint = std::string{Minus} + " " + _(SId::HintSettings) + "   "
+                     + Plus + " " + _(SId::HintMenu) + "   "
+                     + B + " " + _(SId::HintQuit);
             } else {
-                hint = std::string{DPad} + " pick   "
-                     + A + " enter   " + Minus + " settings   "
-                     + Plus + " menu   " + B + " quit";
+                hint = std::string{DPad} + " " + _(SId::HintPick) + "   "
+                     + A + " " + _(SId::HintEnter) + "   "
+                     + Minus + " " + _(SId::HintSettings) + "   "
+                     + Plus + " " + _(SId::HintMenu) + "   "
+                     + B + " " + _(SId::HintQuit);
             }
             break;
         }
@@ -5058,12 +5118,16 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
             const bool empty_sys  = !sys_ptr || sys_ptr->games.empty();
             const bool can_scrape = sys_ptr && !library::is_virtual_system(*sys_ptr->def);
             if (empty_sys) {
-                hint = std::string{Plus} + " menu   " + B + " back";
+                hint = std::string{Plus} + " " + _(SId::HintMenu) + "   "
+                     + B + " " + _(SId::HintBack);
             } else {
-                hint = std::string{DPad} + " pick   "
-                     + A + " launch   " + X + " details";
-                if (can_scrape) hint += std::string{"   "} + Y + " scrape";
-                hint += std::string{"   "} + Plus + " menu   " + B + " back";
+                hint = std::string{DPad} + " " + _(SId::HintPick) + "   "
+                     + A + " " + _(SId::HintLaunch) + "   "
+                     + X + " " + _(SId::HintDetails);
+                if (can_scrape)
+                    hint += std::string{"   "} + Y + " " + _(SId::HintScrape);
+                hint += std::string{"   "} + Plus + " " + _(SId::HintMenu)
+                     + "   " + B + " " + _(SId::HintBack);
             }
             break;
         }
@@ -5085,7 +5149,7 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
             // type has its own button affordances; pick the hint
             // based on which row currently holds focus.
             if (!game_ptr) {
-                hint = std::string{B} + " back";
+                hint = std::string{B} + " " + _(SId::HintBack);
             } else {
                 const auto* def = library::is_virtual_system(*sys_ptr->def)
                     ? library::origin_system_for_rom(game_ptr->path)
@@ -5099,23 +5163,27 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
                 const int  cur          = (int)s.detail_core_index;
 
                 if (has_resume && cur == 0) {
-                    hint = std::string{DPad} + " pick   "
-                         + A + " continue   " + B + " back";
+                    hint = std::string{DPad} + " " + _(SId::HintPick) + "   "
+                         + A + " " + _(SId::HintContinueVerb) + "   "
+                         + B + " " + _(SId::HintBack);
                 } else if (cur == shader_idx) {
-                    hint = std::string{DPad} + " pick   "
-                         + Left + Right + " cycle shader   "
-                         + A + " clear override   " + B + " back";
+                    hint = std::string{DPad} + " " + _(SId::HintPick) + "   "
+                         + Left + Right + " " + _(SId::HintCycleShader) + "   "
+                         + A + " " + _(SId::HintClearOverride) + "   "
+                         + B + " " + _(SId::HintBack);
                 } else if (cur == runahead_idx) {
-                    hint = std::string{DPad} + " pick   "
-                         + Left + Right + " cycle run-ahead   "
-                         + A + " clear override   " + B + " back";
+                    hint = std::string{DPad} + " " + _(SId::HintPick) + "   "
+                         + Left + Right + " " + _(SId::HintCycleRunAhead) + "   "
+                         + A + " " + _(SId::HintClearOverride) + "   "
+                         + B + " " + _(SId::HintBack);
                 } else if (cur >= cores_start && !def->cores.empty()) {
-                    hint = std::string{DPad} + " pick   "
-                         + A + " set per-game   "
-                         + Y + " set sys default   "
-                         + X + " clear override   " + B + " back";
+                    hint = std::string{DPad} + " " + _(SId::HintPick) + "   "
+                         + A + " " + _(SId::HintSetPerGame) + "   "
+                         + Y + " " + _(SId::HintSetSysDefault) + "   "
+                         + X + " " + _(SId::HintClearOverride) + "   "
+                         + B + " " + _(SId::HintBack);
                 } else {
-                    hint = std::string{B} + " back";
+                    hint = std::string{B} + " " + _(SId::HintBack);
                 }
             }
             break;
@@ -5145,37 +5213,41 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
                 && s.settings_row < (int)srows.size()) {
                 const auto& it = srows[s.settings_row];
                 switch (it.kind) {
-                    case settings::ItemKind::Toggle: a_hint = "toggle"; break;
-                    case settings::ItemKind::Drill:  a_hint = "edit";   break;
+                    case settings::ItemKind::Toggle: a_hint = _(SId::HintToggle); break;
+                    case settings::ItemKind::Drill:  a_hint = _(SId::HintEdit);   break;
                     case settings::ItemKind::Cycle:
-                        a_hint  = "select";
-                        lr_hint = "change";
+                        a_hint  = _(SId::HintSelect);
+                        lr_hint = _(SId::HintChange);
                         break;
                     case settings::ItemKind::Action:
-                        a_hint = it.value.empty() ? std::string{"run"} : it.value;
+                        a_hint = it.value.empty() ? std::string{_(SId::HintRun)}
+                                                  : it.value;
                         break;
                     case settings::ItemKind::Static: break;
                 }
             } else {
-                a_hint = "enter";   // sidebar focus — A goes into content
+                a_hint = _(SId::HintEnter);   // sidebar focus — A goes into content
             }
-            hint = std::string{DPad} + " navigate";
+            hint = std::string{DPad} + " " + _(SId::HintNavigate);
             if (!lr_hint.empty()) hint += std::string{"   "} + Left + Right + " " + lr_hint;
             if (!a_hint.empty())  hint += std::string{"   "} + A + " " + a_hint;
-            hint += std::string{"   "} + B + " back";
+            hint += std::string{"   "} + B + " " + _(SId::HintBack);
             break;
         }
         case View::Search: {
-            title = "foyer  >  Search";
+            title = std::string{"foyer  >  "} + _(SId::Search);
             // Search: A only does anything when there's a result row to
             // open. With no results (either no query yet, or no matches)
             // the only useful keys are Y to open the keyboard and B to
             // back out.
             if (s.search_results.empty()) {
-                hint = std::string{Y} + " new query   " + B + " back";
+                hint = std::string{Y} + " " + _(SId::HintNewQuery) + "   "
+                     + B + " " + _(SId::HintBack);
             } else {
-                hint = std::string{DPad} + " navigate   "
-                     + A + " open   " + Y + " new query   " + B + " back";
+                hint = std::string{DPad} + " " + _(SId::HintNavigate) + "   "
+                     + A + " " + _(SId::HintOpen) + "   "
+                     + Y + " " + _(SId::HintNewQuery) + "   "
+                     + B + " " + _(SId::HintBack);
             }
             break;
         }

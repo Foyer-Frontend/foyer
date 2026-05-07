@@ -83,6 +83,51 @@ std::string sanitize_for_filename(std::string s) {
     return s;
 }
 
+// Foyer-baked overrides for known-broken cores on Switch. Applied
+// after the core declares its options but before any user JSONC
+// loads — a user-supplied /foyer/config/cores/<core>.jsonc still wins.
+//
+// Each entry must reference a real choice the core registered; if
+// the option name or value drifts upstream, the lookup silently
+// no-ops (no harm).
+struct BakedDefault {
+    const char* core;
+    const char* key;
+    const char* value;
+    const char* reason;  // logged once on apply
+};
+constexpr BakedDefault kBakedDefaults[] = {
+    // PPSSPP's GLES backend crashes on Switch/nouveau Mesa 20.1
+    // (alignment fault inside the renderer right after
+    // OpenGL ES 3.1 detection). The software backend is slower but
+    // actually renders. Users can opt back into GLES via Settings →
+    // Cores → ppsspp once a Mesa fix lands.
+    {"ppsspp", "ppsspp_software_rendering", "enabled",
+     "GLES path crashes on Switch nouveau"},
+};
+
+void apply_baked_defaults(const std::string& core,
+                          std::vector<CoreOption>& opts) {
+    for (const auto& d : kBakedDefaults) {
+        if (core != d.core) continue;
+        for (auto& o : opts) {
+            if (o.key != d.key) continue;
+            bool valid = false;
+            for (const auto& c : o.choices) {
+                if (c == d.value) { valid = true; break; }
+            }
+            if (valid) {
+                o.default_value = d.value;
+                o.value         = d.value;
+                foyer::log::write(
+                    "[core_opts] baked default: %s=%s (%s)\n",
+                    d.key, d.value, d.reason);
+            }
+            break;
+        }
+    }
+}
+
 } // namespace
 
 std::string CoreOptions::per_core_path() const {
@@ -123,6 +168,7 @@ void CoreOptions::ingest_legacy(const retro_variable* vars) {
         parse_legacy_value(v->value, opt);
         m_opts.push_back(std::move(opt));
     }
+    apply_baked_defaults(m_core_name, m_opts);
     load_overrides_from_disk();
     m_dirty = true;
 }
@@ -143,6 +189,7 @@ void CoreOptions::ingest_v1(const retro_core_option_definition* defs) {
         opt.value = opt.default_value;
         m_opts.push_back(std::move(opt));
     }
+    apply_baked_defaults(m_core_name, m_opts);
     load_overrides_from_disk();
     m_dirty = true;
 }
@@ -163,6 +210,7 @@ void CoreOptions::ingest_v2(const retro_core_options_v2* opts) {
         opt.value = opt.default_value;
         m_opts.push_back(std::move(opt));
     }
+    apply_baked_defaults(m_core_name, m_opts);
     load_overrides_from_disk();
     m_dirty = true;
 }

@@ -56,6 +56,14 @@ else()
     set(_rcheevos_dep rcheevos)
 endif()
 
+target_compile_definitions(${_frontend} PRIVATE
+    # frontend.cpp's CoreOptions::set_core_name() lookup is gated on
+    # this macro. Without it, m_core_name stays empty and the per-
+    # core overrides JSONC resolves to /foyer/config/cores/unknown.jsonc
+    # — every core's options collapse into one shared file and the
+    # in-app per-core defaults can't apply.
+    FOYER_CORE_NAME=${FOYER_CORE})
+
 target_link_libraries(${_frontend} PUBLIC
     foyer_shared
     core_${FOYER_CORE}

@@ -215,7 +215,7 @@ const std::array<const char*, kCount> kPortugueseBrazilStrings = [] {
     a[(std::size_t)StringId::VerbPickOrClear]            = "escolher ou limpar";
     a[(std::size_t)StringId::VerbStatusInfo]             = "Status PSP / GC";
 
-    a[(std::size_t)StringId::UpdatesFoyerSelf]           = "foyer";
+    a[(std::size_t)StringId::UpdatesFoyerSelf]           = "Foyer";
     a[(std::size_t)StringId::UpdatesCores]               = "Cores";
     a[(std::size_t)StringId::UpdatesBezels]              = "Molduras";
     a[(std::size_t)StringId::UpdatesCheats]              = "Cheats";
@@ -399,6 +399,101 @@ const std::array<const char*, kCount> kPortugueseBrazilStrings = [] {
     a[(std::size_t)StringId::BannerCoreNotInstalled]        = "Core não instalado: foyer-%s.nro";
 
     a[(std::size_t)StringId::RestartNow]                    = "Reiniciar agora";
+
+    // Sweep v0.4.11
+    a[(std::size_t)StringId::BannerAddedToFavorites]        = "Adicionado aos favoritos";
+    a[(std::size_t)StringId::BannerRemovedFromFavorites]    = "Removido dos favoritos";
+    a[(std::size_t)StringId::BannerPerGameShaderSet]        = "Shader por jogo: %s";
+    a[(std::size_t)StringId::BannerPerGameRunaheadOff]      = "Run-ahead por jogo: desligado";
+    a[(std::size_t)StringId::BannerPerGameRunaheadOneFrame] = "Run-ahead por jogo: 1 frame";
+    a[(std::size_t)StringId::BannerPerGameRunaheadNFrames]  = "Run-ahead por jogo: %d frames";
+    a[(std::size_t)StringId::BannerPerGameCoreSet]          = "Core por jogo: %s";
+    a[(std::size_t)StringId::BannerSystemDefaultCoreSet]    = "Core padrão do sistema: %s";
+    a[(std::size_t)StringId::BannerThemeChanged]            = "Tema: %s";
+    a[(std::size_t)StringId::BannerShaderChanged]           = "Shader: %s";
+    a[(std::size_t)StringId::BannerRunaheadOff]             = "Run-ahead: desligado";
+    a[(std::size_t)StringId::BannerRunaheadOneFrame]        = "Run-ahead: %d frame";
+    a[(std::size_t)StringId::BannerRunaheadNFrames]         = "Run-ahead: %d frames";
+    a[(std::size_t)StringId::BannerCoverCacheCleared]       = "Cache de capas limpo";
+    a[(std::size_t)StringId::BannerScrapeBulkHint]          =
+        "Abra um sistema e pressione Y — coleta em massa na próxima passagem";
+    a[(std::size_t)StringId::BannerFetchingCoresManifest]   = "Obtendo manifesto de cores...";
+    a[(std::size_t)StringId::BannerInstallingCheatPacks]    = "Instalando todos os pacotes de cheats...";
+    a[(std::size_t)StringId::BannerInstallingBezelPacks]    = "Instalando todos os pacotes de molduras...";
+    a[(std::size_t)StringId::BannerInstallingCheatPack]     = "Instalando pacote de cheats: %s...";
+    a[(std::size_t)StringId::BannerCancelling]              = "Cancelando...";
+    a[(std::size_t)StringId::BannerUpdatingEverything]      = "Atualizando tudo...";
+    a[(std::size_t)StringId::BannerDrillDownComingNextPass] =
+        "Visão detalhada virá na próxima versão";
+    a[(std::size_t)StringId::BannerScraperFieldSaved]       = "%s salvo";
+
+    a[(std::size_t)StringId::UpdateFoyerHintFull]           =
+        "Baixa foyer.nro para /switch/foyer/foyer.nro.new — aplicado na próxima inicialização.";
+    a[(std::size_t)StringId::UpdateRestartHintFull]         =
+        "Substitui foyer.nro e reinicia. Saves no SD não são perdidos.";
+    a[(std::size_t)StringId::BucketBezels]                  = "Molduras";
+    a[(std::size_t)StringId::BucketCheats]                  = "Cheats";
+    a[(std::size_t)StringId::PickerActionTitle]             = "Ação";
+    a[(std::size_t)StringId::PickerUpdateTitle]             = "Atualizar %s";
+    a[(std::size_t)StringId::PickerInstallTitle]            = "Instalar %s";
+    a[(std::size_t)StringId::PickerCandidatePrefix]         = "Candidato %d";
+    a[(std::size_t)StringId::PickCoverForGame]              = "Escolher capa para %s";
+    a[(std::size_t)StringId::SwkbdSearchGuide]              = "Buscar jogos por nome";
+    a[(std::size_t)StringId::GameDetailContinueLabel]       = "Continuar";
+
+    a[(std::size_t)StringId::ShaderPrettyScanlines]         = "Scanlines";
+    a[(std::size_t)StringId::ShaderPrettyCrtSimple]         = "CRT (simples)";
+    a[(std::size_t)StringId::ShaderPrettyLcdGrid]           = "Grade LCD";
+    a[(std::size_t)StringId::ShaderPrettyGbDmg]             = "Game Boy DMG";
+    a[(std::size_t)StringId::ShaderPrettyGbaCorrect]        = "GBA cor corrigida";
+    a[(std::size_t)StringId::ShaderPrettyNone]              = "Desligado";
+
+    a[(std::size_t)StringId::ResumeQuickSlot]               = "slot rápido";
+    a[(std::size_t)StringId::ResumeSlotN]                   = "slot %d";
+    a[(std::size_t)StringId::ResumeBadge]                   = "continuar";
+
+    a[(std::size_t)StringId::DetailHeaderResumeAndCore]     = "Continuar / Core";
+    a[(std::size_t)StringId::DetailHeaderCoreOnly]          = "Core";
+    a[(std::size_t)StringId::KnobBadgePerGame]              = "por jogo";
+    a[(std::size_t)StringId::KnobBadgeDefault]              = "padrão";
+    a[(std::size_t)StringId::DetailShaderRowLabel]          = "Shader";
+    a[(std::size_t)StringId::DetailRunaheadRowLabel]        = "Run-ahead";
+    a[(std::size_t)StringId::DetailRunaheadOff]             = "Desligado";
+    a[(std::size_t)StringId::DetailRunaheadOneFrame]        = "1 frame";
+    a[(std::size_t)StringId::DetailRunaheadNFrames]         = "%d frames";
+
+    a[(std::size_t)StringId::HintNavigate]                  = "navegar";
+    a[(std::size_t)StringId::HintBack]                      = "voltar";
+    a[(std::size_t)StringId::HintQuit]                      = "sair";
+    a[(std::size_t)StringId::HintMenu]                      = "menu";
+    a[(std::size_t)StringId::HintSettings]                  = "ajustes";
+    a[(std::size_t)StringId::HintPick]                      = "escolher";
+    a[(std::size_t)StringId::HintEnter]                     = "entrar";
+    a[(std::size_t)StringId::HintLaunch]                    = "jogar";
+    a[(std::size_t)StringId::HintDetails]                   = "detalhes";
+    a[(std::size_t)StringId::HintScrape]                    = "buscar";
+    a[(std::size_t)StringId::HintToggle]                    = "alternar";
+    a[(std::size_t)StringId::HintEdit]                      = "editar";
+    a[(std::size_t)StringId::HintSelect]                    = "selecionar";
+    a[(std::size_t)StringId::HintChange]                    = "mudar";
+    a[(std::size_t)StringId::HintRun]                       = "executar";
+    a[(std::size_t)StringId::HintContinueVerb]              = "continuar";
+    a[(std::size_t)StringId::HintCycleShader]               = "ciclar shader";
+    a[(std::size_t)StringId::HintCycleRunAhead]             = "ciclar run-ahead";
+    a[(std::size_t)StringId::HintClearOverride]             = "limpar override";
+    a[(std::size_t)StringId::HintSetPerGame]                = "definir por jogo";
+    a[(std::size_t)StringId::HintSetSysDefault]             = "definir padrão do sistema";
+    a[(std::size_t)StringId::HintNewQuery]                  = "nova busca";
+    a[(std::size_t)StringId::HintOpen]                      = "abrir";
+
+    a[(std::size_t)StringId::CountMatchSingular]            = "%zu resultado";
+    a[(std::size_t)StringId::CountMatchPlural]              = "%zu resultados";
+    a[(std::size_t)StringId::CountItemsPlural]              = "%zu itens";
+    a[(std::size_t)StringId::CountItemsWithMb]              = "%zu itens   ~%.0f MB";
+    a[(std::size_t)StringId::CountItemsWithKb]              = "%zu itens   ~%llu KB";
+    a[(std::size_t)StringId::CountAchievements]             = "%d / %d conquistas";
+    a[(std::size_t)StringId::CountGameSingular]             = "jogo";
+    a[(std::size_t)StringId::CountGamePlural]               = "jogos";
     return a;
 }();
 

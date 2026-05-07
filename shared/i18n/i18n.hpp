@@ -415,6 +415,103 @@ enum class StringId : std::uint16_t {
     // ----- Restart-confirm button label -----
     RestartNow,
 
+    // ----- Sweep v0.4.11: remaining hardcoded UI strings -----
+    BannerAddedToFavorites,
+    BannerRemovedFromFavorites,
+    BannerPerGameShaderSet,            // "Per-game shader: %s"
+    BannerPerGameRunaheadOff,
+    BannerPerGameRunaheadOneFrame,
+    BannerPerGameRunaheadNFrames,      // "Per-game run-ahead: %d frames"
+    BannerPerGameCoreSet,              // "Per-game core set: %s"
+    BannerSystemDefaultCoreSet,        // "System default core set: %s"
+    BannerThemeChanged,                // "Theme: %s"
+    BannerShaderChanged,               // "Shader: %s"
+    BannerRunaheadOff,                 // "Run-ahead: off"
+    BannerRunaheadOneFrame,            // "Run-ahead: %d frame"
+    BannerRunaheadNFrames,             // "Run-ahead: %d frames"
+    BannerCoverCacheCleared,
+    BannerScrapeBulkHint,              // "Open a system and press Y — bulk scrape next pass"
+    BannerFetchingCoresManifest,
+    BannerInstallingCheatPacks,        // "Installing all cheat packs..."
+    BannerInstallingBezelPacks,        // "Installing all bezel packs..."
+    BannerInstallingCheatPack,         // "Installing cheat pack: %s..."
+    BannerCancelling,
+    BannerUpdatingEverything,
+    BannerDrillDownComingNextPass,
+    BannerScraperFieldSaved,           // "%s saved"
+
+    // ----- v0.4.11 deep sweep: dialog text + asset bucket headers -----
+    UpdateFoyerHintFull,               // "Downloads foyer.nro to /switch/foyer/foyer.nro.new — applied next boot."
+    UpdateRestartHintFull,             // "Replaces foyer.nro and re-launches. No on-disk save loss."
+    BucketBezels,                      // "Bezels" (Updates page bucket header)
+    BucketCheats,                      // "Cheats"
+    PickerActionTitle,                 // "Action" (single-item action picker)
+    PickerUpdateTitle,                 // "Update %s"
+    PickerInstallTitle,                // "Install %s"
+    PickerCandidatePrefix,             // "Candidate %d"
+    PickCoverForGame,                  // "Pick cover for %s"
+    SwkbdSearchGuide,                  // "Search games by name"
+    GameDetailContinueLabel,           // "Continue" (resume action button)
+
+    // Shader display names (fallback when no localized name exists)
+    ShaderPrettyScanlines,             // "Scanlines"
+    ShaderPrettyCrtSimple,             // "CRT (simple)"
+    ShaderPrettyLcdGrid,               // "LCD grid"
+    ShaderPrettyGbDmg,                 // "Game Boy DMG"
+    ShaderPrettyGbaCorrect,            // "GBA color correct"
+    ShaderPrettyNone,                  // "Off"
+
+    // Game-detail resume row
+    ResumeQuickSlot,                   // "quick slot"
+    ResumeSlotN,                       // "slot %d"
+    ResumeBadge,                       // "resume"
+
+    // Game detail header + per-game knob badges
+    DetailHeaderResumeAndCore,         // "Continue / Core"
+    DetailHeaderCoreOnly,              // "Core"
+    KnobBadgePerGame,                  // "per-game"
+    KnobBadgeDefault,                  // "default"
+    DetailShaderRowLabel,              // "Shader" (knob row label)
+    DetailRunaheadRowLabel,            // "Run-ahead" (knob row label)
+    DetailRunaheadOff,                 // "Off"
+    DetailRunaheadOneFrame,            // "1 frame"
+    DetailRunaheadNFrames,             // "%d frames"
+
+    // Bottom-bar verbs (chord with glyph, e.g. "A: <verb>")
+    HintNavigate,                      // "navigate"
+    HintBack,                          // "back"
+    HintQuit,                          // "quit"
+    HintMenu,                          // "menu"
+    HintSettings,                      // "settings"
+    HintPick,                          // "pick"
+    HintEnter,                         // "enter"
+    HintLaunch,                        // "launch"
+    HintDetails,                       // "details"
+    HintScrape,                        // "scrape"
+    HintToggle,                        // "toggle"
+    HintEdit,                          // "edit"
+    HintSelect,                        // "select"
+    HintChange,                        // "change"
+    HintRun,                           // "run"
+    HintContinueVerb,                  // "continue" (lowercase verb form)
+    HintCycleShader,                   // "cycle shader"
+    HintCycleRunAhead,                 // "cycle run-ahead"
+    HintClearOverride,                 // "clear override"
+    HintSetPerGame,                    // "set per-game"
+    HintSetSysDefault,                 // "set sys default"
+    HintNewQuery,                      // "new query"
+    HintOpen,                          // "open"
+
+    // Counters
+    CountMatchSingular,                // "%zu match"
+    CountMatchPlural,                  // "%zu matches"
+    CountItemsPlural,                  // "%zu items"
+    CountItemsWithMb,                  // "%zu items   ~%.0f MB"
+    CountItemsWithKb,                  // "%zu items   ~%llu KB"
+    CountAchievements,                 // "%d / %d achievements"
+    CountGameSingular,                 // "game"
+    CountGamePlural,                   // "games"
+
     // Sentinel — keep last.
     kStringIdCount,
 };

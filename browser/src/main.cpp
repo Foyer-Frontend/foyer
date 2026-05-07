@@ -523,7 +523,7 @@ int main(int argc, char** argv) {
             state.request_refresh_manifest = false;
             const std::string url = foyer::library::config().cores_manifest_url;
             state.refresh_job.start([&state, url](foyer::library::Worker& w) {
-                w.set_status("Fetching cores manifest...");
+                w.set_status(foyer::i18n::tr(foyer::i18n::StringId::BannerFetchingCoresManifest));
                 state.refresh_result = foyer::library::fetch_manifest(url);
             });
         } else if (state.request_refresh_manifest) {
@@ -929,8 +929,11 @@ int main(int argc, char** argv) {
                     app.quit();
                 } else {
                     const auto* core = foyer::library::resolve_core(*sys.def, game.path);
-                    state.banner_text = std::string{"Core not installed: foyer-"}
-                        + (core ? std::string{core->name} : "?") + ".nro";
+                    char bb[200];
+                    std::snprintf(bb, sizeof(bb),
+                        foyer::i18n::tr(foyer::i18n::StringId::BannerCoreNotInstalled),
+                        core ? std::string{core->name}.c_str() : "?");
+                    state.banner_text = bb;
                     state.banner_ttl  = 180;
                 }
             }
@@ -976,8 +979,12 @@ int main(int argc, char** argv) {
                             // value — expose via open_cover_picker so
                             // main.cpp doesn't reach into the
                             // anonymous-namespace settings:: ops.
+                            char tbuf[200];
+                            std::snprintf(tbuf, sizeof(tbuf),
+                                foyer::i18n::tr(foyer::i18n::StringId::PickCoverForGame),
+                                std::string{g.stem}.c_str());
                             foyer::browser::open_cover_picker(state,
-                                std::string{"Pick cover for "} + g.stem,
+                                tbuf,
                                 std::string{def->folder_name},
                                 g.stem,
                                 std::move(cands));
