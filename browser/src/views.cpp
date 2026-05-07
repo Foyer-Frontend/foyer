@@ -4511,21 +4511,72 @@ void update(State& s, const Library& lib,
                             // system folder. Catalog entries
                             // (snes-castlevania4 / tv / etc.) stay so
                             // the picker still has source material.
-                            int n = 0;
+                            //
+                            // Log every attempt — when a previous
+                            // user reported the bezel persisting
+                            // after Clear all, the silent unlink
+                            // path made it impossible to tell
+                            // whether the file was missing, the
+                            // unlink failed, or it was being
+                            // re-created elsewhere.
+                            int deleted = 0, missing = 0, errored = 0;
                             for (const auto& sys : library::all_systems()) {
                                 const std::string p =
                                     std::string{"/foyer/bezels/"}
                                     + std::string{sys.folder_name} + ".png";
-                                if (::unlink(p.c_str()) == 0) n++;
+                                if (::unlink(p.c_str()) == 0) {
+                                    deleted++;
+                                    foyer::log::write(
+                                        "[bezel] cleared %s\n", p.c_str());
+                                } else if (errno == ENOENT) {
+                                    missing++;
+                                } else {
+                                    errored++;
+                                    foyer::log::write(
+                                        "[bezel] unlink %s failed errno=%d\n",
+                                        p.c_str(), errno);
+                                }
                             }
                             // Also nuke the legacy bundled default.png
                             // in case an old players-built nro is still
                             // riding the v0.2.x fallback chain.
-                            ::unlink("/foyer/bezels/default.png");
-                            char b[80];
+                            if (::unlink("/foyer/bezels/default.png") == 0) {
+                                deleted++;
+                                foyer::log::write(
+                                    "[bezel] cleared /foyer/bezels/default.png\n");
+                            }
+                            // Walk the directory itself and pick up
+                            // any stray *.png that didn't match a
+                            // known system folder. A bezel pack may
+                            // have dropped a system folder we don't
+                            // ship metadata for yet (e.g. system_db
+                            // changed names between releases). The
+                            // user said "clear all" — clear all.
+                            if (auto* d = ::opendir("/foyer/bezels"); d) {
+                                while (auto* e = ::readdir(d)) {
+                                    if (e->d_type != DT_REG) continue;
+                                    const std::string name = e->d_name;
+                                    if (name.size() < 4) continue;
+                                    if (name.substr(name.size() - 4) != ".png") continue;
+                                    const std::string p =
+                                        "/foyer/bezels/" + name;
+                                    if (::unlink(p.c_str()) == 0) {
+                                        deleted++;
+                                        foyer::log::write(
+                                            "[bezel] cleared stray %s\n",
+                                            p.c_str());
+                                    }
+                                }
+                                ::closedir(d);
+                            }
+                            foyer::log::write(
+                                "[bezel] clear-all done: %d deleted, "
+                                "%d missing, %d errored\n",
+                                deleted, missing, errored);
+                            char b[120];
                             std::snprintf(b, sizeof(b),
-                                "Cleared %d per-system bezel%s",
-                                n, n == 1 ? "" : "s");
+                                "Cleared %d bezel%s", deleted,
+                                deleted == 1 ? "" : "s");
                             s.banner_text = b;
                             s.banner_ttl  = 180;
                         }

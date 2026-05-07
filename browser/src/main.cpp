@@ -116,9 +116,17 @@ void apply_staged_update_if_present() {
         if (::rename(g_foyer_nro_new_path.c_str(),
                      g_foyer_nro_path.c_str()) != 0) {
             foyer::log::write(
-                "[foyer_update] rename of staged nro failed errno=%d\n",
-                errno);
-            ::unlink(g_foyer_nro_new_path.c_str());
+                "[foyer_update] rename of staged nro failed errno=%d "
+                "(leaving %s in place for the next attempt)\n",
+                errno, g_foyer_nro_new_path.c_str());
+            // Do NOT unlink foyer.nro.new on failure. Earlier
+            // versions did, which then made the chain-launch in the
+            // "Restart now" flow find no file to load — so foyer
+            // bounced back into the OLD foyer.nro and the user
+            // stayed stuck on the old version. Leaving the staged
+            // file alone means a subsequent boot (when neither file
+            // is held open by the running process) gets another
+            // chance to apply it.
             return;
         }
     }
@@ -929,12 +937,15 @@ int main(int argc, char** argv) {
     }
     foyer::browser::mtp_stop();
 
-    // Apply any staged self-update before we exit. Without this the
-    // user who picked "Later" on the restart-confirm modal would have
-    // to launch foyer TWICE after a download (once to swap .new ->
-    // .nro at boot, again to actually run the new bytes). Doing the
-    // rename on the way out closes that gap — the next launch is
-    // already the new version.
-    apply_staged_update_if_present();
+    // Don't try to apply the staged update on exit — the rename
+    // never works while we're still running because devkitA64's
+    // FAT/exFAT layer treats the running .nro as held open. The
+    // earlier version's exit-time call would fail, and (worse) on
+    // the v0.4.1 chain-launch path it would unlink foyer.nro.new
+    // out from under hbloader, leaving the user stuck on the old
+    // version. Boot-time apply_staged_update_if_present() at the
+    // start of main() handles the swap on the next launch — by then
+    // the previous foyer process is gone and FAT lets us replace
+    // the file.
     return 0;
 }
