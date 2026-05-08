@@ -22,6 +22,7 @@ FetchContent_MakeAvailable(libhaze)
 add_executable(foyer
     src/main.cpp
     src/home_activity.cpp
+    src/self_update.cpp
 
     # borealis Switch platform glue (matches borealis_template demo).
     ${borealis_SOURCE_DIR}/library/lib/platforms/switch/switch_wrapper.c
@@ -66,6 +67,21 @@ target_compile_options(foyer PRIVATE
 # material symbols, icons) flattened into romfs:/.
 file(COPY ${CMAKE_SOURCE_DIR}/assets/romfs/ DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/romfs)
 file(COPY ${borealis_SOURCE_DIR}/resources/ DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/romfs)
+
+# brls's nanovg-deko3d backend reads its rendering shaders from
+# romfs:/shaders/{fill_vsh,fill_aa_fsh,fill_fsh}.dksh at runtime. The
+# borealis source ships the .glsl sources; we compile them with uam
+# (devkitPro's shader compiler) into the romfs at configure time.
+# Replicates gen_dksh() from borealis/cmake/toolchain.cmake — we don't
+# include that toolchain wholesale, so the macro isn't in scope.
+find_program(FOYER_UAM_EXE NAMES uam HINTS "$ENV{DEVKITPRO}/tools/bin" REQUIRED)
+set(_brls_shader_src ${borealis_SOURCE_DIR}/library/lib/extern/nanovg/deko3d/shaders)
+set(_brls_shader_out ${CMAKE_CURRENT_BINARY_DIR}/romfs/shaders)
+file(MAKE_DIRECTORY ${_brls_shader_out})
+execute_process(COMMAND ${FOYER_UAM_EXE} -s vert -o ${_brls_shader_out}/fill_vsh.dksh    ${_brls_shader_src}/fill_vsh.glsl    TIMEOUT 10)
+execute_process(COMMAND ${FOYER_UAM_EXE} -s frag -o ${_brls_shader_out}/fill_aa_fsh.dksh ${_brls_shader_src}/fill_aa_fsh.glsl TIMEOUT 10)
+execute_process(COMMAND ${FOYER_UAM_EXE} -s frag -o ${_brls_shader_out}/fill_fsh.dksh    ${_brls_shader_src}/fill_fsh.glsl    TIMEOUT 10)
+
 dkp_add_asset_target(foyer_romfs ${CMAKE_CURRENT_BINARY_DIR}/romfs)
 
 # NACP / NRO. These devkitPro helpers come from switch-cmake.
