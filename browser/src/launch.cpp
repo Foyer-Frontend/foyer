@@ -1,4 +1,5 @@
 #include "launch.hpp"
+#include "switch_titles.hpp"
 #include "library/config.hpp"
 #include "library/scanner.hpp"
 #include "library/system_db.hpp"
@@ -50,6 +51,18 @@ std::string browser_self_path() {
 bool launch_game(const library::System& sys, const library::Game& game,
                  int resume_slot) {
     if (!sys.def) return false;
+
+    // 0.5.5 Switch-title launcher: paths formatted "switch://<id>"
+    // route through appletRequestLaunchApplication. The id is the
+    // application_id we pulled out of nsListApplicationRecord at
+    // boot. After this returns the firmware terminates foyer and
+    // boots the title; the caller's app.quit() drains the rest.
+    if (game.path.starts_with("switch://")) {
+        std::uint64_t app_id = 0;
+        const char* hex = game.path.c_str() + 9;
+        std::sscanf(hex, "%lx", &app_id);
+        return foyer::browser::switch_titles::launch(app_id);
+    }
 
     // External-launcher path: when the user has a standalone Switch
     // emulator nro for this system (PPSSPP, Dolphin, …) configured in

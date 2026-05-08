@@ -33,6 +33,7 @@
 #include "theme.hpp"
 #include "views.hpp"
 #include "hos_status.hpp"
+#include "switch_titles.hpp"
 #include "launch.hpp"
 #include "mtp.hpp"
 #include "seed_assets.hpp"
@@ -302,6 +303,37 @@ int main(int argc, char** argv) {
     // is a cheap debounced refresh; the avatar JPEG decode (the only
     // expensive piece) only runs once.
     foyer::browser::hos_status::init(app.vg());
+
+    // 0.5.5 Switch-title launcher cache: walk every installed
+    // application and decode each title's NACP icon. ~30+ JPEG decodes
+    // takes a couple of seconds on a console with a full library, so
+    // this runs after the boot splash but before the first Home
+    // paint (otherwise the carousel pops in titles asynchronously
+    // and reorders mid-render).
+    foyer::browser::switch_titles::load(app.vg());
+
+    // Expose installed Switch titles as a virtual system at the front
+    // of the carousel. Each title becomes a Game with path
+    // "switch://<application_id>" so launch.cpp can detect the schema
+    // and route to appletRequestLaunchApplication. Skipped when no
+    // titles are installed (homebrew-only consoles).
+    if (!foyer::browser::switch_titles::titles().empty()) {
+        foyer::library::System sw;
+        sw.def       = &foyer::library::kVirtualSwitchDef;
+        sw.root_path = "(virtual)";
+        for (const auto& t : foyer::browser::switch_titles::titles()) {
+            foyer::library::Game g{};
+            char buf[40];
+            std::snprintf(buf, sizeof(buf),
+                "switch://%016lx", (unsigned long)t.application_id);
+            g.path     = buf;
+            g.stem     = t.name.empty() ? std::string{"(unnamed)"} : t.name;
+            g.display  = g.stem;
+            g.ext      = "nca";
+            sw.games.push_back(std::move(g));
+        }
+        lib.systems.insert(lib.systems.begin(), std::move(sw));
+    }
 
     foyer::browser::State state;
 

@@ -397,6 +397,13 @@ const SystemDef kVirtualFavoritesDef = {
 const SystemDef kVirtualUnknownDef = {
     "__unknown", "Unknown",  "UNK", "", "", {},
 };
+// 0.5.5: Switch-title launcher virtual system. Games inside this
+// system carry path strings of the form "switch://<application_id>"
+// which launch.cpp detects and routes through
+// appletRequestLaunchApplication instead of envSetNextLoad.
+const SystemDef kVirtualSwitchDef = {
+    "__switch", "Nintendo Switch", "SWITCH", "", "", {},
+};
 
 bool is_virtual_system(const SystemDef& sys) {
     return !sys.folder_name.empty() && sys.folder_name.starts_with("__");

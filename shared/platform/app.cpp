@@ -378,6 +378,14 @@ void userAppInit(void) {
     if (R_FAILED(rc = psmInitialize()))                  diagAbortWithResult(rc);
     if (R_FAILED(rc = accountInitialize(AccountServiceType_Application)))
         diagAbortWithResult(rc);
+    // 0.5.5 Switch-title launcher: nsListApplicationRecord +
+    // nsGetApplicationControlData read installed-title metadata. ns
+    // Application-tier is gated tighter than account; if init fails
+    // we tolerate it and the Switch tile silently lists zero titles.
+    if (R_FAILED(rc = nsInitialize())) {
+        foyer::log::write(
+            "[platform] nsInitialize rc=0x%x — Switch tile disabled\n", rc);
+    }
 
     // BSD sockets — needed by libcurl for the scrapers + RetroAchievements.
     // Use the applet-friendly profile so foyer plays nicely under hbloader.
@@ -405,6 +413,7 @@ void userAppInit(void) {
 
 void userAppExit(void) {
     socketExit();
+    nsExit();
     accountExit();
     psmExit();
     setExit();
