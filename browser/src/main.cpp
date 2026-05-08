@@ -378,6 +378,25 @@ int main(int argc, char** argv) {
             continue;
         }
 
+        // 0.5.0 Home action-row: Sleep + Power. Sleep is reversible so
+        // it just transitions to the OS sleep state; the user wakes the
+        // console and lands back on Home. Power is a hard shutdown — we
+        // commit the SD device handle first so any pending writes flush
+        // before the firmware unmounts.
+        if (state.request_sleep) {
+            state.request_sleep = false;
+            foyer::log::write("[home_action] sleep requested\n");
+            appletStartSleepSequence(true);
+        }
+        if (state.request_power_off) {
+            state.request_power_off = false;
+            foyer::log::write("[home_action] power off requested\n");
+            if (auto* fs = fsdevGetDeviceFileSystem("sdmc:")) {
+                fsFsCommit(fs);
+            }
+            appletRequestToShutdown();
+        }
+
         // "Restart now" from the post-download confirm modal.
         //
         // Critical: do NOT try to swap foyer.nro.new -> foyer.nro

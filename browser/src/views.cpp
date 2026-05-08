@@ -578,44 +578,95 @@ void draw_hos_top_bar(NVGcontext* vg, float w) {
     nvgFill(vg);
 }
 
-void draw_hos_action_row(NVGcontext* vg, float w, float h) {
-    const auto& th = theme();
-    const float row_y = h - kBottomBarH - kHosActionRowH;
+// Action-row layout helpers. The row supports two visual styles
+// switchable via the Settings → Display → "Action row dock" toggle:
+//   - Floating circles  (older HOS firmware): individual circle
+//                       buttons separated by gaps, with a thin
+//                       border line above the row.
+//   - Dock pill         (newer HOS firmware): every button sits inside
+//                       a single rounded-pill background; the pill
+//                       has a soft drop shadow and a subtle border.
+// Both render the same 7 buttons in the same order.
+constexpr int kHosActionCount = 7;
+const char* hos_action_label(int i) {
+    switch (i) {
+        case 0: return "News";
+        case 1: return "eShop";
+        case 2: return "Album";
+        case 3: return "Controllers";
+        case 4: return "Settings";
+        case 5: return "Sleep";
+        case 6: return "Power";
+    }
+    return "";
+}
 
-    // Background panel for the row so the buttons sit on a clean
-    // band even when the carousel pokes into the lower half of the
-    // screen. Same fill as the bars.
+void draw_hos_action_row(NVGcontext* vg, float w, float h, const State& s) {
+    const auto& th    = theme();
+    const float row_y = h - kBottomBarH - kHosActionRowH;
+    const bool  dock  = library::config().action_row_dock;
+    const bool  has_focus = s.action_row_focus &&
+                            s.action_button_index >= 0 &&
+                            s.action_button_index < kHosActionCount;
+
+    // Row background — subtle border line in the floating style so the
+    // user reads it as a separated band. The dock variant skips the
+    // line because the pill itself provides the visual seam.
     nvgBeginPath(vg);
     nvgRect(vg, 0, row_y, w, kHosActionRowH);
     nvgFillColor(vg, th.bg);
     nvgFill(vg);
-    nvgBeginPath(vg);
-    nvgRect(vg, 0, row_y, w, 1.0f);
-    nvgFillColor(vg, th.border);
-    nvgFill(vg);
+    if (!dock) {
+        nvgBeginPath(vg);
+        nvgRect(vg, 0, row_y, w, 1.0f);
+        nvgFillColor(vg, th.border);
+        nvgFill(vg);
+    }
 
-    // 7 buttons spaced evenly across the row, mirroring HOS's icon
-    // strip layout (News / eShop / Album / Controllers / Settings /
-    // Sleep / Power). Phase 0 renders them as labelled placeholder
-    // circles — Phase 3 wires the actual launches.
-    constexpr int   kBtnCount = 7;
     constexpr float kBtnR     = 28.0f;
     constexpr float kLabelGap = 18.0f;
-    const char* labels[kBtnCount] = {
-        "News", "eShop", "Album", "Controllers", "Settings", "Sleep", "Power",
-    };
-    const float total_w = w * 0.7f;
-    const float step    = total_w / (kBtnCount - 1);
+    const float total_w = dock ? w * 0.62f : w * 0.7f;
+    const float step    = total_w / (kHosActionCount - 1);
     const float start_x = (w - total_w) * 0.5f;
     const float cy      = row_y + kHosActionRowH * 0.5f - kLabelGap * 0.5f;
 
-    for (int i = 0; i < kBtnCount; i++) {
-        const float cx = start_x + step * i;
-        hos_circle(vg, cx, cy, kBtnR, th.bg_panel_hi, th.border);
-        nvgFontSize(vg, th.label_size);
-        nvgFillColor(vg, th.text_dim);
-        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
-        nvgText(vg, cx, cy + kBtnR + 6.0f, labels[i], nullptr);
+    if (dock) {
+        // Pill background spans every button with margin equal to the
+        // button radius on each side. Same panel fill as the topbar.
+        const float pill_pad_x = kBtnR + 18.0f;
+        const float pill_pad_y = kBtnR + 6.0f;
+        const float pill_x = start_x - pill_pad_x;
+        const float pill_y = cy - pill_pad_y;
+        const float pill_w = total_w + pill_pad_x * 2;
+        const float pill_h = pill_pad_y * 2;
+        rrect(vg, pill_x, pill_y, pill_w, pill_h, pill_h * 0.5f, th.bg_panel);
+        rrect_outline(vg, pill_x, pill_y, pill_w, pill_h, pill_h * 0.5f,
+                      th.border, 1.0f);
+    }
+
+    for (int i = 0; i < kHosActionCount; i++) {
+        const float cx     = start_x + step * i;
+        const bool  active = has_focus && i == s.action_button_index;
+        const NVGcolor fill   = active ? th.accent : th.bg_panel_hi;
+        const NVGcolor stroke = active ? th.accent : th.border;
+        hos_circle(vg, cx, cy, kBtnR, fill, stroke);
+        // Glyph: a single character placeholder per button until a
+        // dedicated icon font / SVG asset lands. The first letter
+        // reads at-a-glance and matches HOS's solid fills better than
+        // the previous full-text rendering.
+        nvgFontSize(vg, 22.0f);
+        nvgFillColor(vg, active ? th.bg : th.text);
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+        char glyph[4] = {hos_action_label(i)[0], 0};
+        nvgText(vg, cx, cy + 1, glyph, nullptr);
+
+        // Label — only on the focused button to keep the row clean.
+        if (active) {
+            nvgFontSize(vg, th.label_size);
+            nvgFillColor(vg, th.text_strong);
+            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
+            nvgText(vg, cx, cy + kBtnR + 6.0f, hos_action_label(i), nullptr);
+        }
     }
 }
 
@@ -636,17 +687,39 @@ void draw_hos_bottom_hints(NVGcontext* vg, float w, float h, const char* hint) {
     nvgFillColor(vg, th.border);
     nvgFill(vg);
 
-    // Connected-controller indicator: placeholder filled circle + "P1"
-    // label. Phase 1 polls hidGetSupportedNpadStyleSet for the actual
-    // count and renders one glyph per pad.
-    constexpr float kPadR = 10.0f;
-    const float padx = th.pad + kPadR;
+    // Connected-controller cluster: a small badge per attached
+    // npad. libnx's HID exposes per-id activity flags; we walk the
+    // first 8 ids and render one filled disc per active one. Empty
+    // (no controllers) renders a single dim disc with "—".
+    constexpr float kPadR = 8.0f;
+    constexpr float kPadGap = 6.0f;
     const float pady = by + kBottomBarH * 0.5f;
-    hos_circle(vg, padx, pady, kPadR, th.accent, th.accent);
-    nvgFontSize(vg, th.label_size);
-    nvgFillColor(vg, th.text);
-    nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
-    nvgText(vg, padx + kPadR + 8.0f, pady, "P1", nullptr);
+    int connected = 0;
+    for (int i = 0; i < 8; i++) {
+        const auto styles = hidGetNpadStyleSet((HidNpadIdType)i);
+        if (styles != 0) connected++;
+    }
+    if (connected == 0) {
+        const float padx = th.pad + kPadR;
+        hos_circle(vg, padx, pady, kPadR, th.bg_panel_hi, th.border);
+        nvgFontSize(vg, th.label_size);
+        nvgFillColor(vg, th.text_dim);
+        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+        nvgText(vg, padx + kPadR + 8.0f, pady, "—", nullptr);
+    } else {
+        for (int i = 0; i < connected; i++) {
+            const float padx = th.pad + kPadR + i * (kPadR * 2 + kPadGap);
+            hos_circle(vg, padx, pady, kPadR, th.accent, th.accent);
+        }
+        char buf[16];
+        std::snprintf(buf, sizeof(buf), "P1-%d", connected);
+        const float text_x = th.pad + kPadR
+            + connected * (kPadR * 2 + kPadGap) + 4.0f;
+        nvgFontSize(vg, th.label_size);
+        nvgFillColor(vg, th.text);
+        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+        nvgText(vg, text_x, pady, buf, nullptr);
+    }
 
     // Right-aligned: button glyph hints (left of version), then the
     // version stamp at the very right.
@@ -690,35 +763,41 @@ void rrect_outline(NVGcontext* vg, float x, float y, float ww, float hh, float r
     nvgStroke(vg);
 }
 
-// ---- HOME VIEW (system carousel) ------------------------------------------
+// ---- HOME VIEW (HOS-style tile row) ---------------------------------------
+//
+// 0.5.0 Phase 2: rounded-square tiles to match the HOS launcher. Focused
+// tile is full-size + accent-bordered; neighbours render smaller and dim
+// so the focus is always unambiguous. Side tiles can be partially visible
+// at the screen edge — we just keep walking offsets until the tile would
+// be entirely off-screen.
+constexpr float kHomeTileW       = 280.0f;
+constexpr float kHomeTileH       = 280.0f;
+constexpr float kHomeTileGap     = 24.0f;
+constexpr float kHomeFocusScale  = 1.10f;   // focused tile bumps 10 %
+// HOS tiles are pure squares — radius is 0 by default. The Settings →
+// Display → "Rounded tiles" toggle bumps this to kHomeRadiusRounded for
+// users who prefer the softer look.
+constexpr float kHomeRadiusSharp   = 0.0f;
+constexpr float kHomeRadiusRounded = 14.0f;
+constexpr float kHomeSideAlpha   = 0.55f;   // dim factor for non-focused
+constexpr float kHomeBorderW     = 3.5f;    // accent ring on focused tile
 
-// Tile metrics. Selected tile sits in the centre at full size; up to two
-// neighbours each side render smaller and fade out.
-// Portrait parallelogram tiles. Each tile is a slanted shape (top-right and
-// bottom-left corners shifted by kHomeSlant) so adjacent tiles interlock
-// exactly — kHomeGap = -kHomeSlant pulls them together along the slanted
-// edges matching the ES-DE Art Book Next layout.
-constexpr float kHomeTileW = 360.0f;
-constexpr float kHomeTileH = 840.0f;
-constexpr float kHomeSlant = 84.0f;
-constexpr float kHomeGap   = -kHomeSlant;
-constexpr float kHomePitch = kHomeTileW + kHomeGap; // 276 — centre-to-centre
-
-// Map a touch position to the system index of the visible tile underneath,
-// or -1 if no tile was tapped. Hit boxes use the centre-to-centre pitch so
-// adjacent tiles never overlap, which matters for tap disambiguation.
+// Hit-test: walk every visible tile (focused at center plus neighbours)
+// and return the first one under (tx, ty). Caller passes the centre-to-
+// centre pitch (focused tile uses scaled half-width on its own side).
 int home_hit_test(float w, float h, std::size_t count,
                   std::size_t idx_centre, float tx, float ty) {
     if (count == 0) return -1;
-    const float cy  = h * 0.5f;
-    const float top = cy - kHomeTileH * 0.5f;
-    const float bot = cy + kHomeTileH * 0.5f;
-    if (ty < top || ty > bot) return -1;
+    const float cy = h * 0.5f;
+    const float pitch = kHomeTileW + kHomeTileGap;
+    const float row_top = cy - kHomeTileH * 0.5f * kHomeFocusScale;
+    const float row_bot = cy + kHomeTileH * 0.5f * kHomeFocusScale;
+    if (ty < row_top || ty > row_bot) return -1;
     const int n = (int)count;
-    for (int off = -2; off <= 2; off++) {
-        const float cx    = w * 0.5f + (float)off * kHomePitch;
-        const float left  = cx - kHomePitch * 0.5f;
-        const float right = cx + kHomePitch * 0.5f;
+    for (int off = -3; off <= 3; off++) {
+        const float cx   = w * 0.5f + (float)off * pitch;
+        const float left = cx - pitch * 0.5f;
+        const float right= cx + pitch * 0.5f;
         if (tx >= left && tx < right) {
             int idx = (int)idx_centre + off;
             return ((idx % n) + n) % n;
@@ -735,111 +814,130 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
         return;
     }
 
-    constexpr float kTileW = kHomeTileW;
-    constexpr float kTileH = kHomeTileH;
-    constexpr float kSlant = kHomeSlant;
-    constexpr float kGap   = kHomeGap;
-
+    const auto& th       = theme();
     const auto idx_centre = (int)s.system_index;
     const auto count      = (int)lib.systems.size();
-    const float cy        = h * 0.5f;
+    const float cy        = h * 0.5f - 8.0f;  // tiny upward bias to leave
+                                              // room for the title preview
+                                              // above the row
+    const float pitch     = kHomeTileW + kHomeTileGap;
+    const float radius    = library::config().rounded_tiles
+                              ? kHomeRadiusRounded : kHomeRadiusSharp;
 
-    // Two passes so the centre tile's logo overlay isn't clipped by the
-    // adjacent (offset +1 / +2) tiles. Adjacent parallelograms interlock
-    // with an 84 px slant overlap; in a single-pass left-to-right draw
-    // the right-hand neighbours paint over the bottom-right wedge of the
-    // centre logo. Pass 1: every tile's splash. Pass 2: only the centre
-    // tile's logo, on top of all of them.
-    auto centre_xy = [&](float& out_x, float& out_y, float& out_tw, float& out_thh) {
-        out_tw  = kTileW;
-        out_thh = kTileH;
-        out_x   = w * 0.5f - out_tw * 0.5f;
-        out_y   = cy - out_thh * 0.5f;
-    };
+    // Title-preview row (HOS shows the focused system's display name above
+    // the carousel). Right-aligned to mirror the newer firmware.
+    {
+        const auto& sys = lib.systems[idx_centre % count];
+        const std::string label{sys.def->display_name};
+        nvgFontSize(vg, th.head_size);
+        nvgFillColor(vg, th.accent);
+        nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_TOP);
+        nvgText(vg, w - th.pad,
+                cy - kHomeTileH * 0.5f * kHomeFocusScale - 36.0f,
+                label.c_str(), nullptr);
+    }
 
-    for (int offset = -2; offset <= 2; offset++) {
-        if (count <= 0) break;
-        // Circular wrap: NES → ... ← saturn so the user always sees two
-        // systems on either side of the focus.
+    // Two-pass paint so the focused tile's logo + accent border land
+    // above the neighbour tiles even when they overlap on touchscreens
+    // (the focused tile is scaled up).
+    auto draw_tile_at = [&](int offset, bool focused) {
         int idx = idx_centre + offset;
         idx = ((idx % count) + count) % count;
         const auto& sys = lib.systems[idx];
 
-        const float tw    = kTileW;
-        const float thh   = kTileH;
-        const float cx    = w * 0.5f + offset * (kTileW + kGap);
+        const float scale = focused ? kHomeFocusScale : 1.0f;
+        const float tw    = kHomeTileW * scale;
+        const float thh   = kHomeTileH * scale;
+        const float cx    = w * 0.5f + (float)offset * pitch;
         const float x     = cx - tw * 0.5f;
         const float y     = cy - thh * 0.5f;
-
-        const bool centre = (offset == 0);
+        const float alpha = focused ? 1.0f : kHomeSideAlpha;
 
         nvgSave(vg);
+
+        // Tile background: accent-tinted fill if the splash is missing,
+        // otherwise the splash itself clipped to the rounded rect.
         const int strip_h = system_splash_cache().get_or_load(vg,
             system_splash_path(sys.def->folder_name));
         if (strip_h > 0) {
-            blit_cover_parallelogram(vg, strip_h,
-                x, y, tw, thh, kSlant,
-                centre ? 1.0f : 0.55f);
-        } else {
-            // Fallback: virtual systems (Recent / Favorites) and any
-            // real system whose splash png isn't on disk get a solid
-            // accent-coloured parallelogram so the slot still reads
-            // as a tile rather than a hole.
-            const auto& th = theme();
-            const auto fill = centre
-                ? nvgRGBA((uint8_t)(th.accent.r * 255),
-                          (uint8_t)(th.accent.g * 255),
-                          (uint8_t)(th.accent.b * 255), 0xE0)
-                : nvgRGBA((uint8_t)(th.bg_panel_hi.r * 255),
-                          (uint8_t)(th.bg_panel_hi.g * 255),
-                          (uint8_t)(th.bg_panel_hi.b * 255), 0xC0);
+            int iw = 0, ih = 0;
+            nvgImageSize(vg, strip_h, &iw, &ih);
+            // Aspect-fill: scale up so the SHORTER side covers the tile,
+            // then center the longer side. Keeps the splash from
+            // letterboxing in the rounded square.
+            float pat_w = tw, pat_h = thh;
+            if (iw > 0 && ih > 0) {
+                const float ar_img = (float)iw / (float)ih;
+                const float ar_box = tw / thh;
+                if (ar_img > ar_box) {  pat_w = thh * ar_img; }
+                else                 {  pat_h = tw / ar_img; }
+            }
+            const float pat_x = x + (tw - pat_w) * 0.5f;
+            const float pat_y = y + (thh - pat_h) * 0.5f;
+            auto pat = nvgImagePattern(vg, pat_x, pat_y, pat_w, pat_h,
+                                       0.0f, strip_h, alpha);
             nvgBeginPath(vg);
-            nvgMoveTo(vg, x + kSlant,     y);
-            nvgLineTo(vg, x + tw,         y);
-            nvgLineTo(vg, x + tw - kSlant, y + thh);
-            nvgLineTo(vg, x,              y + thh);
-            nvgClosePath(vg);
-            nvgFillColor(vg, fill);
+            nvgRoundedRect(vg, x, y, tw, thh, radius);
+            nvgFillPaint(vg, pat);
             nvgFill(vg);
+        } else {
+            const NVGcolor fill = focused ? th.accent : th.bg_panel_hi;
+            rrect(vg, x, y, tw, thh, radius, fill);
+        }
+
+        // Focused-tile accent ring + drop shadow on the corners. Same
+        // visual cue HOS uses to confirm focus regardless of art.
+        if (focused) {
+            nvgBeginPath(vg);
+            nvgRoundedRect(vg, x, y, tw, thh, radius);
+            nvgStrokeColor(vg, th.accent);
+            nvgStrokeWidth(vg, kHomeBorderW);
+            nvgStroke(vg);
         }
         nvgRestore(vg);
-    }
+    };
 
-    // Pass 2: centre logo (ES-DE-style overlay). Drawn after every
-    // splash so neighbour tiles can't clip it. Box is full tile width
-    // and ~60% tile height so wide wordmarks (e.g. "PlayStation
-    // Portable") render large; aspect-fit keeps the logo proportional.
-    if (count > 0) {
+    // Walk neighbours from far-out → in so the focused tile lands on top.
+    for (int off : {-3, 3, -2, 2, -1, 1}) {
+        draw_tile_at(off, /*focused=*/false);
+    }
+    draw_tile_at(0, /*focused=*/true);
+
+    // Logo overlay on the focused tile. Uses the existing logo PNG if
+    // present, falls back to the system's display name centered in the
+    // tile so the slot is legible without art.
+    {
         const auto& sys = lib.systems[idx_centre % count];
-        float x, y, tw, thh;
-        centre_xy(x, y, tw, thh);
-        nvgSave(vg);
+        const float scale = kHomeFocusScale;
+        const float tw    = kHomeTileW * scale;
+        const float thh   = kHomeTileH * scale;
+        const float x     = w * 0.5f - tw * 0.5f;
+        const float y     = cy - thh * 0.5f;
         const auto logo_path = system_logo_path(sys.def->folder_name);
         const int  logo_h    = system_logo_cache().get_or_load(vg, logo_path);
         if (logo_h > 0) {
-            // True silhouette drop shadow: re-renders the logo
-            // offset down-right with its pixels tinted black via
-            // an innerColor hack on the returned NVGpaint. Follows
-            // the logo's alpha mask instead of its bounding box.
             blit_aspect_fit_with_shadow(vg, logo_h,
-                x, y + thh * 0.20f,
-                tw, thh * 0.60f,
+                x + tw * 0.10f, y + thh * 0.65f,
+                tw * 0.80f, thh * 0.25f,
                 0.0f, 1.0f);
-        } else {
-            // No logo art on disk — render the system's display name
-            // (or short_name fallback) centered in the tile. Same
-            // typography as the topbar so it reads as a deliberate
-            // label and not a placeholder.
-            const auto& th = theme();
-            nvgFontSize(vg, 64.0f);
-            nvgFillColor(vg, th.bg);
-            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-            const std::string label{sys.def->display_name};
-            nvgText(vg, x + tw * 0.5f,
-                    y + thh * 0.5f,
-                    label.c_str(), nullptr);
         }
-        nvgRestore(vg);
+    }
+
+    // Game count below the focused tile (HOS shows play time / ownership;
+    // for a libretro frontend the equivalent is the rom count).
+    {
+        const auto& sys = lib.systems[idx_centre % count];
+        char buf[64];
+        const char* gword = _(sys.games.size() == 1
+                                  ? SId::CountGameSingular
+                                  : SId::CountGamePlural);
+        std::snprintf(buf, sizeof(buf), "%zu %s", sys.games.size(), gword);
+        nvgFontSize(vg, th.label_size);
+        nvgFillColor(vg, th.text_dim);
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
+        nvgText(vg, w * 0.5f,
+                cy + kHomeTileH * 0.5f * kHomeFocusScale + 12.0f,
+                buf, nullptr);
     }
 }
 
@@ -1766,6 +1864,7 @@ const char* scraper_label(library::Config::Scraper sc) {
 enum : int {
     OpScraper = 1, OpTheme, OpRomRoot, OpScanSub,
     OpShowClock, OpShowBg, OpShowCovers, OpShowBezels,
+    OpRoundedTiles, OpActionRowDock,
     OpRescan, OpInvalidateCovers,
     OpUpdScrapeAll, OpUpdInstalledCores, OpUpdInstallCores,
     OpUpdRefreshManifest, OpUpdInstallSingleCore, OpUpdReinstallSingleCore,
@@ -1896,6 +1995,12 @@ std::vector<Item> build_items(Category cat, const State& s) {
             rows.push_back({ItemKind::Toggle, _(SId::DisplayShowBezels),      "",
                 _(SId::DisplayShowBezelsHint),
                 OpShowBezels});
+            rows.push_back({ItemKind::Toggle, _(SId::DisplayRoundedTiles),    "",
+                _(SId::DisplayRoundedTilesHint),
+                OpRoundedTiles});
+            rows.push_back({ItemKind::Toggle, _(SId::DisplayActionRowDock),   "",
+                _(SId::DisplayActionRowDockHint),
+                OpActionRowDock});
             // Post-process shader, applied per-frame in every player.
             // Built-in presets ship with the player binary; users can
             // also drop their own /foyer/shaders/<name>.glsl files.
@@ -2530,6 +2635,8 @@ bool toggle_get(int op) {
         case OpScanSub:          return cfg.scan_subfolders;
         case OpShowClock:        return cfg.show_clock;
         case OpShowBezels:       return cfg.show_bezels;
+        case OpRoundedTiles:     return cfg.rounded_tiles;
+        case OpActionRowDock:    return cfg.action_row_dock;
         case OpShowBg:           return cfg.show_backgrounds;
         case OpShowCovers:       return cfg.show_covers;
         case OpHideEmpty:        return cfg.hide_empty_systems;
@@ -2544,6 +2651,8 @@ void toggle_set(int op, bool val) {
     switch (op) {
         case OpScanSub:          library::set_bool("scan_subfolders",  val); break;
         case OpShowClock:        library::set_bool("show_clock",       val); break;
+        case OpRoundedTiles:     library::set_bool("rounded_tiles",    val); break;
+        case OpActionRowDock:    library::set_bool("action_row_dock",  val); break;
         case OpShowBg:           library::set_bool("show_backgrounds", val); break;
         case OpShowCovers:       library::set_bool("show_covers",      val); break;
         case OpShowBezels:       library::set_bool("show_bezels",      val); break;
@@ -4503,6 +4612,64 @@ void update(State& s, const Library& lib,
             s.system_index = (std::size_t)idx;
         };
 
+        // Action-row focus toggle: Down from the carousel jumps to the
+        // round buttons; Up returns to the carousel. Left/Right walks
+        // the row while focused. A fires the focused button.
+        if (s.action_row_focus) {
+            if (down & HidNpadButton_AnyUp) {
+                s.action_row_focus = false;
+            } else if (down & HidNpadButton_AnyRight) {
+                if (s.action_button_index + 1 < kHosActionCount)
+                    s.action_button_index++;
+            } else if (down & HidNpadButton_AnyLeft) {
+                if (s.action_button_index > 0)
+                    s.action_button_index--;
+            } else if (down & HidNpadButton_B) {
+                s.action_row_focus = false;
+            } else if (down & HidNpadButton_A) {
+                // Phase 3 dispatch. The async-y ones (sleep / shutdown)
+                // queue request flags that main.cpp drains so we don't
+                // call libnx services from inside the input handler.
+                switch (s.action_button_index) {
+                    case 0: // News — placeholder until 0.5.2 RSS feed
+                        s.banner_text = "News feed coming in 0.5.2";
+                        s.banner_ttl  = 240;
+                        break;
+                    case 1: // eShop — placeholder; libapplet route is
+                            // unreliable under hbloader. 0.5.2 will
+                            // chain-launch a user-configured NRO
+                            // (Tinfoil / Awoo) instead.
+                        s.banner_text = "eShop launcher coming in 0.5.2";
+                        s.banner_ttl  = 240;
+                        break;
+                    case 2: // Album — placeholder for the same reason
+                        s.banner_text = "Album launcher coming in 0.5.2";
+                        s.banner_ttl  = 240;
+                        break;
+                    case 3: // Controllers — opens Settings → controller
+                            // pairing once that page lands; placeholder
+                            // for now.
+                        s.banner_text = "Controller pairing coming in 0.6.0";
+                        s.banner_ttl  = 240;
+                        break;
+                    case 4: // Settings — open the existing view
+                        s.view = View::Settings;
+                        s.action_row_focus = false;
+                        break;
+                    case 5: // Sleep
+                        s.request_sleep = true;
+                        break;
+                    case 6: // Power off
+                        s.request_power_off = true;
+                        break;
+                }
+            }
+            return;  // suppress carousel input while focused
+        }
+        if (down & HidNpadButton_AnyDown) {
+            s.action_row_focus = true;
+        }
+
         // D-pad still steps the carousel one tile at a time without repeat.
         if (down & HidNpadButton_AnyRight)     step(+1);
         else if (down & HidNpadButton_AnyLeft) step(-1);
@@ -5580,6 +5747,12 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
                 hint = std::string{Minus} + " " + _(SId::HintSettings) + "   "
                      + Plus + " " + _(SId::HintMenu) + "   "
                      + B + " " + _(SId::HintQuit);
+            } else if (s.action_row_focus) {
+                // 0.5.0 action row: arrows walk the buttons; A fires
+                // the focused one; B/Up returns to the carousel.
+                hint = std::string{Left} + Right + " " + _(SId::HintPick) + "   "
+                     + A + " " + _(SId::HintRun) + "   "
+                     + B + " " + _(SId::HintBack);
             } else {
                 hint = std::string{DPad} + " " + _(SId::HintPick) + "   "
                      + A + " " + _(SId::HintEnter) + "   "
@@ -5733,12 +5906,8 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
     }
 
     if (s.view == View::Home) {
-        // 0.5.0 Phase 0: HOS-styled chrome. Profile (left) + status
-        // cluster (right) replace the breadcrumb + clock; an action-
-        // button row sits above the hint bar; the hint bar carries
-        // the connected-controller indicator on the left.
         draw_hos_top_bar      (vg, w);
-        draw_hos_action_row   (vg, w, h);
+        draw_hos_action_row   (vg, w, h, s);
         draw_hos_bottom_hints (vg, w, h, hint.c_str());
     } else {
         draw_topbar   (vg, w,    title.c_str(), clock.c_str());

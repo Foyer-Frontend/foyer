@@ -173,6 +173,18 @@ struct State {
     // build_items() did 30+ stat() + sidecar reads every frame, locking
     // the Cores Catalog and Cheat Packs subpages at single-digit FPS.
     int         install_cache_gen        = 0;
+
+    // 0.5.0 HOS chrome: when on Home view, pressing Down from the
+    // carousel transfers focus to the action button row. Up returns
+    // to the carousel. action_button_index walks the 7 round buttons
+    // (News / eShop / Album / Controllers / Settings / Sleep / Power).
+    bool        action_row_focus         = false;
+    int         action_button_index      = 4;  // Settings — sane default
+    // Action-row dispatch flags. main.cpp drains these and calls the
+    // matching libnx service so the input handler stays free of
+    // service-call surface.
+    bool        request_sleep            = false;
+    bool        request_power_off        = false;
     // When true, install_cores is invoked with `force=true`, bypassing
     // the version-match skip. Used by the explicit "Re-install" path.
     // Cleared after the install runs.

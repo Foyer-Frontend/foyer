@@ -130,6 +130,8 @@ void write_locked() {
     out << "    \"show_backgrounds\":  " << bstr(g_config.show_backgrounds) << ",\n";
     out << "    \"show_covers\":       " << bstr(g_config.show_covers) << ",\n";
     out << "    \"show_bezels\":       " << bstr(g_config.show_bezels) << ",\n";
+    out << "    \"rounded_tiles\":     " << bstr(g_config.rounded_tiles) << ",\n";
+    out << "    \"action_row_dock\":   " << bstr(g_config.action_row_dock) << ",\n";
     out << "    \"hide_empty_systems\":" << bstr(g_config.hide_empty_systems) << ",\n";
     out << "    \"language\":          \"" << g_config.language << "\",\n";
     out << "    \"mtp_autostart\":     " << bstr(g_config.mtp_autostart) << ",\n";
@@ -226,6 +228,8 @@ void load_locked() {
     load_bool("show_backgrounds", g_config.show_backgrounds);
     load_bool("show_covers",      g_config.show_covers);
     load_bool("show_bezels",      g_config.show_bezels);
+    load_bool("rounded_tiles",    g_config.rounded_tiles);
+    load_bool("action_row_dock",  g_config.action_row_dock);
     load_bool("hide_empty_systems", g_config.hide_empty_systems);
     if (auto* v = yyjson_obj_get(root, "language");
         v && yyjson_is_str(v)) {
@@ -371,6 +375,8 @@ void set_bool(std::string_view key, bool value) {
     else if (key == "show_backgrounds") g_config.show_backgrounds = value;
     else if (key == "show_covers")      g_config.show_covers      = value;
     else if (key == "show_bezels")      g_config.show_bezels      = value;
+    else if (key == "rounded_tiles")    g_config.rounded_tiles    = value;
+    else if (key == "action_row_dock")  g_config.action_row_dock  = value;
     else if (key == "hide_empty_systems") g_config.hide_empty_systems = value;
     else if (key == "mtp_autostart")    g_config.mtp_autostart    = value;
     else if (key == "debug_log")        g_config.debug_log        = value;

@@ -55,6 +55,15 @@ struct Config {
     // chain entirely so even the bundled default.png is hidden, useful
     // when the user prefers integer-scale or a vendor overlay.
     bool         show_bezels       = true;
+    // 0.5.0 chrome knobs:
+    //   rounded_tiles  — when on, the home tiles get a 14 px corner
+    //                    radius. Off matches HOS exactly (square tiles).
+    //   action_row_dock — when on, the Home action row sits inside one
+    //                    rounded "dock" pill (newer firmware look).
+    //                    Off renders individual circle buttons with
+    //                    a separator line above (older firmware look).
+    bool         rounded_tiles     = false;
+    bool         action_row_dock   = true;
     // When true, the home carousel skips systems whose rom folder is
     // empty. Foyer auto-creates a <rom_root>/<system>/ subdirectory
     // for every supported system on first boot, so the carousel
