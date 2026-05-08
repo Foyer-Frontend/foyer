@@ -394,22 +394,28 @@ std::string sram_path_for(const std::string& rom_path) {
 void Frontend::load_sram_for(const std::string& rom_path) {
     void* mem = retro_get_memory_data(RETRO_MEMORY_SAVE_RAM);
     const size_t sz = retro_get_memory_size(RETRO_MEMORY_SAVE_RAM);
-    if (!mem || sz == 0) return;
+    foyer::log::write(
+        "[sram] load_sram_for rom=%s mem=%p size=%zu\n",
+        rom_path.c_str(), mem, sz);
+    if (!mem || sz == 0) {
+        foyer::log::write("[sram] core has no SAVE_RAM region — skip load\n");
+        return;
+    }
 
     const auto path = sram_path_for(rom_path);
+    foyer::log::write("[sram] reading from %s\n", path.c_str());
     std::ifstream in{path, std::ios::binary};
-    if (!in) return;
+    if (!in) {
+        foyer::log::write("[sram] no .srm yet (first launch / never saved)\n");
+        return;
+    }
     in.seekg(0, std::ios::end);
     const auto file_sz = (std::size_t)in.tellg();
     in.seekg(0, std::ios::beg);
     if (file_sz != sz) {
-        // Size mismatch most often means the user changed cores
-        // (different SRAM layout) or the .srm came from a different
-        // emulator. Don't silently corrupt their save — leave the
-        // core's default region untouched and log it.
         foyer::log::write(
-            "[sram] size mismatch for %s (file=%zu core=%zu) — skipping load\n",
-            path.c_str(), file_sz, sz);
+            "[sram] size mismatch (file=%zu core=%zu) — skipping load\n",
+            file_sz, sz);
         return;
     }
     in.read(reinterpret_cast<char*>(mem), (std::streamsize)sz);
@@ -419,18 +425,39 @@ void Frontend::load_sram_for(const std::string& rom_path) {
 void Frontend::save_sram_for(const std::string& rom_path) {
     void* mem = retro_get_memory_data(RETRO_MEMORY_SAVE_RAM);
     const size_t sz = retro_get_memory_size(RETRO_MEMORY_SAVE_RAM);
-    if (!mem || sz == 0) return;
+    foyer::log::write(
+        "[sram] save_sram_for rom=%s mem=%p size=%zu\n",
+        rom_path.c_str(), mem, sz);
+    if (!mem || sz == 0) {
+        foyer::log::write("[sram] core has no SAVE_RAM region — skip save\n");
+        return;
+    }
 
-    ::mkdir("/foyer", 0755);
-    ::mkdir("/foyer/saves", 0755);
+    if (::mkdir("/foyer", 0755) != 0 && errno != EEXIST) {
+        foyer::log::write(
+            "[sram] mkdir /foyer failed errno=%d\n", errno);
+    }
+    if (::mkdir("/foyer/saves", 0755) != 0 && errno != EEXIST) {
+        foyer::log::write(
+            "[sram] mkdir /foyer/saves failed errno=%d\n", errno);
+    }
 
     const auto path = sram_path_for(rom_path);
+    foyer::log::write("[sram] writing to %s\n", path.c_str());
     std::ofstream out{path, std::ios::binary | std::ios::trunc};
     if (!out) {
-        foyer::log::write("[sram] could not write %s\n", path.c_str());
+        foyer::log::write(
+            "[sram] open(%s) for write failed errno=%d\n",
+            path.c_str(), errno);
         return;
     }
     out.write(reinterpret_cast<const char*>(mem), (std::streamsize)sz);
+    if (!out) {
+        foyer::log::write(
+            "[sram] write to %s failed (errno=%d)\n", path.c_str(), errno);
+        return;
+    }
+    out.flush();
     foyer::log::write("[sram] saved %zu bytes to %s\n", sz, path.c_str());
 }
 
