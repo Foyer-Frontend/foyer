@@ -431,6 +431,17 @@ void draw_bottombar(NVGcontext* vg, float w, float h, const char* hint) {
 // round action-button row + connected-controller indicator are all drawn
 // with placeholder content so the layout can be reviewed on hardware
 // before the libnx services hook up in Phase 1+.
+//
+// Forward decls — clock_label / rrect / rrect_outline live further down
+// the file, but we need them here so the HOS chrome paint order matches
+// the rest of the view code (top bar / chrome paint runs early so its
+// definitions can sit alongside draw_topbar).
+std::string clock_label();
+void rrect(NVGcontext* vg, float x, float y, float ww, float hh,
+           float r, NVGcolor fill);
+void rrect_outline(NVGcontext* vg, float x, float y, float ww, float hh,
+                   float r, NVGcolor c, float thick);
+
 constexpr float kHosTopBarH    = 80.0f;   // taller than vanilla topbar so the
                                           // 56 px avatar circle has padding
 constexpr float kHosActionRowH = 96.0f;   // 64 px button + 24 px label below
