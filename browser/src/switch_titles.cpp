@@ -1,6 +1,7 @@
 #include "switch_titles.hpp"
 #include "platform/log.hpp"
 
+#include <algorithm>
 #include <cstring>
 #include <vector>
 
@@ -29,14 +30,62 @@ bool fetch_control(std::uint64_t application_id, ControlBuf& out) {
         &out.filled));
 }
 
-// Read the user's preferred language slot out of the NACP. The 16
-// language slots are ordered (American English first); we just take
-// the first non-empty one so any title with a localized name shows up
-// without us linking against setLanguage.
+// Map the active Switch system language to a NACP language slot
+// index. NACP's lang[] array is ordered: AmericanEnglish=0,
+// BritishEnglish=1, Japanese=2, French=3, German=4, LatinAmerican-
+// Spanish=5, Spanish=6, Italian=7, Dutch=8, CanadianFrench=9,
+// Portuguese=10, Russian=11, Korean=12, TraditionalChinese=13,
+// SimplifiedChinese=14, BrazilianPortuguese=15. Cached after the
+// first call since setGetSystemLanguage doesn't change mid-session.
+int preferred_lang_slot() {
+    static int cached = -1;
+    if (cached >= 0) return cached;
+    u64 lang_code = 0;
+    if (R_FAILED(setGetSystemLanguage(&lang_code))) {
+        cached = 0;  // AmericanEnglish fallback
+        return cached;
+    }
+    SetLanguage lang;
+    if (R_FAILED(setMakeLanguage(lang_code, &lang))) {
+        cached = 0;
+        return cached;
+    }
+    // Map SetLanguage enum into NACP slot order.
+    switch (lang) {
+        case SetLanguage_JA:   cached = 2; break;
+        case SetLanguage_ENUS: cached = 0; break;
+        case SetLanguage_ENGB: cached = 1; break;
+        case SetLanguage_FR:   cached = 3; break;
+        case SetLanguage_DE:   cached = 4; break;
+        case SetLanguage_ES419:cached = 5; break;
+        case SetLanguage_ES:   cached = 6; break;
+        case SetLanguage_IT:   cached = 7; break;
+        case SetLanguage_NL:   cached = 8; break;
+        case SetLanguage_FRCA: cached = 9; break;
+        case SetLanguage_PT:   cached = 10; break;
+        case SetLanguage_RU:   cached = 11; break;
+        case SetLanguage_KO:   cached = 12; break;
+        case SetLanguage_ZHTW: cached = 13; break;
+        case SetLanguage_ZHCN: cached = 14; break;
+        default:               cached = 0; break;
+    }
+    return cached;
+}
+
+// Pick the NACP language entry that matches the user's system locale,
+// falling back to American English, then any non-empty slot. Avoids
+// showing a Japanese title name to a user with a Latin-script locale
+// just because it's the first slot the title's NACP populated.
 const NacpLanguageEntry* nacp_pick_language(const NacpStruct* nacp) {
+    const int preferred = preferred_lang_slot();
+    if (preferred >= 0 && preferred < 16
+        && nacp->lang[preferred].name[0]) {
+        return &nacp->lang[preferred];
+    }
+    if (nacp->lang[0].name[0]) return &nacp->lang[0];   // AmEn
+    if (nacp->lang[1].name[0]) return &nacp->lang[1];   // GbEn
     for (int i = 0; i < 16; i++) {
-        const auto& e = nacp->lang[i];
-        if (e.name[0]) return &e;
+        if (nacp->lang[i].name[0]) return &nacp->lang[i];
     }
     return nullptr;
 }
@@ -97,6 +146,24 @@ std::size_t load(NVGcontext* vg) {
         offset += read;
         if (read < kPageSize) break;
     }
+
+    // Sort alphabetically by display name (case-insensitive). HOS
+    // shows the most-recently-played first; we don't track that for
+    // installed Switch titles yet, so alphabetical reads cleaner than
+    // install-order which is meaningless to the user.
+    std::sort(g_titles.begin(), g_titles.end(),
+        [](const Title& a, const Title& b) {
+            const auto& an = a.name;
+            const auto& bn = b.name;
+            for (std::size_t i = 0; i < an.size() && i < bn.size(); i++) {
+                const char ca = (an[i] >= 'A' && an[i] <= 'Z')
+                    ? (char)(an[i] + 32) : an[i];
+                const char cb = (bn[i] >= 'A' && bn[i] <= 'Z')
+                    ? (char)(bn[i] + 32) : bn[i];
+                if (ca != cb) return ca < cb;
+            }
+            return an.size() < bn.size();
+        });
 
     foyer::log::write("[switch_titles] loaded %zu installed titles\n",
         g_titles.size());
