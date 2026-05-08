@@ -170,7 +170,13 @@ int main(int argc, char** argv) {
     // BootSplash is short-lived — its image handles get dropped on
     // the floor when we replace draw_fn below. The App tears down the
     // NVG context on quit so we don't leak across runs.
-    std::string boot_status = "Starting...";
+    // Pull the Switch system language right away so even the early
+    // boot-status flashes ("Starting..." / "Seeding assets...") render
+    // in the user's locale. init() is idempotent — the explicit
+    // Settings → Language override below will replay it.
+    foyer::i18n::init();
+
+    std::string boot_status = foyer::i18n::tr(foyer::i18n::StringId::BootStarting);
     foyer::browser::BootSplash splash{app.vg()};
     app.set_draw_fn([&boot_status, &splash](NVGcontext* vg, float w, float h) {
         splash.draw(vg, w, h, boot_status, FOYER_DISPLAY_VERSION);
@@ -193,7 +199,7 @@ int main(int argc, char** argv) {
     };
     tick_phase("app constructed");
 
-    boot_status = "Seeding assets...";
+    boot_status = foyer::i18n::tr(foyer::i18n::StringId::BootSeedingAssets);
     app.tick();
 
     // Seed bundled bezels + cheats from romfs into the SD tree on
@@ -201,7 +207,7 @@ int main(int argc, char** argv) {
     // browser's romfs). User-installed files are never overwritten.
     foyer::browser::seed_assets_if_missing();
     tick_phase("seed_assets done");
-    boot_status = "Initialising network...";
+    boot_status = foyer::i18n::tr(foyer::i18n::StringId::BootInitNetwork);
     app.tick();
 
     // Initialise curl on the main thread BEFORE any worker spawns
@@ -265,7 +271,7 @@ int main(int argc, char** argv) {
         });
     }
     tick_phase("net::init done");
-    boot_status = "Loading theme...";
+    boot_status = foyer::i18n::tr(foyer::i18n::StringId::BootLoadingTheme);
     app.tick();
 
     foyer::browser::load_theme(foyer::library::config().theme_name);
@@ -278,7 +284,7 @@ int main(int argc, char** argv) {
     //     foyer::browser::mtp_start();
     // }
 
-    boot_status = "Scanning library...";
+    boot_status = foyer::i18n::tr(foyer::i18n::StringId::BootScanningLibrary);
     app.tick();
 
     foyer::library::ScanOptions opts;
@@ -287,7 +293,7 @@ int main(int argc, char** argv) {
     foyer::browser::Library lib;
     lib.systems = foyer::library::scan_library(opts);
     tick_phase("scan_library done");
-    boot_status = "Ready";
+    boot_status = foyer::i18n::tr(foyer::i18n::StringId::BootReady);
     app.tick();
 
     foyer::browser::State state;
@@ -693,10 +699,11 @@ int main(int argc, char** argv) {
                     [&](const foyer::library::ShaderInstallProgress& p) {
                         char b[160];
                         const char* verb =
-                            p.action == foyer::library::ShaderInstallAction::Skipped   ? "skipped" :
-                            p.action == foyer::library::ShaderInstallAction::Updated   ? "updated" :
-                            p.action == foyer::library::ShaderInstallAction::Installed ? "installed"
-                                                                                       : "FAILED";
+                            foyer::i18n::tr(
+                                p.action == foyer::library::ShaderInstallAction::Skipped   ? foyer::i18n::StringId::ActionPastSkipped :
+                                p.action == foyer::library::ShaderInstallAction::Updated   ? foyer::i18n::StringId::ActionPastUpdated :
+                                p.action == foyer::library::ShaderInstallAction::Installed ? foyer::i18n::StringId::ActionPastInstalled
+                                                                                           : foyer::i18n::StringId::ActionPastFailed);
                         std::snprintf(b, sizeof(b), "[%d/%d] %s - %s",
                             p.index, p.total, p.name.c_str(), verb);
                         state.banner_text = b;
@@ -783,10 +790,11 @@ int main(int argc, char** argv) {
                     [&](const foyer::library::CheatInstallProgress& p) {
                         char b[160];
                         const char* verb =
-                            p.action == foyer::library::CheatInstallAction::Skipped   ? "skipped" :
-                            p.action == foyer::library::CheatInstallAction::Updated   ? "updated" :
-                            p.action == foyer::library::CheatInstallAction::Installed ? "installed"
-                                                                                       : "FAILED";
+                            foyer::i18n::tr(
+                                p.action == foyer::library::CheatInstallAction::Skipped   ? foyer::i18n::StringId::ActionPastSkipped :
+                                p.action == foyer::library::CheatInstallAction::Updated   ? foyer::i18n::StringId::ActionPastUpdated :
+                                p.action == foyer::library::CheatInstallAction::Installed ? foyer::i18n::StringId::ActionPastInstalled
+                                                                                          : foyer::i18n::StringId::ActionPastFailed);
                         std::snprintf(b, sizeof(b), "[%d/%d] %s - %s",
                             p.index, p.total, p.name.c_str(), verb);
                         state.banner_text = b;
@@ -832,10 +840,11 @@ int main(int argc, char** argv) {
                     [&](const foyer::library::BezelInstallProgress& p) {
                         char b[160];
                         const char* verb =
-                            p.action == foyer::library::BezelInstallAction::Skipped   ? "skipped" :
-                            p.action == foyer::library::BezelInstallAction::Updated   ? "updated" :
-                            p.action == foyer::library::BezelInstallAction::Installed ? "installed"
-                                                                                       : "FAILED";
+                            foyer::i18n::tr(
+                                p.action == foyer::library::BezelInstallAction::Skipped   ? foyer::i18n::StringId::ActionPastSkipped :
+                                p.action == foyer::library::BezelInstallAction::Updated   ? foyer::i18n::StringId::ActionPastUpdated :
+                                p.action == foyer::library::BezelInstallAction::Installed ? foyer::i18n::StringId::ActionPastInstalled
+                                                                                          : foyer::i18n::StringId::ActionPastFailed);
                         std::snprintf(b, sizeof(b), "[%d/%d] %s - %s",
                             p.index, p.total, p.name.c_str(), verb);
                         state.banner_text = b;

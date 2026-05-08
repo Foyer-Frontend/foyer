@@ -495,6 +495,26 @@ const std::array<const char*, kCount> kSpanishStrings = [] {
     a[(std::size_t)StringId::CountAchievements]             = "%d / %d logros";
     a[(std::size_t)StringId::CountGameSingular]             = "juego";
     a[(std::size_t)StringId::CountGamePlural]               = "juegos";
+
+    a[(std::size_t)StringId::BootStarting]                  = "Iniciando...";
+    a[(std::size_t)StringId::BootSeedingAssets]             = "Sembrando recursos...";
+    a[(std::size_t)StringId::BootInitNetwork]               = "Inicializando red...";
+    a[(std::size_t)StringId::BootLoadingTheme]              = "Cargando tema...";
+    a[(std::size_t)StringId::BootScanningLibrary]           = "Escaneando biblioteca...";
+    a[(std::size_t)StringId::BootReady]                     = "Listo";
+
+    a[(std::size_t)StringId::CoreTagPerGame]                = "por juego";
+    a[(std::size_t)StringId::CoreTagSystemDefault]          = "predet. del sistema";
+    a[(std::size_t)StringId::CoreTagActive]                 = "activo";
+    a[(std::size_t)StringId::CoreTagBuiltInDefault]         = "predet. integrado";
+
+    a[(std::size_t)StringId::ActionPastSkipped]             = "omitido";
+    a[(std::size_t)StringId::ActionPastUpdated]             = "actualizado";
+    a[(std::size_t)StringId::ActionPastInstalled]           = "instalado";
+    a[(std::size_t)StringId::ActionPastFailed]              = "FALLÓ";
+
+    a[(std::size_t)StringId::AccountUnset]                  = "sin definir";
+    a[(std::size_t)StringId::UpdatesMetadataKindLabel]      = "metadatos";
     return a;
 }();
 

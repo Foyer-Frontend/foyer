@@ -494,6 +494,26 @@ const std::array<const char*, kCount> kPortugueseBrazilStrings = [] {
     a[(std::size_t)StringId::CountAchievements]             = "%d / %d conquistas";
     a[(std::size_t)StringId::CountGameSingular]             = "jogo";
     a[(std::size_t)StringId::CountGamePlural]               = "jogos";
+
+    a[(std::size_t)StringId::BootStarting]                  = "Iniciando...";
+    a[(std::size_t)StringId::BootSeedingAssets]             = "Preparando recursos...";
+    a[(std::size_t)StringId::BootInitNetwork]               = "Inicializando rede...";
+    a[(std::size_t)StringId::BootLoadingTheme]              = "Carregando tema...";
+    a[(std::size_t)StringId::BootScanningLibrary]           = "Escaneando biblioteca...";
+    a[(std::size_t)StringId::BootReady]                     = "Pronto";
+
+    a[(std::size_t)StringId::CoreTagPerGame]                = "por jogo";
+    a[(std::size_t)StringId::CoreTagSystemDefault]          = "padrão do sistema";
+    a[(std::size_t)StringId::CoreTagActive]                 = "ativo";
+    a[(std::size_t)StringId::CoreTagBuiltInDefault]         = "padrão integrado";
+
+    a[(std::size_t)StringId::ActionPastSkipped]             = "ignorado";
+    a[(std::size_t)StringId::ActionPastUpdated]             = "atualizado";
+    a[(std::size_t)StringId::ActionPastInstalled]           = "instalado";
+    a[(std::size_t)StringId::ActionPastFailed]              = "FALHOU";
+
+    a[(std::size_t)StringId::AccountUnset]                  = "não definido";
+    a[(std::size_t)StringId::UpdatesMetadataKindLabel]      = "metadados";
     return a;
 }();
 

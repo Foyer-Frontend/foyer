@@ -512,6 +512,30 @@ enum class StringId : std::uint16_t {
     CountGameSingular,                 // "game"
     CountGamePlural,                   // "games"
 
+    // Boot splash phase labels
+    BootStarting,                      // "Starting..."
+    BootSeedingAssets,                 // "Seeding assets..."
+    BootInitNetwork,                   // "Initialising network..."
+    BootLoadingTheme,                  // "Loading theme..."
+    BootScanningLibrary,               // "Scanning library..."
+    BootReady,                         // "Ready"
+
+    // Game detail core-row tags (right-aligned accent text)
+    CoreTagPerGame,                    // "per-game"
+    CoreTagSystemDefault,              // "system default"
+    CoreTagActive,                     // "active"
+    CoreTagBuiltInDefault,             // "built-in default"
+
+    // Per-row install progress verbs (banner: "[2/5] fceumm - installed")
+    ActionPastSkipped,                 // "skipped"
+    ActionPastUpdated,                 // "updated"
+    ActionPastInstalled,               // "installed"
+    ActionPastFailed,                  // "FAILED"
+
+    // Misc account/value labels
+    AccountUnset,                      // "unset" (placeholder for empty credentials)
+    UpdatesMetadataKindLabel,          // "metadata" (Scrape-all-systems row value)
+
     // Sentinel — keep last.
     kStringIdCount,
 };

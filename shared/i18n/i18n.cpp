@@ -500,6 +500,26 @@ constexpr Catalogue kEnglishStrings = [] {
     a[(std::size_t)StringId::CountAchievements]             = "%d / %d achievements";
     a[(std::size_t)StringId::CountGameSingular]             = "game";
     a[(std::size_t)StringId::CountGamePlural]               = "games";
+
+    a[(std::size_t)StringId::BootStarting]                  = "Starting...";
+    a[(std::size_t)StringId::BootSeedingAssets]             = "Seeding assets...";
+    a[(std::size_t)StringId::BootInitNetwork]               = "Initialising network...";
+    a[(std::size_t)StringId::BootLoadingTheme]              = "Loading theme...";
+    a[(std::size_t)StringId::BootScanningLibrary]           = "Scanning library...";
+    a[(std::size_t)StringId::BootReady]                     = "Ready";
+
+    a[(std::size_t)StringId::CoreTagPerGame]                = "per-game";
+    a[(std::size_t)StringId::CoreTagSystemDefault]          = "system default";
+    a[(std::size_t)StringId::CoreTagActive]                 = "active";
+    a[(std::size_t)StringId::CoreTagBuiltInDefault]         = "built-in default";
+
+    a[(std::size_t)StringId::ActionPastSkipped]             = "skipped";
+    a[(std::size_t)StringId::ActionPastUpdated]             = "updated";
+    a[(std::size_t)StringId::ActionPastInstalled]           = "installed";
+    a[(std::size_t)StringId::ActionPastFailed]              = "FAILED";
+
+    a[(std::size_t)StringId::AccountUnset]                  = "unset";
+    a[(std::size_t)StringId::UpdatesMetadataKindLabel]      = "metadata";
     return a;
 }();
 

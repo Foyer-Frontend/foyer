@@ -983,8 +983,8 @@ void draw_quit_confirm(NVGcontext* vg, float w, float h, const State& s) {
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
         nvgText(vg, bx + kBtnW * 0.5f, by + kBtnH * 0.5f, label, nullptr);
     };
-    button(yes_x, "Yes",  s.quit_confirm_index == 0);
-    button(no_x,  "No",   s.quit_confirm_index == 1);
+    button(yes_x, _(SId::Yes), s.quit_confirm_index == 0);
+    button(no_x,  _(SId::No),  s.quit_confirm_index == 1);
 }
 
 void draw_update_confirm(NVGcontext* vg, float w, float h, const State& s) {
@@ -1526,7 +1526,7 @@ std::string swkbd_prompt(const char* guide, const std::string& initial) {
 }
 
 std::string mask_credential(const std::string& s) {
-    if (s.empty()) return "unset";
+    if (s.empty()) return _(SId::AccountUnset);
     if (s.size() <= 4) return std::string(s.size(), '*');
     return s.substr(0, 4) + std::string(s.size() - 4, '*');
 }
@@ -2154,7 +2154,7 @@ std::vector<Item> build_items(Category cat, const State& s) {
             // Bulk scrape (game metadata) is conceptually different
             // from manifest scrape — keep it but tuck it at the end.
             rows.push_back({ItemKind::Action, _(SId::UpdatesScrapeAllSystems),
-                "metadata",
+                _(SId::UpdatesMetadataKindLabel),
                 _(SId::UpdatesScrapeAllSystemsHint),
                 OpUpdScrapeAll});
             break;
@@ -3383,10 +3383,10 @@ void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Li
 
         // Tag column.
         std::string tag;
-        if (!per_game.empty() && per_game == name)   tag = "per-game";
-        else if (per_sys && per_sys == name)         tag = "system default";
-        else if (resolved && resolved->name == name) tag = "active";
-        else if (row == 0)                            tag = "built-in default";
+        if (!per_game.empty() && per_game == name)   tag = _(SId::CoreTagPerGame);
+        else if (per_sys && per_sys == name)         tag = _(SId::CoreTagSystemDefault);
+        else if (resolved && resolved->name == name) tag = _(SId::CoreTagActive);
+        else if (row == 0)                            tag = _(SId::CoreTagBuiltInDefault);
 
         if (!tag.empty()) {
             nvgFontSize(vg, th.label_size);
