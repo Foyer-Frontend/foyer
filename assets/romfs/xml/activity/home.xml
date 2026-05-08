@@ -116,7 +116,7 @@
         alignItems="center"
         justifyContent="center"
         paddingTop="8"
-        paddingBottom="16">
+        paddingBottom="8">
 
         <brls:Box
             id="foyer/action_row"
@@ -124,6 +124,32 @@
             height="auto"
             axis="row"
             alignItems="center" />
+
+    </brls:Box>
+
+    <!-- Bottom hint bar — separator line on top + brls Hints (the
+         controller button hints, e.g. A: OK, B: Back). Mirrors the
+         AppletFrame's BottomBar but without its built-in
+         clock/wifi/battery cluster (foyer puts those in the top bar
+         per HOS launcher convention). -->
+    <brls:Box
+        width="auto"
+        height="@style/brls/applet_frame/footer_height"
+        axis="row"
+        alignItems="center"
+        justifyContent="flexEnd"
+        marginLeft="@style/brls/hints/footer_margin_sides"
+        marginRight="@style/brls/hints/footer_margin_sides"
+        paddingLeft="@style/brls/hints/footer_padding_sides"
+        paddingRight="@style/brls/hints/footer_padding_sides"
+        paddingTop="@style/brls/hints/footer_padding_top_bottom"
+        paddingBottom="@style/brls/hints/footer_padding_top_bottom"
+        lineColor="@theme/brls/applet_frame/separator"
+        lineTop="1px">
+
+        <brls:Hints
+            width="auto"
+            height="auto" />
 
     </brls:Box>
 
