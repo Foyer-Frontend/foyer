@@ -968,6 +968,42 @@ void rrect_outline(NVGcontext* vg, float x, float y, float ww, float hh, float r
     nvgStroke(vg);
 }
 
+// Shared modal styling — every popover / confirm / picker uses these
+// so the chrome feels coherent. HOS layers a dim translucent scrim
+// over the home screen, with a slightly elevated card carrying a
+// soft drop shadow. Matching that here avoids the "lame designs"
+// patchwork of different modal looks foyer accumulated over 0.4.x.
+void draw_modal_scrim(NVGcontext* vg, float w, float h) {
+    nvgBeginPath(vg);
+    nvgRect(vg, 0, 0, w, h);
+    nvgFillColor(vg, nvgRGBAf(0, 0, 0, 0.62f));
+    nvgFill(vg);
+}
+
+void draw_modal_card(NVGcontext* vg, float x, float y, float ww, float hh,
+                     float radius) {
+    const auto& th = theme();
+    // Soft drop shadow: a slightly-larger rounded rect underneath,
+    // drawn with a box gradient that fades the edges.
+    constexpr float kShadowSpread = 18.0f;
+    constexpr float kShadowOffsetY = 6.0f;
+    auto shadow = nvgBoxGradient(vg,
+        x, y + kShadowOffsetY, ww, hh,
+        radius, kShadowSpread,
+        nvgRGBAf(0, 0, 0, 0.45f),
+        nvgRGBAf(0, 0, 0, 0.0f));
+    nvgBeginPath(vg);
+    nvgRect(vg,
+        x - kShadowSpread, y - kShadowSpread + kShadowOffsetY,
+        ww + kShadowSpread * 2, hh + kShadowSpread * 2);
+    nvgRoundedRect(vg, x, y, ww, hh, radius);
+    nvgPathWinding(vg, NVG_HOLE);
+    nvgFillPaint(vg, shadow);
+    nvgFill(vg);
+    // Card surface.
+    rrect(vg, x, y, ww, hh, radius, th.bg_panel);
+}
+
 // ---- HOME VIEW (HOS-style tile row) ---------------------------------------
 //
 // 0.5.0 Phase 2: rounded-square tiles to match the HOS launcher. Focused
