@@ -8,6 +8,7 @@
 #include "library/per_game.hpp"
 #include "library/game_meta.hpp"
 #include "hos_status.hpp"
+#include "switch_titles.hpp"
 #include "library/shader_installer.hpp"
 #include "library/skipped_versions.hpp"
 #include "library/updates.hpp"
@@ -1064,6 +1065,18 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
         } else {
             const NVGcolor fill = focused ? th.accent : th.bg_panel_hi;
             rrect(vg, x, y, tw, thh, radius, fill);
+            // The Switch virtual tile has no splash PNG — render a
+            // wordmark + "N" glyph centered in the panel so the slot
+            // still reads as a real system instead of a blank box.
+            if (sys.def->folder_name == "__switch") {
+                nvgFontSize(vg, 64.0f);
+                nvgFillColor(vg, focused ? th.bg : th.text_strong);
+                nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+                nvgText(vg, x + tw * 0.5f, y + thh * 0.42f, "N", nullptr);
+                nvgFontSize(vg, 24.0f);
+                nvgText(vg, x + tw * 0.5f, y + thh * 0.66f,
+                        "SWITCH", nullptr);
+            }
         }
 
         // Focused-tile accent ring + drop shadow on the corners. Same
@@ -1259,9 +1272,17 @@ void draw_system(NVGcontext* vg, float w, float h, const State& s, const Library
     rrect_outline(vg, cover_x, cover_y, cover_w, cover_h, 10.0f,
         nvgRGBAf(th.text_strong.r, th.text_strong.g, th.text_strong.b, 0.18f), 1.5f);
 
-    const int handle = library::config().show_covers
-        ? cover_cache().get_or_load(vg, cover)
-        : 0;
+    // Switch-title sidebar cover: pull the cached NACP icon by the
+    // application_id encoded in the path. Bypasses the on-disk cover
+    // cache entirely since these icons live in nvg memory after boot.
+    int handle = 0;
+    if (g.path.starts_with("switch://")) {
+        std::uint64_t app_id = 0;
+        std::sscanf(g.path.c_str() + 9, "%lx", &app_id);
+        handle = switch_titles::icon_handle_for(app_id);
+    } else if (library::config().show_covers) {
+        handle = cover_cache().get_or_load(vg, cover);
+    }
     if (handle > 0) {
         // Aspect-fit centred inside the cover slot.
         int iw = 0, ih = 0;

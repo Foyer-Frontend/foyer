@@ -36,6 +36,11 @@ void shutdown(NVGcontext* vg);
 // process unless load() is called again.
 const std::vector<Title>& titles();
 
+// O(N) lookup by application id — N is small (~30 typical, hundreds
+// extreme) so a linear scan is faster than the cost of a map. Returns
+// 0 if the id isn't installed.
+int icon_handle_for(std::uint64_t application_id);
+
 // Hand the chosen title off to qlaunch for boot. Returns true on
 // success — caller should app.quit() so the firmware actually
 // transitions. False if the call failed or the id is invalid.

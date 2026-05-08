@@ -1046,6 +1046,16 @@ int main(int argc, char** argv) {
                 if (foyer::browser::launch_game(sys, game, resume)) {
                     foyer::browser::mtp_stop();
                     app.quit();
+                } else if (game.path.starts_with("switch://")) {
+                    // Switch-title launch went through appletRequest-
+                    // LaunchApplication and the firmware refused. Most
+                    // common cause is hbloader-applet running without
+                    // application-launch permission (some 17.x+
+                    // setups). Surface a specific banner — the
+                    // "Core not installed" wording is meaningless here.
+                    state.banner_text =
+                        "Switch title launch denied (hbloader permission?)";
+                    state.banner_ttl  = 300;
                 } else {
                     const auto* core = foyer::library::resolve_core(*sys.def, game.path);
                     char bb[200];

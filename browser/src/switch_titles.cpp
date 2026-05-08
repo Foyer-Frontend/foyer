@@ -114,6 +114,13 @@ void shutdown(NVGcontext* vg) {
 
 const std::vector<Title>& titles() { return g_titles; }
 
+int icon_handle_for(std::uint64_t application_id) {
+    for (const auto& t : g_titles) {
+        if (t.application_id == application_id) return t.icon_handle;
+    }
+    return 0;
+}
+
 bool launch(std::uint64_t application_id) {
     if (application_id == 0) return false;
     Result rc = appletRequestLaunchApplication(application_id, nullptr);
