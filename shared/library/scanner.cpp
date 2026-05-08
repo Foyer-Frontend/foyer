@@ -282,13 +282,8 @@ std::vector<System> scan_library(const ScanOptions& opts) {
                 if (cap > 0 && v.games.size() > cap) v.games.resize(cap);
                 out_real.insert(out_real.begin(), std::move(v));
             };
-            add_virtual(kVirtualFavoritesDef,
-                [](const Game& g) { return g.favorite; },
-                [](std::vector<Game>& v) {
-                    std::sort(v.begin(), v.end(),
-                        [](const Game& a, const Game& b) { return a.stem < b.stem; });
-                },
-                /*cap=*/0);
+            // Favorites carousel tile removed in 0.5.16 — favorites
+            // now live in a dedicated row above the system tiles.
             add_virtual(kVirtualRecentDef,
                 [](const Game& g) { return g.last_played > 0; },
                 [](std::vector<Game>& v) {
@@ -378,13 +373,8 @@ std::vector<System> scan_library(const ScanOptions& opts) {
         if (cap > 0 && v.games.size() > cap) v.games.resize(cap);
         out.insert(out.begin(), std::move(v));
     };
-    add_virtual(kVirtualFavoritesDef,
-        [](const Game& g) { return g.favorite; },
-        [](std::vector<Game>& v) {
-            std::sort(v.begin(), v.end(),
-                [](const Game& a, const Game& b) { return a.stem < b.stem; });
-        },
-        /*cap=*/0);
+    // Favorites carousel tile removed in 0.5.16 (dedicated favorites
+    // row above the carousel replaces it).
     add_virtual(kVirtualRecentDef,
         [](const Game& g) { return g.last_played > 0; },
         [](std::vector<Game>& v) {

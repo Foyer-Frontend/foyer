@@ -192,23 +192,17 @@ std::string system_splash_path(std::string_view folder) {
         (int)folder.size(), folder.data());
     if (exists(sd_jpg)) return sd_jpg;
 
-    // 0.5.13+ : fall through to the bundled Alekfull NX tile art even
-    // when the active theme isn't the alekfull-nx pack. Existing
-    // configs upgraded from older foyer versions saved a theme_name
-    // (snow / hos / dark / ...) that no longer resolves, leaving
-    // pack_dir empty — without this fallback they'd see the legacy
-    // 454x1080 portrait splashes despite the new tile art shipping
-    // in romfs.
+    // 0.5.16: return the bundled Alekfull NX path unchecked. exists()
+    // can't reliably probe romfs paths on libnx (stat returns ENOENT
+    // for the romfs device, ifstream open is flaky too) so the
+    // earlier wrapped check always failed and the carousel ended up
+    // on the legacy splash. The image loader handles missing files
+    // gracefully (returns 0 → tile fallback rendering kicks in).
     char alek[256];
     std::snprintf(alek, sizeof(alek),
         "romfs:/themes/alekfull-nx/systems/%.*s/splash.png",
         (int)folder.size(), folder.data());
-    if (exists(alek)) return alek;
-
-    char rf[256];
-    std::snprintf(rf, sizeof(rf), "romfs:/systems/%.*s-splash.png",
-        (int)folder.size(), folder.data());
-    return rf;
+    return alek;
 }
 
 std::string system_logo_path(std::string_view folder) {
@@ -843,13 +837,16 @@ void draw_hos_action_row(NVGcontext* vg, float w, float h, const State& s) {
                             s.action_button_index >= 0 &&
                             s.action_button_index < kHosActionCount;
 
-    // No row background, no pill, no separator line — the buttons
-    // float directly on the unified bg, matching HOS's bare action
-    // row. Tighter centre-to-centre pitch so the cluster stays
-    // compact instead of spreading across the screen.
-    constexpr float kBtnR     = 26.0f;
+    // No row background, no pill — the buttons float directly on
+    // the unified bg, matching HOS's bare action row. Tight
+    // centre-to-centre pitch keeps the cluster compact. Below the
+    // row we draw a thin horizontal separator (95 % of screen
+    // width, theme-contrasting color) that visually splits the
+    // action row from the bottom hint bar — same affordance HOS
+    // uses to indicate the row is interactive.
+    constexpr float kBtnR     = 34.0f;
     constexpr float kLabelGap = 18.0f;
-    constexpr float kBtnPitch = kBtnR * 2 + 14.0f;  // tight HOS-style
+    constexpr float kBtnPitch = kBtnR * 2 + 14.0f;
     const float total_w = kBtnPitch * (kHosActionCount - 1);
     const float start_x = (w - total_w) * 0.5f;
     const float cy      = row_y + kHosActionRowH * 0.5f - kLabelGap * 0.5f;
@@ -874,6 +871,26 @@ void draw_hos_action_row(NVGcontext* vg, float w, float h, const State& s) {
             nvgText(vg, cx, cy + kBtnR + 6.0f, hos_action_label(i), nullptr);
         }
     }
+
+    // Separator line between the action row and the bottom hint bar.
+    // 95 % of screen width, centred. Color picks contrast against
+    // the active bg — light strokes on dark themes, dark strokes on
+    // light. Same line HOS draws above its bottom button-hint row.
+    const float sep_w = w * 0.95f;
+    const float sep_x = (w - sep_w) * 0.5f;
+    const float sep_y = h - kBottomBarH - 1.0f;
+    // Brightness heuristic: theme bg luminance > 0.5 → "light theme",
+    // use a darker stroke. Otherwise → "dark theme", use a light
+    // stroke. nvgRGBAf scales the components 0..1 so luminance is
+    // a simple weighted sum.
+    const float lum = th.bg.r * 0.30f + th.bg.g * 0.59f + th.bg.b * 0.11f;
+    const NVGcolor sep_c = (lum > 0.5f)
+        ? nvgRGBA(0x44, 0x44, 0x44, 0x80)
+        : nvgRGBA(0xCC, 0xCC, 0xCC, 0x80);
+    nvgBeginPath(vg);
+    nvgRect(vg, sep_x, sep_y, sep_w, 1.5f);
+    nvgFillColor(vg, sep_c);
+    nvgFill(vg);
 }
 
 // Hint bar variant for Home view: same flat panel as draw_bottombar
@@ -969,9 +986,11 @@ void rrect_outline(NVGcontext* vg, float x, float y, float ww, float hh, float r
 // so the focus is always unambiguous. Side tiles can be partially visible
 // at the screen edge — we just keep walking offsets until the tile would
 // be entirely off-screen.
-constexpr float kHomeTileW       = 280.0f;
-constexpr float kHomeTileH       = 280.0f;
-constexpr float kHomeTileGap     = 24.0f;
+// 5 full + 2 half tiles across 1280 px screen → 6 × pitch ≈ 1280
+// → pitch 213. With a 16 px gap that gives tile width ~197.
+constexpr float kHomeTileW       = 196.0f;
+constexpr float kHomeTileH       = 196.0f;
+constexpr float kHomeTileGap     = 16.0f;
 constexpr float kHomeFocusScale  = 1.10f;   // focused tile bumps 10 %
 // HOS tiles are pure squares — radius is 0 by default. The Settings →
 // Display → "Rounded tiles" toggle bumps this to kHomeRadiusRounded for
@@ -1016,12 +1035,67 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
     const auto& th       = theme();
     const auto idx_centre = (int)s.system_index;
     const auto count      = (int)lib.systems.size();
-    const float cy        = h * 0.5f - 8.0f;  // tiny upward bias to leave
-                                              // room for the title preview
-                                              // above the row
+    // Carousel sits in the lower half so the Favorites quick-access
+    // row above it has vertical room.
+    const float cy        = h * 0.58f;
     const float pitch     = kHomeTileW + kHomeTileGap;
     const float radius    = library::config().rounded_tiles
                               ? kHomeRadiusRounded : kHomeRadiusSharp;
+
+    // ---- Favorites row -----------------------------------------------
+    // Quick-access row of small square tiles, one per favorited game
+    // across every real system. Empty when nothing's favorited (the
+    // row's vertical slot then stays clean instead of placeholder
+    // boxes). HOS analog: the small "Recently Played" row above the
+    // main tile strip on consoles with online subscriptions.
+    {
+        struct FavRef {
+            const library::System* sys = nullptr;
+            const library::Game*   game = nullptr;
+        };
+        std::vector<FavRef> favs;
+        favs.reserve(16);
+        for (const auto& sys : lib.systems) {
+            if (library::is_virtual_system(*sys.def)) continue;
+            for (const auto& g : sys.games) {
+                if (!g.favorite) continue;
+                favs.push_back({&sys, &g});
+                if (favs.size() >= 12) break;
+            }
+            if (favs.size() >= 12) break;
+        }
+        if (!favs.empty()) {
+            constexpr float kFavTileW = 96.0f;
+            constexpr float kFavGap   = 12.0f;
+            const float row_w = favs.size() * kFavTileW
+                              + (favs.size() - 1) * kFavGap;
+            const float row_x = (w - row_w) * 0.5f;
+            const float row_y = kHosTopBarH + 32.0f;
+            for (std::size_t i = 0; i < favs.size(); i++) {
+                const float fx = row_x + i * (kFavTileW + kFavGap);
+                const std::string p = scrapers::cover_path(
+                    favs[i].sys->def->folder_name, favs[i].game->stem);
+                rrect(vg, fx, row_y, kFavTileW, kFavTileW, 6.0f, th.bg_panel_hi);
+                const int handle = library::config().show_covers
+                    ? cover_cache().get_or_load(vg, p) : 0;
+                if (handle > 0) {
+                    int iw = 0, ih = 0;
+                    nvgImageSize(vg, handle, &iw, &ih);
+                    auto pat = nvgImagePattern(vg, fx, row_y,
+                        kFavTileW, kFavTileW, 0.0f, handle, 1.0f);
+                    nvgBeginPath(vg);
+                    nvgRoundedRect(vg, fx, row_y, kFavTileW, kFavTileW, 6.0f);
+                    nvgFillPaint(vg, pat);
+                    nvgFill(vg);
+                }
+            }
+            // Row label above the strip.
+            nvgFontSize(vg, th.label_size);
+            nvgFillColor(vg, th.text_dim);
+            nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_BOTTOM);
+            nvgText(vg, row_x, row_y - 4.0f, "Favorites", nullptr);
+        }
+    }
 
     // System name centered directly above the focused tile.
     {
