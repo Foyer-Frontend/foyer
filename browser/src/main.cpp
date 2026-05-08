@@ -175,10 +175,20 @@ int main(int argc, char** argv) {
     foyer::log::write("[foyer_update] running nro path = %s\n",
         g_foyer_nro_path.c_str());
 
-    apply_staged_update_if_present();
+    // 0.5.26 fix: do NOT rename foyer.nro.new -> foyer.nro before
+    // App is constructed. App() runs romfsInit(), which opens the
+    // running NRO at argv[0] (= sdmc:.../foyer.nro.new when we just
+    // chain-launched a staged update). Renaming the file out from
+    // under the not-yet-opened romfs fd makes romfsInit fail, which
+    // cascades to nvgCreateDk failure and an atmosphère fatal at
+    // PC=0 on first boot of every freshly-staged update (observed
+    // 0.5.24 → 0.5.25 in user log: "foyer 0.5.25 starting" → "[fs]
+    // romfsInit failed" → fatal 2354-0001). The rename now happens
+    // AFTER App() so libnx already has the .new file mapped.
     scrub_legacy_default_bezel_once();
 
     foyer::platform::App app;
+    apply_staged_update_if_present();
 
     // Loading screen — paint immediately so the user sees something
     // while the (potentially multi-second) scan/init sequence runs.

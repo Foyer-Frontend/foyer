@@ -1025,11 +1025,12 @@ void draw_modal_card(NVGcontext* vg, float x, float y, float ww, float hh,
 // so the focus is always unambiguous. Side tiles can be partially visible
 // at the screen edge — we just keep walking offsets until the tile would
 // be entirely off-screen.
-// 3 full + 2 half tiles across 1280 px screen → 4 × pitch ≈ 1280
-// → pitch 320. With a 24 px gap that gives tile width ~296.
-constexpr float kHomeTileW       = 296.0f;
-constexpr float kHomeTileH       = 296.0f;
-constexpr float kHomeTileGap     = 24.0f;
+// 0.5.26: 4 full + 2 half tiles across the 1280 px screen.
+// 5 pitches must span exactly the screen width: 5 * pitch = 1280
+// → pitch 256. Tile = 240, gap = 16.
+constexpr float kHomeTileW       = 240.0f;
+constexpr float kHomeTileH       = 240.0f;
+constexpr float kHomeTileGap     = 16.0f;
 constexpr float kHomeFocusScale  = 1.10f;   // focused tile bumps 10 %
 // HOS tiles are pure squares — radius is 0 by default. The Settings →
 // Display → "Rounded tiles" toggle bumps this to kHomeRadiusRounded for
@@ -1084,11 +1085,12 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
     const float focus_half_h = kHomeTileH * 0.5f * kHomeFocusScale;
     const float cy        = sep_y - 14.0f - focus_half_h;
     const float pitch     = kHomeTileW + kHomeTileGap;
-    // Highlighted tile = leftmost full square. The carousel is
-    // 5 tiles wide (half + full + full + full + half), and we want
-    // offset 0 (the focused one) to land at the *first* full slot
-    // which is 1 pitch left of centre.
-    const float center_anchor = w * 0.5f - pitch;
+    // 0.5.26: 6 visible tiles (1 half + 4 full + 1 half) across the
+    // full screen width. With pitch = 256 (240 tile + 16 gap), the
+    // half tiles centre at x=0 and x=w; the four full tiles fall at
+    // pitch, 2·pitch, 3·pitch, 4·pitch. Focused = first full =
+    // offset 0 → cx = pitch, so center_anchor = pitch.
+    const float center_anchor = pitch;
     const float radius    = library::config().rounded_tiles
                               ? kHomeRadiusRounded : kHomeRadiusSharp;
 
@@ -1252,12 +1254,11 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
         nvgRestore(vg);
     };
 
-    // Walk neighbours from far-out → in so the focused tile lands on
-    // top. 0.5.25: anchor shifted left so offset 0 = leftmost full.
-    // Render range -1..+3 (half + focused + 2 full + half) plus a
-    // couple of extras so off-screen tiles are queued in the splash
-    // cache before they scroll into view.
-    for (int off : {-2, 4, -1, 3, 1, 2}) {
+    // 0.5.26: 6-tile layout (half + focused + 3 full + half). offset 0
+    // is the focused leftmost full; -1 is the half clipped at the left
+    // edge; 4 is the half clipped at the right edge. Walk far → in so
+    // the focused tile lands on top.
+    for (int off : {-1, 4, 1, 2, 3}) {
         draw_tile_at(off, /*focused=*/false);
     }
     draw_tile_at(0, /*focused=*/true);
