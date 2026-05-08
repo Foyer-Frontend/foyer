@@ -812,6 +812,11 @@ void glyph_power(NVGcontext* vg, float cx, float cy, float r, NVGcolor c) {
 
 void draw_action_glyph(NVGcontext* vg, int idx, float cx, float cy,
                        float r, NVGcolor c) {
+    // Dispatch indices match hos_action_label / kHosActionCount.
+    // Sleep got rolled into the Power menu in 0.5.17 — index 5
+    // is now Power directly. Earlier this case still pointed to
+    // glyph_sleep, so the action button rendered a crescent moon
+    // labelled "Power", which is what the user flagged.
     nvgSave(vg);
     switch (idx) {
         case 0: glyph_news       (vg, cx, cy, r, c); break;
@@ -819,8 +824,7 @@ void draw_action_glyph(NVGcontext* vg, int idx, float cx, float cy,
         case 2: glyph_album      (vg, cx, cy, r, c); break;
         case 3: glyph_controllers(vg, cx, cy, r, c); break;
         case 4: glyph_settings   (vg, cx, cy, r, c); break;
-        case 5: glyph_sleep      (vg, cx, cy, r, c); break;
-        case 6: glyph_power      (vg, cx, cy, r, c); break;
+        case 5: glyph_power      (vg, cx, cy, r, c); break;
     }
     nvgRestore(vg);
 }
