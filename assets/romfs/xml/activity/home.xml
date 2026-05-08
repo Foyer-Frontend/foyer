@@ -102,14 +102,19 @@
         axis="column"
         justifyContent="center">
 
-        <!-- height pinned at 240 — the wrapping column has
-             justifyContent="center", so a fixed-height frame here
-             vertically centres the row. grow="1.0" would expand to
-             fill the column and defeat the centering. -->
+        <!-- Frame height must accommodate the tiles (280 px) plus
+             the brls focus highlight stroke + shadow (a few extra
+             px). 320 leaves headroom; smaller heights clip the
+             bottom of each tile, which the user perceived as a
+             "white bottom bar" hiding the lower edge of the art.
+             grow="1.0" omitted on purpose — the wrapping column has
+             justifyContent="center", so a fixed-height frame is
+             what makes the row vertically centre between the top
+             bar and the bottom of the screen. -->
         <brls:HScrollingFrame
             id="foyer/carousel_scroll"
             width="auto"
-            height="240"
+            height="320"
             scrollingBehavior="centered">
 
             <brls:Box
