@@ -1,0 +1,30 @@
+<brls:AppletFrame
+    iconInterpolation="linear"
+    title="@i18n/foyer/title"
+    headerHidden="false"
+    footerHidden="false">
+
+    <!-- Phase A: a single centred label proving brls boots end-to-end.
+         Replaced by the carousel + status cluster + action row in Phase C. -->
+    <brls:Box
+        width="auto"
+        height="auto"
+        grow="1.0"
+        axis="column"
+        justifyContent="center"
+        alignItems="center">
+
+        <brls:Label
+            text="foyer 0.6.0"
+            fontSize="48"
+            textColor="@theme/brls/text" />
+
+        <brls:Label
+            text="@i18n/foyer/phase_a_subtitle"
+            fontSize="20"
+            marginTop="16"
+            textColor="@theme/brls/text_disabled" />
+
+    </brls:Box>
+
+</brls:AppletFrame>

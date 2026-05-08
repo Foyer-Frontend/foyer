@@ -1,12 +1,17 @@
-# foyer.nro — the browser binary the user installs first.
+# foyer.nro — the browser binary.
 #
-# At Phase 1 it just brings the platform layer up and shows a placeholder
-# screen so we can prove the build chain end-to-end. The browser UI grows in
-# subsequent phases.
+# 0.6.0 Phase A: app shell flips from the legacy nanovg-direct renderer to
+# borealis (XITRIX/borealis fork). This commit lands the build wiring + a
+# stub HomeActivity that proves brls boots on Switch. Existing service-layer
+# code (launch, mtp, seed_assets, session, switch_titles, library scanner,
+# updater) survives untouched. Legacy view code (views.cpp, theme.cpp,
+# boot_splash.cpp, hos_status.cpp) lives on disk but is NOT compiled — it'll
+# be cherry-picked back into the brls views in Phases B–E.
+
+include(FetchContent)
 
 # libhaze gives us a tiny MTP server for the rom drop-off feature. It only
 # the browser needs it, so the FetchContent stays scoped here.
-include(FetchContent)
 FetchContent_Declare(libhaze
     GIT_REPOSITORY https://github.com/ITotalJustice/libhaze.git
     GIT_TAG        master
@@ -16,41 +21,52 @@ FetchContent_MakeAvailable(libhaze)
 
 add_executable(foyer
     src/main.cpp
-    src/views.cpp
-    src/theme.cpp
-    src/launch.cpp
-    src/mtp.cpp
-    src/seed_assets.cpp
-    src/session.cpp
-    src/boot_splash.cpp
-    src/hos_status.cpp
-    src/switch_titles.cpp
+    src/home_activity.cpp
+
+    # borealis Switch platform glue (matches borealis_template demo).
+    ${borealis_SOURCE_DIR}/library/lib/platforms/switch/switch_wrapper.c
+
+    # Phase A intentionally drops launch / mtp / seed_assets / session /
+    # switch_titles from the build. Some of them include legacy
+    # nanovg-dependent headers (e.g. switch_titles.hpp registers NACP icon
+    # JPEGs as nvg image handles). They'll be re-introduced — possibly
+    # refactored — in Phases B–E as the brls views need them.
 )
 
-target_link_libraries(foyer PRIVATE foyer_shared libhaze)
-target_compile_definitions(foyer PRIVATE FOYER_BROWSER=1)
+target_include_directories(foyer PRIVATE
+    include
+)
+
+target_link_libraries(foyer PRIVATE
+    foyer_shared
+    borealis
+    libhaze
+    # borealis on Switch deko3d backend pulls glfw3 for input; the rest are
+    # the linker libs every libnx graphics binary needs.
+    glfw3
+    EGL
+    glapi
+    drm_nouveau
+)
+
+target_compile_definitions(foyer PRIVATE
+    FOYER_BROWSER=1
+    BRLS_RESOURCES="romfs:/")
 
 set_target_properties(foyer PROPERTIES
     C_STANDARD   23
-    CXX_STANDARD 26)
+    CXX_STANDARD 17)  # borealis requires C++17 minimum
 
 # Embed any blobs from assets/embed/ into the binary (placeholder for now).
 target_compile_options(foyer PRIVATE
     --embed-dir=${FOYER_EMBED_DIR})
 
-# Bundle assets into a romfs section.
-file(COPY ${CMAKE_SOURCE_DIR}/assets/romfs DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+# Bundle assets into a romfs section. We ship our own /themes, /splash,
+# etc. AS WELL AS borealis's resources/ tree (font, theme XML, i18n yaml,
+# material symbols, icons) flattened into romfs:/.
+file(COPY ${CMAKE_SOURCE_DIR}/assets/romfs/ DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/romfs)
+file(COPY ${borealis_SOURCE_DIR}/resources/ DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/romfs)
 dkp_add_asset_target(foyer_romfs ${CMAKE_CURRENT_BINARY_DIR}/romfs)
-
-# nanovg-deko3d builds these shader targets via the FetchContent project; we
-# install the compiled .dksh blobs alongside the rest of the romfs.
-dkp_install_assets(foyer_romfs
-    DESTINATION shaders
-    TARGETS
-        fill_aa_fsh
-        fill_fsh
-        fill_vsh
-)
 
 # NACP / NRO. These devkitPro helpers come from switch-cmake.
 nx_generate_nacp(

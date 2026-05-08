@@ -1,15 +1,14 @@
-# Shared static library used by both browser and player nros.
+# Shared static libraries used by browser + player nros.
 #
-# Provides:
-#   - platform/  graphics + audio + input bring-up (deko3d, nanovg, audren, hid)
-#   - ui/        widgets + theme primitives built on nanovg
-#   - util/      filesystem, path, time helpers
-#
-# Higher-level concerns (archive, config, library, net, scrapers, retroachievements)
-# will plug in here as individual subdirs grow.
+# 0.6.0 split:
+#   - foyer_shared  = service + data layer (config, library scan, scrapers,
+#                      net, i18n, log, archive). NO rendering deps. Browser +
+#                      players both link this.
+#   - foyer_render  = legacy nanovg-deko3d App shell. Players still use this
+#                      for libretro frame presentation; the browser switched
+#                      to borealis in 0.6.0 and no longer links it.
 
 add_library(foyer_shared STATIC
-    platform/app.cpp
     platform/log.cpp
     i18n/i18n.cpp
     i18n/i18n_es.cpp
@@ -51,7 +50,6 @@ target_compile_definitions(foyer_shared PUBLIC
 )
 
 target_link_libraries(foyer_shared PUBLIC
-    nanovg
     stb_headers
     yyjson
     CURL::libcurl
@@ -72,4 +70,15 @@ target_compile_options(foyer_shared PUBLIC
     -Wno-missing-field-initializers
     -Wno-format-truncation
     -fstrict-aliasing
+)
+
+# Render shell: nanovg-deko3d App. Players link this for libretro frame
+# presentation; browser uses borealis instead.
+add_library(foyer_render STATIC
+    platform/app.cpp
+)
+
+target_link_libraries(foyer_render PUBLIC
+    foyer_shared
+    nanovg
 )

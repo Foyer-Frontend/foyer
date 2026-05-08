@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(foyer
-    VERSION 0.5.26
+    VERSION 0.6.0
     LANGUAGES C CXX
 )
 
@@ -111,6 +111,50 @@ target_include_directories(stb_headers INTERFACE ${stb_SOURCE_DIR})
 # ---------------------------------------------------------------------------
 find_package(ZLIB REQUIRED)
 find_package(CURL REQUIRED)
+
+# ---------------------------------------------------------------------------
+# borealis (XITRIX fork — used by Moonlight Switch). Browser UI is built
+# on top of brls starting in 0.6.0. Players still link our own
+# nanovg-deko3d via foyer_render — borealis vendors its own nanovg copy
+# and the two cannot coexist in the same binary.
+# ---------------------------------------------------------------------------
+if (BUILD_BROWSER)
+    # Switch + deko3d backend. We bypass borealis's toolchain.cmake (it
+    # tries to include $DEVKITPRO/cmake/Switch.cmake, which our top-level
+    # preset already loaded), so the BOREALIS_USE_* flags must be set
+    # explicitly here — the toolchain wrapper would normally do it.
+    set(PLATFORM_SWITCH      ON  CACHE BOOL "" FORCE)
+    set(USE_DEKO3D           ON  CACHE BOOL "" FORCE)
+    set(BOREALIS_USE_DEKO3D  ON  CACHE BOOL "" FORCE)
+    set(USE_GLFW             ON  CACHE BOOL "" FORCE)  # input only on Switch
+    set(BRLS_UNITY_BUILD     OFF CACHE BOOL "" FORCE)  # avoid empty-prop bug
+    # Avoid pulling system fmt/tinyxml2/tweeny — vendor what borealis
+    # ships so the devkitPro sysroot doesn't need extra packages.
+    set(USE_SYSTEM_FMT       OFF CACHE BOOL "" FORCE)
+    set(USE_SYSTEM_TINYXML2  OFF CACHE BOOL "" FORCE)
+    set(USE_SYSTEM_TWEENY    OFF CACHE BOOL "" FORCE)
+    set(BRLS_RESOURCES_DIR   "romfs:/" CACHE STRING "" FORCE)
+
+    # XITRIX/borealis's default branch is moonlight_wiliwili — that's the
+    # active fork used by Moonlight Switch. The "main" branch is older and
+    # missing CMake support; pin to moonlight_wiliwili explicitly.
+    FetchContent_Declare(borealis
+        GIT_REPOSITORY https://github.com/XITRIX/borealis.git
+        GIT_TAG        moonlight_wiliwili
+        GIT_SHALLOW    TRUE
+        SOURCE_SUBDIR  library)
+    FetchContent_MakeAvailable(borealis)
+
+    # devkitPro's portlibs/switch/include is the canonical location for
+    # switch-glm, switch-glfw, EGL, etc. The Switch.cmake toolchain
+    # exposes them via find_package, but borealis #includes them
+    # directly (e.g. <glm/vec2.hpp> in the deko3d nanovg renderer), so
+    # we must put portlibs on the borealis target's system include path.
+    if (DEFINED ENV{DEVKITPRO})
+        target_include_directories(borealis SYSTEM PRIVATE
+            $ENV{DEVKITPRO}/portlibs/switch/include)
+    endif()
+endif()
 
 # ---------------------------------------------------------------------------
 # Subprojects

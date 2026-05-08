@@ -66,6 +66,7 @@ target_compile_definitions(${_frontend} PRIVATE
 
 target_link_libraries(${_frontend} PUBLIC
     foyer_shared
+    foyer_render
     core_${FOYER_CORE}
     ${_rcheevos_dep}
     # EGL + GLES3 + Mesa stack for the HW render callback path. Even
