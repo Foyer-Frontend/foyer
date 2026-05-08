@@ -15,15 +15,19 @@ public:
 
     void onContentAvailable() override;
 
-    // Swap the app backdrop to the given system folder's
-    // background.jpg. Called by SystemTile on focus change.
-    void setBackdrop(std::string_view folder);
+    // Reflow chrome for the just-focused system: swap the
+    // backdrop image to its background.jpg and update the title
+    // label above the carousel. Called by SystemTile on focus
+    // change.
+    void onSystemFocused(std::string_view folder,
+                         std::string_view display_name);
 
-    BRLS_BIND(brls::Label, clock,      "foyer/clock");
-    BRLS_BIND(brls::Box,   carousel,   "foyer/carousel");
-    BRLS_BIND(brls::Box,   actionRow,  "foyer/action_row");
-    BRLS_BIND(brls::Box,   profiles,   "foyer/profiles");
-    BRLS_BIND(brls::Image, backdrop,   "foyer/backdrop");
+    BRLS_BIND(brls::Label, clock,        "foyer/clock");
+    BRLS_BIND(brls::Box,   carousel,     "foyer/carousel");
+    BRLS_BIND(brls::Box,   actionRow,    "foyer/action_row");
+    BRLS_BIND(brls::Box,   profiles,     "foyer/profiles");
+    BRLS_BIND(brls::Image, backdrop,     "foyer/backdrop");
+    BRLS_BIND(brls::Label, systemTitle,  "foyer/system_title");
 
 private:
     brls::RepeatingTask* clockTask = nullptr;

@@ -62,7 +62,7 @@ public:
 
     void onFocusGained() override {
         brls::Box::onFocusGained();
-        if (m_host) m_host->setBackdrop(m_folder);
+        if (m_host) m_host->onSystemFocused(m_folder, m_label);
     }
 
 private:
@@ -106,18 +106,27 @@ void HomeActivity::populateCarousel() {
     // game-count badge come back in alpha.5 when scanner.cpp is
     // re-introduced into the brls build.
     for (const auto& sys : ::foyer::library::all_systems()) {
-        const std::string label = sys.short_name.empty()
+        // Pass the full display_name through — used both as the
+        // SystemActivity title when the tile is opened and as the
+        // header label above the carousel on focus.
+        const std::string label = sys.display_name.empty()
             ? std::string(sys.folder_name)
-            : std::string(sys.short_name);
+            : std::string(sys.display_name);
         carousel->addView(new SystemTile(this, sys.folder_name, label));
     }
 }
 
-void HomeActivity::setBackdrop(std::string_view folder) {
-    if (!backdrop) return;
-    const std::string path =
-        "themes/foyer/systems/" + std::string(folder) + "/background.jpg";
-    backdrop->setImageFromRes(path);
+void HomeActivity::onSystemFocused(std::string_view folder,
+                                   std::string_view display_name)
+{
+    if (backdrop) {
+        const std::string bg =
+            "themes/foyer/systems/" + std::string(folder) + "/background.jpg";
+        backdrop->setImageFromRes(bg);
+    }
+    if (systemTitle) {
+        systemTitle->setText(std::string(display_name));
+    }
 }
 
 void HomeActivity::buildProfiles() {

@@ -79,18 +79,30 @@
     </brls:Box>
 
     <!-- Vertical layout below the top bar:
-            grow=1 wrapper anchors the carousel to its bottom edge,
-            grow=1 wrapper centres the action row vertically.
+            grow=1 wrapper anchors the system title + carousel to
+            the bottom edge of its area; grow=1 wrapper below
+            centres the action row.
          Equal grow weights ⇒ the action row sits at the midpoint
          between the bottom of the tile row and the separator
-         (top of the bottom hint bar) — which is where the user
-         asked the buttons to land. -->
+         (top of the bottom hint bar). -->
     <brls:Box
         width="auto"
         height="auto"
         grow="1.0"
         axis="column"
+        alignItems="center"
         justifyContent="flexEnd">
+
+        <!-- Display name of the focused system. HomeActivity
+             updates the text on tile focus changes. -->
+        <brls:Label
+            id="foyer/system_title"
+            text=""
+            width="auto"
+            height="auto"
+            fontSize="32"
+            marginBottom="12"
+            textColor="@theme/brls/text" />
 
         <brls:HScrollingFrame
             id="foyer/carousel_scroll"
