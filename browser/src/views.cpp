@@ -1011,11 +1011,11 @@ void draw_modal_card(NVGcontext* vg, float x, float y, float ww, float hh,
 // so the focus is always unambiguous. Side tiles can be partially visible
 // at the screen edge — we just keep walking offsets until the tile would
 // be entirely off-screen.
-// 5 full + 2 half tiles across 1280 px screen → 6 × pitch ≈ 1280
-// → pitch 213. With a 16 px gap that gives tile width ~197.
-constexpr float kHomeTileW       = 196.0f;
-constexpr float kHomeTileH       = 196.0f;
-constexpr float kHomeTileGap     = 16.0f;
+// 3 full + 2 half tiles across 1280 px screen → 4 × pitch ≈ 1280
+// → pitch 320. With a 24 px gap that gives tile width ~296.
+constexpr float kHomeTileW       = 296.0f;
+constexpr float kHomeTileH       = 296.0f;
+constexpr float kHomeTileGap     = 24.0f;
 constexpr float kHomeFocusScale  = 1.10f;   // focused tile bumps 10 %
 // HOS tiles are pure squares — radius is 0 by default. The Settings →
 // Display → "Rounded tiles" toggle bumps this to kHomeRadiusRounded for

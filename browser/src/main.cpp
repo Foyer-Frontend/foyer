@@ -126,6 +126,23 @@ void scrub_legacy_default_bezel_once() {
 void apply_staged_update_if_present() {
     struct stat st{};
     if (::stat(g_foyer_nro_new_path.c_str(), &st) != 0) return;
+    // 0.5.21: drop suspiciously-small staged files BEFORE applying
+    // them. A truncated download from a flaky connection can leave
+    // a partial foyer.nro.new on disk; renaming it to foyer.nro
+    // means the next boot tries to chain-launch a corrupt nro and
+    // atmosphere fatals at PC=0 (error 2354-0001 reported in the
+    // wild). Foyer's smallest plausible build is ~5 MB even before
+    // any romfs content; the current build is ~38 MB. 1 MB is a
+    // generous floor that catches partial writes without false-
+    // flagging future minimal builds.
+    if (st.st_size < 1024 * 1024) {
+        foyer::log::write(
+            "[foyer_update] staged file is %lld bytes — too small, "
+            "deleting (probably a partial download)\n",
+            (long long)st.st_size);
+        ::unlink(g_foyer_nro_new_path.c_str());
+        return;
+    }
     if (::rename(g_foyer_nro_new_path.c_str(),
                  g_foyer_nro_path.c_str()) != 0) {
         ::unlink(g_foyer_nro_path.c_str());
