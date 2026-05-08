@@ -600,9 +600,10 @@ void draw_hos_top_bar(NVGcontext* vg, float w, const State& s) {
             clock.c_str(), nullptr);
 }
 
-// Action-row layout helpers. The row supports two visual styles
-// switchable via the Settings → Display → "Action row dock" toggle.
-constexpr int kHosActionCount = 7;
+// Action-row buttons. Sleep moved into the Power menu in 0.5.17 — the
+// stand-alone Sleep slot was redundant once Power opened a modal that
+// already had Sleep as an option.
+constexpr int kHosActionCount = 6;
 const char* hos_action_label(int i) {
     switch (i) {
         case 0: return "News";
@@ -610,8 +611,7 @@ const char* hos_action_label(int i) {
         case 2: return "Album";
         case 3: return "Controllers";
         case 4: return "Settings";
-        case 5: return "Sleep";
-        case 6: return "Power";
+        case 5: return "Power";
     }
     return "";
 }
@@ -1620,6 +1620,56 @@ void draw_quit_confirm(NVGcontext* vg, float w, float h, const State& s) {
     };
     button(yes_x, _(SId::Yes), s.quit_confirm_index == 0);
     button(no_x,  _(SId::No),  s.quit_confirm_index == 1);
+}
+
+// Power menu modal. Opened by the Power button on the action row;
+// presents 4 options (Restart, Sleep, Power off, Reboot to Hekate)
+// as horizontally-arranged buttons. A picks; B closes. The actual
+// libnx call happens in main.cpp via the request_* flags so the
+// input handler stays free of service surface.
+constexpr const char* kPowerMenuLabels[] = {
+    "Restart", "Sleep", "Power off", "Reboot to Hekate",
+};
+constexpr int kPowerMenuCount = 4;
+
+void draw_power_menu(NVGcontext* vg, float w, float h, const State& s) {
+    if (!s.power_menu_open) return;
+    const auto& th = theme();
+
+    nvgBeginPath(vg);
+    nvgRect(vg, 0, 0, w, h);
+    nvgFillColor(vg, nvgRGBAf(0, 0, 0, 0.55f));
+    nvgFill(vg);
+
+    constexpr float kCardW = 720.0f;
+    constexpr float kCardH = 220.0f;
+    const float card_x = (w - kCardW) * 0.5f;
+    const float card_y = (h - kCardH) * 0.5f;
+    rrect(vg, card_x, card_y, kCardW, kCardH, 14.0f, th.bg_panel);
+    rrect_outline(vg, card_x, card_y, kCardW, kCardH, 14.0f, th.border, 1.0f);
+
+    nvgFontSize(vg, th.head_size);
+    nvgFillColor(vg, th.text_strong);
+    nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
+    nvgText(vg, card_x + kCardW * 0.5f, card_y + 22, "Power", nullptr);
+
+    constexpr float kBtnW = 156.0f;
+    constexpr float kBtnH = 64.0f;
+    constexpr float kBtnGap = 16.0f;
+    const float row_w = kBtnW * kPowerMenuCount + kBtnGap * (kPowerMenuCount - 1);
+    const float row_x = card_x + (kCardW - row_w) * 0.5f;
+    const float by    = card_y + kCardH - 32 - kBtnH;
+    for (int i = 0; i < kPowerMenuCount; i++) {
+        const float bx = row_x + i * (kBtnW + kBtnGap);
+        const bool sel = (i == s.power_menu_cursor);
+        rrect(vg, bx, by, kBtnW, kBtnH, 8.0f,
+              sel ? th.accent : th.bg_panel_hi);
+        nvgFontSize(vg, th.body_size);
+        nvgFillColor(vg, sel ? th.bg : th.text_strong);
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+        nvgText(vg, bx + kBtnW * 0.5f, by + kBtnH * 0.5f,
+                kPowerMenuLabels[i], nullptr);
+    }
 }
 
 // HOS-style profile switcher. Y on Home opens it; modal shows the
@@ -4989,6 +5039,27 @@ void update(State& s, const Library& lib,
     if (lib.systems.empty()) return;
 
     if (s.view == View::Home) {
+        // Power-menu modal intercepts every input while open.
+        if (s.power_menu_open) {
+            if (down & HidNpadButton_AnyRight) {
+                if (s.power_menu_cursor + 1 < kPowerMenuCount)
+                    s.power_menu_cursor++;
+            } else if (down & HidNpadButton_AnyLeft) {
+                if (s.power_menu_cursor > 0) s.power_menu_cursor--;
+            } else if (down & HidNpadButton_B) {
+                s.power_menu_open = false;
+            } else if (down & HidNpadButton_A) {
+                switch (s.power_menu_cursor) {
+                    case 0: s.request_restart       = true; break;
+                    case 1: s.request_sleep         = true; break;
+                    case 2: s.request_power_off     = true; break;
+                    case 3: s.request_reboot_hekate = true; break;
+                }
+                s.power_menu_open = false;
+            }
+            return;
+        }
+
         // Profile-switcher modal intercepts every input while open.
         if (s.profile_switcher_open) {
             const int n = hos_status::other_avatar_count();
@@ -5119,11 +5190,13 @@ void update(State& s, const Library& lib,
                         s.view = View::Settings;
                         s.action_row_focus = false;
                         break;
-                    case 5: // Sleep
-                        s.request_sleep = true;
-                        break;
-                    case 6: // Power off
-                        s.request_power_off = true;
+                    case 5: // Power — open menu (Restart / Sleep /
+                            // Power off / Reboot to Hekate). Sleep
+                            // moved into this menu in 0.5.17 so the
+                            // standalone Sleep button is gone.
+                        s.power_menu_open   = true;
+                        s.power_menu_cursor = 0;
+                        s.action_row_focus  = false;
                         break;
                 }
             }
@@ -6380,6 +6453,7 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
     draw_popup(vg, w, h, s);
     draw_quit_confirm(vg, w, h, s);
     draw_profile_switcher(vg, w, h, s);
+    draw_power_menu(vg, w, h, s);
     draw_update_confirm(vg, w, h, s);
     draw_restart_confirm(vg, w, h, s);
     draw_update_prompt(vg, w, h, s);

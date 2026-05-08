@@ -305,9 +305,11 @@ int main(int argc, char** argv) {
     foyer::browser::hos_status::init(app.vg());
 
     // 0.5.5 Switch-title launcher cache. NACP icon decode is the slow
-    // step (a JPEG per installed title — 30+ titles takes several
-    // seconds on real hardware). Pass a progress callback so the boot
-    // splash actually shows we're working instead of looking frozen.
+    // step (a JPEG per installed title — on a console with 197+
+    // titles, the cold-boot scan can take 30+ seconds). Pass a
+    // progress callback so the boot splash shows live progress —
+    // tick EVERY record (was every 4th in 0.5.13, which produced
+    // 5-10 second gaps between visible updates and looked frozen).
     boot_status = "Loading Switch titles...";
     app.tick();
     foyer::browser::switch_titles::load(app.vg(),
@@ -316,9 +318,7 @@ int main(int argc, char** argv) {
             std::snprintf(buf, sizeof(buf),
                 "Loading Switch titles (%d / %d)...", idx, total);
             boot_status = buf;
-            // Tick every few records so we don't burn frame time on
-            // pure progress paints; the JPEG decode is the bottleneck.
-            if ((idx & 0x3) == 0 || idx == total) app.tick();
+            app.tick();
         });
 
     // Expose installed Switch titles as a virtual system at the front
@@ -442,6 +442,49 @@ int main(int argc, char** argv) {
                 fsFsCommit(fs);
             }
             appletRequestToShutdown();
+        }
+        if (state.request_restart) {
+            state.request_restart = false;
+            foyer::log::write("[home_action] restart requested\n");
+            if (auto* fs = fsdevGetDeviceFileSystem("sdmc:")) {
+                fsFsCommit(fs);
+            }
+            appletRequestToReboot();
+        }
+        if (state.request_reboot_hekate) {
+            state.request_reboot_hekate = false;
+            foyer::log::write("[home_action] reboot to hekate requested\n");
+            // Convention: copy the user's hekate payload at
+            // /bootloader/update.bin to /atmosphere/reboot_payload.bin
+            // so a normal reboot (with atmosphere's reboot-to-payload
+            // feature enabled in system_settings.ini) lands on hekate.
+            // If either path is missing we fall back to a regular
+            // reboot — the user's existing atmosphere config decides
+            // what boots next.
+            std::FILE* in = std::fopen("/bootloader/update.bin", "rb");
+            if (in) {
+                std::FILE* out = std::fopen(
+                    "/atmosphere/reboot_payload.bin", "wb");
+                if (out) {
+                    char buf[64 * 1024];
+                    std::size_t n;
+                    while ((n = std::fread(buf, 1, sizeof(buf), in)) > 0)
+                        std::fwrite(buf, 1, n, out);
+                    std::fclose(out);
+                    foyer::log::write(
+                        "[home_action] copied hekate payload to "
+                        "atmosphere/reboot_payload.bin\n");
+                }
+                std::fclose(in);
+            } else {
+                foyer::log::write(
+                    "[home_action] /bootloader/update.bin missing — "
+                    "falling back to normal reboot\n");
+            }
+            if (auto* fs = fsdevGetDeviceFileSystem("sdmc:")) {
+                fsFsCommit(fs);
+            }
+            appletRequestToReboot();
         }
 
         // "Restart now" from the post-download confirm modal.

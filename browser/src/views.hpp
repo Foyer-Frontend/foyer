@@ -191,6 +191,13 @@ struct State {
     // service-call surface.
     bool        request_sleep            = false;
     bool        request_power_off        = false;
+    bool        request_restart          = false;
+    bool        request_reboot_hekate    = false;
+    // Power menu modal — opened by the Power button on the action
+    // row. Cursor walks {Restart, Sleep, Power off, Reboot to Hekate};
+    // A fires the corresponding request_* flag and closes the modal.
+    bool        power_menu_open          = false;
+    int         power_menu_cursor        = 0;
     // Profile switcher modal state. Opened via Y on Home; A picks the
     // focused profile; B cancels. The cursor walks the secondary
     // avatars (active user is shown but not selectable since it's
