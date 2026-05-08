@@ -230,7 +230,7 @@ std::vector<std::string> list_themes() {
     // unreliable, so probe a hardcoded list with fopen instead. Names must
     // stay in lockstep with assets/romfs/themes/*.jsonc.
     static constexpr const char* kBundledNames[] = {
-        "dark", "light", "midnight", "forest", "snow",
+        "hos", "dark", "light", "midnight", "forest", "snow",
     };
     for (const char* n : kBundledNames) {
         char probe[128];

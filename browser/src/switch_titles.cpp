@@ -92,12 +92,34 @@ const NacpLanguageEntry* nacp_pick_language(const NacpStruct* nacp) {
 
 } // namespace
 
-std::size_t load(NVGcontext* vg) {
+std::size_t load(NVGcontext* vg,
+                 std::function<void(int idx, int total)> progress) {
     shutdown(vg);
+
+    // First pass: just count the records so the progress callback has
+    // a meaningful denominator. This is a cheap service call (no NACP
+    // fetch) and bounds the loop count for the slow second pass.
+    int total_count = 0;
+    {
+        constexpr s32 kPageSize = 32;
+        NsApplicationRecord scan[kPageSize]{};
+        s32 off = 0;
+        while (true) {
+            s32 read = 0;
+            if (R_FAILED(nsListApplicationRecord(scan, kPageSize, off, &read)))
+                break;
+            if (read <= 0) break;
+            total_count += read;
+            off += read;
+            if (read < kPageSize) break;
+        }
+    }
+    if (progress) progress(0, total_count);
 
     constexpr s32 kPageSize = 32;
     NsApplicationRecord page[kPageSize]{};
     s32 offset = 0;
+    int seen   = 0;
 
     while (true) {
         s32 read = 0;
@@ -111,6 +133,8 @@ std::size_t load(NVGcontext* vg) {
         if (read <= 0) break;
 
         for (s32 i = 0; i < read; i++) {
+            seen++;
+            if (progress) progress(seen, total_count);
             // The libnx version on devkitPro's builder image doesn't
             // expose a `type` field on NsApplicationRecord, so we
             // can't pre-filter for installed-normal-application

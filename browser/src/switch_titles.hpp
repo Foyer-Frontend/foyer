@@ -10,6 +10,7 @@
 // terminates foyer and boots the title.
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -27,7 +28,13 @@ struct Title {
 // Populate the title list at boot. Returns the number of titles
 // successfully loaded. Cheap to call again after a remount or major
 // state change — tears down the previous nvg handles before reloading.
-std::size_t load(NVGcontext* vg);
+//
+// `progress` is invoked between every record; callers use it to keep
+// the boot splash live (NACP icon decode is the slow step on consoles
+// with many installed titles — 30+ JPEG decodes can take several
+// seconds, during which a passive splash looks frozen).
+std::size_t load(NVGcontext* vg,
+                 std::function<void(int idx, int total)> progress = {});
 
 // Drop nvg handles. Called on shutdown.
 void shutdown(NVGcontext* vg);

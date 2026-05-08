@@ -5052,18 +5052,17 @@ void update(State& s, const Library& lib,
             s.game_index = 0;
         }
         if (down & HidNpadButton_Y) {
-            // Y on Home opens the profile switcher (HOS analog: tap the
-            // avatar). Quick-resume is still reachable via the Plus
-            // popup menu's "Resume Last" entry — Y was the only Home
-            // binding free for the new switcher, and discoverability
-            // for resume is fine since Recents is also a virtual tile.
-            if (hos_status::other_avatar_count() > 0) {
-                s.profile_switcher_open   = true;
-                s.profile_switcher_cursor = 0;
-            } else {
-                s.banner_text = "No other profiles registered";
-                s.banner_ttl  = 180;
-            }
+            // Y on Home opens the profile switcher unconditionally —
+            // the modal has its own empty state ("No other profiles
+            // on this console") so the user gets clear visual
+            // feedback whether or not switching is actually possible.
+            // The previous silent-banner fallback made it look like
+            // Y did nothing.
+            s.profile_switcher_open   = true;
+            s.profile_switcher_cursor = 0;
+            foyer::log::write(
+                "[profile] switcher opened (others=%d)\n",
+                hos_status::other_avatar_count());
         }
         if (down & HidNpadButton_B) {
             s.quit_confirm_open  = true;

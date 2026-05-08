@@ -23,7 +23,11 @@ struct Config {
 
     Scraper      preferred_scraper = Scraper::Libretro;
     std::string  rom_root          = "/foyer/roms";
-    std::string  theme_name        = "default";
+    // Default to the HOS-matching theme so first-boot users see the
+    // home menu look the project is targeting. Older configs that
+    // already saved a theme_name keep their preference; only fresh
+    // installs / reset configs pick this up.
+    std::string  theme_name        = "hos";
     SortMode     sort_mode         = SortMode::Name;
 
     // Order of the Home carousel system tiles. ScannerOrder is the

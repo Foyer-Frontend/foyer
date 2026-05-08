@@ -304,13 +304,22 @@ int main(int argc, char** argv) {
     // expensive piece) only runs once.
     foyer::browser::hos_status::init(app.vg());
 
-    // 0.5.5 Switch-title launcher cache: walk every installed
-    // application and decode each title's NACP icon. ~30+ JPEG decodes
-    // takes a couple of seconds on a console with a full library, so
-    // this runs after the boot splash but before the first Home
-    // paint (otherwise the carousel pops in titles asynchronously
-    // and reorders mid-render).
-    foyer::browser::switch_titles::load(app.vg());
+    // 0.5.5 Switch-title launcher cache. NACP icon decode is the slow
+    // step (a JPEG per installed title — 30+ titles takes several
+    // seconds on real hardware). Pass a progress callback so the boot
+    // splash actually shows we're working instead of looking frozen.
+    boot_status = "Loading Switch titles...";
+    app.tick();
+    foyer::browser::switch_titles::load(app.vg(),
+        [&](int idx, int total) {
+            char buf[80];
+            std::snprintf(buf, sizeof(buf),
+                "Loading Switch titles (%d / %d)...", idx, total);
+            boot_status = buf;
+            // Tick every few records so we don't burn frame time on
+            // pure progress paints; the JPEG decode is the bottleneck.
+            if ((idx & 0x3) == 0 || idx == total) app.tick();
+        });
 
     // Expose installed Switch titles as a virtual system at the front
     // of the carousel. Each title becomes a Game with path
