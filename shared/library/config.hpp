@@ -77,6 +77,22 @@ struct Config {
     // since translation is stateless.
     std::string  language          = "";
 
+    // 0.5.2 Home action-row external app chain-launch targets. The
+    // eShop / Album buttons walk this list in order until one resolves
+    // to an existing .nro on the SD; we then envSetNextLoad it so
+    // the user lands in their preferred installer / viewer instead of
+    // foyer attempting an unreliable libapplet route.
+    //
+    // Empty path entries are skipped silently. The defaults cover the
+    // most-common installer locations; users with bespoke folder
+    // layouts edit /foyer/data/general.jsonc directly until the
+    // dedicated Settings UI lands in 0.5.3.
+    std::string  external_eshop_nro =
+        "/switch/Tinfoil/Tinfoil.nro";
+    std::string  external_eshop_nro_alt =
+        "/switch/Awoo Installer/Awoo Installer.nro";
+    std::string  external_album_nro = "";  // user-configured
+
     // Run-ahead lookahead frames. 0 disables (default); 1..4 trade CPU
     // for reduced visible input lag — each enabled frame adds one extra
     // retro_run() call per displayed frame. Cores with a 0-byte

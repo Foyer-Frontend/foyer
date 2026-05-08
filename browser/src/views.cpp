@@ -4635,17 +4635,43 @@ void update(State& s, const Library& lib,
                         s.banner_text = "News feed coming in 0.5.2";
                         s.banner_ttl  = 240;
                         break;
-                    case 1: // eShop — placeholder; libapplet route is
-                            // unreliable under hbloader. 0.5.2 will
-                            // chain-launch a user-configured NRO
-                            // (Tinfoil / Awoo) instead.
-                        s.banner_text = "eShop launcher coming in 0.5.2";
-                        s.banner_ttl  = 240;
+                    case 1: { // eShop — chain-launch user's preferred
+                              // installer NRO (Tinfoil / Awoo). Defaults
+                              // hit the conventional install paths;
+                              // /foyer/data/general.jsonc lets users
+                              // point at a different binary.
+                        const auto& cfg = library::config();
+                        const auto path = queue_external_nro({
+                            cfg.external_eshop_nro,
+                            cfg.external_eshop_nro_alt,
+                        });
+                        if (path.empty()) {
+                            s.banner_text =
+                                "eShop NRO not found at configured paths";
+                            s.banner_ttl  = 300;
+                        } else {
+                            // envSetNextLoad already queued — quit so
+                            // hbloader picks up the chain.
+                            s.request_quit = true;
+                        }
                         break;
-                    case 2: // Album — placeholder for the same reason
-                        s.banner_text = "Album launcher coming in 0.5.2";
-                        s.banner_ttl  = 240;
+                    }
+                    case 2: { // Album — same chain-launch shape; no
+                              // default path because there's no
+                              // canonical Switch homebrew album viewer.
+                        const auto& cfg = library::config();
+                        const auto path = queue_external_nro({
+                            cfg.external_album_nro,
+                        });
+                        if (path.empty()) {
+                            s.banner_text =
+                                "Set external_album_nro in general.jsonc to use this";
+                            s.banner_ttl  = 300;
+                        } else {
+                            s.request_quit = true;
+                        }
                         break;
+                    }
                     case 3: // Controllers — opens Settings → controller
                             // pairing once that page lands; placeholder
                             // for now.

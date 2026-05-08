@@ -138,6 +138,9 @@ void write_locked() {
     out << "    \"debug_log\":         " << bstr(g_config.debug_log) << ",\n";
     out << "    \"cores_manifest_url\": \"" << g_config.cores_manifest_url << "\",\n";
     out << "    \"foyer_manifest_url\": \"" << g_config.foyer_manifest_url << "\",\n";
+    out << "    \"external_eshop_nro\":     \"" << g_config.external_eshop_nro << "\",\n";
+    out << "    \"external_eshop_nro_alt\": \"" << g_config.external_eshop_nro_alt << "\",\n";
+    out << "    \"external_album_nro\":     \"" << g_config.external_album_nro << "\",\n";
     out << "    \"default_core_per_system\": {";
     bool first = true;
     for (const auto& [folder, core] : g_config.default_core_per_system) {
@@ -244,6 +247,18 @@ void load_locked() {
     if (auto* v = yyjson_obj_get(root, "foyer_manifest_url");
         v && yyjson_is_str(v)) {
         g_config.foyer_manifest_url = yyjson_get_str(v);
+    }
+    if (auto* v = yyjson_obj_get(root, "external_eshop_nro");
+        v && yyjson_is_str(v)) {
+        g_config.external_eshop_nro = yyjson_get_str(v);
+    }
+    if (auto* v = yyjson_obj_get(root, "external_eshop_nro_alt");
+        v && yyjson_is_str(v)) {
+        g_config.external_eshop_nro_alt = yyjson_get_str(v);
+    }
+    if (auto* v = yyjson_obj_get(root, "external_album_nro");
+        v && yyjson_is_str(v)) {
+        g_config.external_album_nro = yyjson_get_str(v);
     }
     if (auto* v = yyjson_obj_get(root, "cheats_manifest_url");
         v && yyjson_is_str(v)) {

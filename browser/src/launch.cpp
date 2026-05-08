@@ -196,4 +196,29 @@ int latest_state_slot(const library::System& sys, const library::Game& game) {
     return best_slot;
 }
 
+std::string queue_external_nro(std::initializer_list<std::string_view> candidates) {
+    for (std::string_view c : candidates) {
+        if (c.empty()) continue;
+        std::string path{c};
+        struct stat st{};
+        if (::stat(path.c_str(), &st) != 0 || !S_ISREG(st.st_mode)) {
+            continue;
+        }
+        // hbloader argv conventions: sdmc: prefix + argv[0] = nro path
+        // (otherwise romfsInit fails when the chained NRO has its own
+        // romfs section).
+        const std::string sd_path = std::string{"sdmc:"} + path;
+        char argv[1024];
+        std::snprintf(argv, sizeof(argv), "\"%s\"", sd_path.c_str());
+        if (R_FAILED(envSetNextLoad(sd_path.c_str(), argv))) {
+            foyer::log::write(
+                "[external] envSetNextLoad(%s) failed\n", sd_path.c_str());
+            continue;
+        }
+        foyer::log::write("[external] queued %s\n", sd_path.c_str());
+        return path;
+    }
+    return {};
+}
+
 } // namespace foyer::browser
