@@ -97,13 +97,12 @@ struct BakedDefault {
     const char* reason;  // logged once on apply
 };
 constexpr BakedDefault kBakedDefaults[] = {
-    // PPSSPP's GLES backend crashes on Switch/nouveau Mesa 20.1
-    // (alignment fault inside the renderer right after
-    // OpenGL ES 3.1 detection). The software backend is slower but
-    // actually renders. Users can opt back into GLES via Settings →
-    // Cores → ppsspp once a Mesa fix lands.
-    {"ppsspp", "ppsspp_software_rendering", "enabled",
-     "GLES path crashes on Switch nouveau"},
+    // PPSSPP — keep HW. Software is unplayable for PSP. The Mesa
+    // crash workaround is in player/src/main.cpp, which seeds a
+    // ppsspp.ini with the Mesa-safe GL settings (skip buffer
+    // effects, native res, simple framebuffer pipeline) so the GL
+    // path stays alive without hitting the Mesa stubbed-NULL
+    // entrypoints. No baked option here.
 };
 
 void apply_baked_defaults(const std::string& core,

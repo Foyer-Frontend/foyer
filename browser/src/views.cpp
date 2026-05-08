@@ -428,12 +428,7 @@ void draw_bottombar(NVGcontext* vg, float w, float h, const char* hint) {
         nvgText(vg, th.pad, by + kBottomBarH * 0.5f, hint, nullptr);
     }
 
-    // Right-aligned version stamp keeps parity with sphaira's "build x.y" hint.
-    nvgFontSize(vg, th.label_size);
-    nvgFillColor(vg, th.text_dim);
-    nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
-    nvgText(vg, w - th.pad, by + kBottomBarH * 0.5f,
-            FOYER_DISPLAY_VERSION, nullptr);
+    // Version stamp removed in 0.5.19 to declutter the chrome.
 }
 
 // ---- HOS-style chrome (Home view, 0.5.0) ----------------------------------
@@ -937,21 +932,15 @@ void draw_hos_bottom_hints(NVGcontext* vg, float w, float h, const char* hint) {
         nvgText(vg, text_x, pady, buf, nullptr);
     }
 
-    // Right-aligned: button glyph hints (left of version), then the
-    // version stamp at the very right.
+    // Button-glyph hints right-aligned. Version stamp removed in
+    // 0.5.19 — the chrome reads cleaner without it, and Settings →
+    // About still surfaces the build for users who want to verify.
     if (hint && hint[0]) {
         nvgFontSize(vg, th.body_size);
         nvgFillColor(vg, th.text);
         nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
-        // Reserve ~140 px for the version stamp so the hints don't
-        // overlap on long strings.
-        nvgText(vg, w - th.pad - 140.0f, pady, hint, nullptr);
+        nvgText(vg, w - th.pad, pady, hint, nullptr);
     }
-
-    nvgFontSize(vg, th.label_size);
-    nvgFillColor(vg, th.text_dim);
-    nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
-    nvgText(vg, w - th.pad, pady, FOYER_DISPLAY_VERSION, nullptr);
 }
 
 std::string clock_label() {
@@ -1140,7 +1129,13 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
         // system_splash_path's pack-first lookup.
         const int strip_h = system_splash_cache().get_or_load(vg,
             system_splash_path(sys.def->folder_name));
-        const bool has_pack_art = strip_h > 0 && !th.pack_dir.empty();
+        // Use the splash whenever it loads. The earlier
+        // `&& !pack_dir.empty()` gate meant configs whose saved
+        // theme_name no longer resolves (snow / dark / etc. — pack_dir
+        // ends up empty) skipped the image render and fell through to
+        // the colored-panel fallback, even though the alekfull splash
+        // loaded fine via system_splash_path's unconditional fallback.
+        const bool has_pack_art = strip_h > 0;
 
         if (has_pack_art) {
             // Theme-pack art: trust the asset's aspect, aspect-fill so
@@ -1632,42 +1627,117 @@ constexpr const char* kPowerMenuLabels[] = {
 };
 constexpr int kPowerMenuCount = 4;
 
+// Per-row glyph for the power menu. HOS uses small line-art icons
+// matching each option; we draw analogues: crescent moon (Sleep),
+// circular arrow (Restart), power symbol (Power off), arrow into
+// box (Hekate).
+void power_menu_glyph(NVGcontext* vg, int idx, float cx, float cy,
+                      float r, NVGcolor c) {
+    nvgSave(vg);
+    switch (idx) {
+        case 0: glyph_sleep(vg, cx, cy, r, c); break;
+        case 1: { // Restart — circular arrow
+            const float sw = r * 0.10f;
+            nvgStrokeColor(vg, c);
+            nvgStrokeWidth(vg, sw);
+            nvgLineCap(vg, NVG_ROUND);
+            nvgBeginPath(vg);
+            nvgArc(vg, cx, cy, r * 0.40f,
+                   -3.14f * 0.30f, 3.14f * 1.30f, NVG_CW);
+            nvgStroke(vg);
+            // Arrowhead.
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, cx + r * 0.40f, cy - r * 0.12f);
+            nvgLineTo(vg, cx + r * 0.55f, cy);
+            nvgLineTo(vg, cx + r * 0.30f, cy + r * 0.05f);
+            nvgClosePath(vg);
+            nvgFillColor(vg, c);
+            nvgFill(vg);
+            break;
+        }
+        case 2: glyph_power(vg, cx, cy, r, c); break;
+        case 3: { // Reboot to Hekate — arrow into rounded box
+            const float sw = r * 0.10f;
+            nvgStrokeColor(vg, c);
+            nvgStrokeWidth(vg, sw);
+            nvgLineJoin(vg, NVG_ROUND);
+            nvgBeginPath(vg);
+            nvgRoundedRect(vg, cx - r * 0.15f, cy - r * 0.40f,
+                           r * 0.55f, r * 0.80f, r * 0.10f);
+            nvgStroke(vg);
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, cx - r * 0.50f, cy);
+            nvgLineTo(vg, cx,             cy);
+            nvgStroke(vg);
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, cx - r * 0.20f, cy - r * 0.18f);
+            nvgLineTo(vg, cx,             cy);
+            nvgLineTo(vg, cx - r * 0.20f, cy + r * 0.18f);
+            nvgStroke(vg);
+            break;
+        }
+    }
+    nvgRestore(vg);
+}
+
 void draw_power_menu(NVGcontext* vg, float w, float h, const State& s) {
     if (!s.power_menu_open) return;
     const auto& th = theme();
 
+    // Dim the rest of the screen behind the panel — HOS uses a
+    // ~55 % black scrim that leaves the carousel partially visible
+    // so context isn't lost.
     nvgBeginPath(vg);
     nvgRect(vg, 0, 0, w, h);
     nvgFillColor(vg, nvgRGBAf(0, 0, 0, 0.55f));
     nvgFill(vg);
 
-    constexpr float kCardW = 720.0f;
-    constexpr float kCardH = 220.0f;
-    const float card_x = (w - kCardW) * 0.5f;
-    const float card_y = (h - kCardH) * 0.5f;
-    rrect(vg, card_x, card_y, kCardW, kCardH, 14.0f, th.bg_panel);
-    rrect_outline(vg, card_x, card_y, kCardW, kCardH, 14.0f, th.border, 1.0f);
+    // Right-side panel — full height, ~40 % screen width. HOS slides
+    // it in from the right; we just snap-render in-place. The panel
+    // is the bg_panel color (matches the unified bg in light mode,
+    // a slightly lifted shade in dark mode) with no visible border —
+    // the scrim provides the seam.
+    constexpr float kPanelW = 480.0f;
+    const float px = w - kPanelW;
+    nvgBeginPath(vg);
+    nvgRect(vg, px, 0, kPanelW, h);
+    nvgFillColor(vg, th.bg_panel);
+    nvgFill(vg);
+    // Subtle 1 px hairline on the leading edge.
+    nvgBeginPath(vg);
+    nvgRect(vg, px, 0, 1.0f, h);
+    nvgFillColor(vg, th.border);
+    nvgFill(vg);
 
-    nvgFontSize(vg, th.head_size);
-    nvgFillColor(vg, th.text_strong);
-    nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
-    nvgText(vg, card_x + kCardW * 0.5f, card_y + 22, "Power", nullptr);
-
-    constexpr float kBtnW = 156.0f;
-    constexpr float kBtnH = 64.0f;
-    constexpr float kBtnGap = 16.0f;
-    const float row_w = kBtnW * kPowerMenuCount + kBtnGap * (kPowerMenuCount - 1);
-    const float row_x = card_x + (kCardW - row_w) * 0.5f;
-    const float by    = card_y + kCardH - 32 - kBtnH;
+    // Vertical option list.
+    constexpr float kRowH    = 96.0f;
+    constexpr float kRowPadX = 32.0f;
+    constexpr float kIconR   = 22.0f;
+    const float list_top = h * 0.5f
+        - (kRowH * kPowerMenuCount) * 0.5f;
     for (int i = 0; i < kPowerMenuCount; i++) {
-        const float bx = row_x + i * (kBtnW + kBtnGap);
+        const float ry = list_top + i * kRowH;
         const bool sel = (i == s.power_menu_cursor);
-        rrect(vg, bx, by, kBtnW, kBtnH, 8.0f,
-              sel ? th.accent : th.bg_panel_hi);
-        nvgFontSize(vg, th.body_size);
-        nvgFillColor(vg, sel ? th.bg : th.text_strong);
-        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-        nvgText(vg, bx + kBtnW * 0.5f, by + kBtnH * 0.5f,
+        if (sel) {
+            // Selected row — accent fill, full width of panel
+            // (minus the leading hairline so the highlight stays
+            // inside the panel surface).
+            nvgBeginPath(vg);
+            nvgRect(vg, px + 1.0f, ry, kPanelW - 1.0f, kRowH);
+            nvgFillColor(vg, th.accent);
+            nvgFill(vg);
+        }
+        const NVGcolor row_text = sel ? th.bg : th.text_strong;
+        // Icon
+        power_menu_glyph(vg, i,
+            px + kRowPadX + kIconR, ry + kRowH * 0.5f,
+            kIconR, row_text);
+        // Label
+        nvgFontSize(vg, 28.0f);
+        nvgFillColor(vg, row_text);
+        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+        nvgText(vg, px + kRowPadX + kIconR * 2 + 24.0f,
+                ry + kRowH * 0.5f,
                 kPowerMenuLabels[i], nullptr);
     }
 }

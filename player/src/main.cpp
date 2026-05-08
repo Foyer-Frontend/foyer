@@ -203,18 +203,24 @@ int main(int argc, char** argv) {
         foyer::log::write("[player] ppsspp assets seeded=%d (sys=%s)\n",
             seeded, kSysDir);
 
-        // Force PPSSPP's native config to start in software rendering
-        // BEFORE any GL surface gets created. The libretro option
-        // ppsspp_software_rendering=enabled is honoured but only
-        // checked AFTER PPSSPP has already initialised the GLES
-        // backend — which is where the Switch nouveau Mesa 20.1
-        // GLES 3.1 stack crashes (PC into a non-code address inside
-        // PPSSPP's renderer init). Writing GraphicsBackend=4
-        // (Software) to the .ini intercepts the choice during
-        // NativeInit, before any eglCreateContext / context_reset.
-        // Only written if the file doesn't already exist so the user
-        // can flip it back via PPSSPP's in-app menu if Mesa ever
-        // gets fixed.
+        // Seed a Switch-compatible PPSSPP config: OpenGL backend at
+        // 1x PSP res with the GL features that crash Mesa 20.1 on
+        // Switch nouveau disabled. Software rendering was tried
+        // earlier and is unplayable for PSP (the user's words),
+        // so HW is the only viable path. The settings below are the
+        // smallest set that gets the GL surface up without hitting
+        // the OpenGL ES 3.1 entry points Mesa stubs to NULL.
+        //
+        // SkipBufferEffects=True            — disables the
+        //   render-to-framebuffer post-process passes that allocate
+        //   GL_ARB_framebuffer_object resources (Mesa returns
+        //   NULL function pointers for some of these).
+        // FrameBufferingMode=0               — keep the framebuffer
+        //   pipeline simple (no buffered/threaded swap).
+        // InternalResolution=1               — native PSP 480x272;
+        //   higher upscale modes need GL features Mesa lacks.
+        // GpuFeatureFlags                    — explicitly NOT set
+        //   so PPSSPP doesn't probe optional GL extensions.
         const std::string ppsspp_ini =
             std::string{kSysDir} + "/PSP/SYSTEM/ppsspp.ini";
         struct stat st{};
@@ -224,13 +230,21 @@ int main(int argc, char** argv) {
             if (auto* f = std::fopen(ppsspp_ini.c_str(), "w")) {
                 std::fprintf(f,
                     "[Graphics]\n"
-                    "GraphicsBackend = 4\n"   // 4 = Software
-                    "SoftwareRenderer = True\n"
-                    "InternalResolution = 1\n"
-                    "FrameSkip = 0\n");
+                    "GraphicsBackend = 0\n"        // 0 = OpenGL
+                    "SoftwareRenderer = False\n"
+                    "InternalResolution = 1\n"     // native PSP res
+                    "SkipBufferEffects = True\n"
+                    "DisableSlowFramebufEffects = True\n"
+                    "FrameBufferingMode = 0\n"
+                    "FrameSkip = 0\n"
+                    "VertexCache = False\n"
+                    "TextureScalingLevel = 1\n"
+                    "TextureFiltering = 1\n"
+                    "BloomHack = 0\n"
+                    "FullScreen = True\n");
                 std::fclose(f);
                 foyer::log::write(
-                    "[player] wrote ppsspp.ini forcing software render\n");
+                    "[player] wrote ppsspp.ini (HW with Mesa-safe defaults)\n");
             }
         }
         fe.set_system_directory(kSysDir);
