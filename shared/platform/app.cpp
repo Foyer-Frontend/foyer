@@ -371,6 +371,13 @@ void userAppInit(void) {
     if (R_FAILED(rc = plInitialize(PlServiceType_User))) diagAbortWithResult(rc);
     if (R_FAILED(rc = nifmInitialize(NifmServiceType_User))) diagAbortWithResult(rc);
     if (R_FAILED(rc = setInitialize()))                  diagAbortWithResult(rc);
+    // 0.5.0 chrome reads battery + the active user's avatar/nickname.
+    // Both services are application-tier under hbloader so init can't
+    // fail short of a system at fault — diag-abort matches the rest of
+    // userAppInit's contract.
+    if (R_FAILED(rc = psmInitialize()))                  diagAbortWithResult(rc);
+    if (R_FAILED(rc = accountInitialize(AccountServiceType_Application)))
+        diagAbortWithResult(rc);
 
     // BSD sockets — needed by libcurl for the scrapers + RetroAchievements.
     // Use the applet-friendly profile so foyer plays nicely under hbloader.
@@ -398,6 +405,8 @@ void userAppInit(void) {
 
 void userAppExit(void) {
     socketExit();
+    accountExit();
+    psmExit();
     setExit();
     nifmExit();
     plExit();

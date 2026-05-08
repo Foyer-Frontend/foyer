@@ -32,6 +32,7 @@
 #include "scrapers/accounts.hpp"
 #include "theme.hpp"
 #include "views.hpp"
+#include "hos_status.hpp"
 #include "launch.hpp"
 #include "mtp.hpp"
 #include "seed_assets.hpp"
@@ -296,6 +297,12 @@ int main(int argc, char** argv) {
     boot_status = foyer::i18n::tr(foyer::i18n::StringId::BootReady);
     app.tick();
 
+    // 0.5.0 HOS chrome — load the active user's avatar/nickname and
+    // prime the battery + wifi cache. After this the per-frame poll()
+    // is a cheap debounced refresh; the avatar JPEG decode (the only
+    // expensive piece) only runs once.
+    foyer::browser::hos_status::init(app.vg());
+
     foyer::browser::State state;
 
     // Session restore — only when we got chained back from a player
@@ -344,6 +351,12 @@ int main(int argc, char** argv) {
     while (app.tick()) {
         const auto held = padGetButtons(&app.pad());
         const auto down = padGetButtonsDown(&app.pad());
+
+        // Refresh the chrome status reads (battery / wifi). Internally
+        // debounced to once per second so this is cheap to call every
+        // frame — keeps the top-bar values current without a separate
+        // timer hook.
+        foyer::browser::hos_status::poll();
 
         foyer::browser::update(state, lib, held, down,
             app.touch(), (float)app.width(), (float)app.height());

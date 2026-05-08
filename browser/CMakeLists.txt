@@ -23,6 +23,7 @@ add_executable(foyer
     src/seed_assets.cpp
     src/session.cpp
     src/boot_splash.cpp
+    src/hos_status.cpp
 )
 
 target_link_libraries(foyer PRIVATE foyer_shared libhaze)

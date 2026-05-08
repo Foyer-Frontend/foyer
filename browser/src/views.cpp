@@ -7,6 +7,7 @@
 #include "library/config.hpp"
 #include "library/per_game.hpp"
 #include "library/game_meta.hpp"
+#include "hos_status.hpp"
 #include "library/shader_installer.hpp"
 #include "library/skipped_versions.hpp"
 #include "library/updates.hpp"
@@ -466,8 +467,7 @@ void hos_circle(NVGcontext* vg, float cx, float cy, float r,
 void draw_hos_top_bar(NVGcontext* vg, float w) {
     const auto& th = theme();
 
-    // Bar background — same panel color as vanilla so the chrome layer
-    // stays visually unified.
+    // Bar background.
     nvgBeginPath(vg);
     nvgRect(vg, 0, 0, w, kHosTopBarH);
     nvgFillColor(vg, th.bg_panel);
@@ -477,58 +477,104 @@ void draw_hos_top_bar(NVGcontext* vg, float w) {
     nvgFillColor(vg, th.border);
     nvgFill(vg);
 
-    // Profile slot: circular avatar placeholder + nickname text. The
-    // libnx wiring (accountGetLastOpenedUser + accountProfileLoadImage)
-    // arrives in Phase 1; this paints a flat accent disc so the slot
-    // is visible on hardware tests.
+    // Profile slot: avatar disc + nickname pulled from the active
+    // libnx profile (see hos_status::init at startup). When no avatar
+    // could be loaded we fall back to a flat accent disc + "Player".
     constexpr float kAvatarR = 24.0f;
     const float avx = th.pad + kAvatarR;
     const float avy = kHosTopBarH * 0.5f;
-    hos_circle(vg, avx, avy, kAvatarR, th.bg_panel_hi, th.border);
+    const int   av_handle = hos_status::avatar_handle();
+    if (av_handle > 0) {
+        // Image painted as a circular pattern: clip to the disc, then
+        // fill with the JPEG scaled to fit. The 1.5 px outline goes
+        // on top so the seam against the panel reads cleanly.
+        nvgSave(vg);
+        nvgBeginPath(vg);
+        nvgCircle(vg, avx, avy, kAvatarR);
+        auto pat = nvgImagePattern(vg, avx - kAvatarR, avy - kAvatarR,
+                                   kAvatarR * 2, kAvatarR * 2,
+                                   0.0f, av_handle, 1.0f);
+        nvgFillPaint(vg, pat);
+        nvgFill(vg);
+        nvgRestore(vg);
+        nvgBeginPath(vg);
+        nvgCircle(vg, avx, avy, kAvatarR);
+        nvgStrokeColor(vg, th.border);
+        nvgStrokeWidth(vg, 1.5f);
+        nvgStroke(vg);
+    } else {
+        hos_circle(vg, avx, avy, kAvatarR, th.bg_panel_hi, th.border);
+    }
     nvgFontSize(vg, th.head_size);
     nvgFillColor(vg, th.text_strong);
     nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
-    nvgText(vg, avx + kAvatarR + 14.0f, avy, "Player", nullptr);
+    const auto& nick = hos_status::nickname();
+    nvgText(vg, avx + kAvatarR + 14.0f, avy,
+            nick.empty() ? "Player" : nick.c_str(), nullptr);
 
-    // Status cluster (right): WiFi / battery / clock placeholders. All
-    // three render right-to-left so adding/removing the charging glyph
-    // in Phase 1 won't reflow the rest of the cluster.
+    // Status cluster (right) right-to-left: clock, battery, wifi.
+
+    // Clock — already localized via clock_label().
     nvgFontSize(vg, th.body_size);
     nvgFillColor(vg, th.text);
     nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
     const std::string clock = clock_label();
     nvgText(vg, w - th.pad, avy, clock.c_str(), nullptr);
 
-    // Battery placeholder: a rounded rect with a small nub on the right
-    // edge. Phase 1 wires psmGetBatteryChargePercentage to fill the
-    // bar; for now it's drawn at ~70 % so the layout reviews well.
+    // Battery: outline + filled portion proportional to charge. The
+    // small nub on the right edge sells it as a battery icon at a
+    // glance. Charging adds an accent overlay (lightning bolt — drawn
+    // as a thin '/' through the center for now; a glyph font swap
+    // comes later).
     constexpr float kBattW = 38.0f;
     constexpr float kBattH = 16.0f;
     const float battx = w - th.pad - 64.0f - kBattW;
     const float batty = avy - kBattH * 0.5f;
     rrect_outline(vg, battx, batty, kBattW, kBattH, 4.0f, th.text, 1.5f);
-    rrect(vg, battx + 3, batty + 3, (kBattW - 6) * 0.7f, kBattH - 6,
-          1.5f, th.text);
+    int pct = hos_status::battery_pct();
+    if (pct < 0)   pct = 0;
+    if (pct > 100) pct = 100;
+    const float fillw = (kBattW - 6) * (pct / 100.0f);
+    if (fillw > 0.0f) {
+        const NVGcolor c = (pct <= 15 && !hos_status::charging())
+            ? nvgRGBA(0xE0, 0x4A, 0x4A, 0xFF) : th.text;
+        rrect(vg, battx + 3, batty + 3, fillw, kBattH - 6, 1.5f, c);
+    }
     nvgBeginPath(vg);
     nvgRect(vg, battx + kBattW, batty + 4, 3.0f, kBattH - 8);
     nvgFillColor(vg, th.text);
     nvgFill(vg);
+    if (hos_status::charging()) {
+        // Lightning bolt as a thin diagonal across the center.
+        nvgBeginPath(vg);
+        nvgMoveTo(vg, battx + kBattW * 0.5f - 3.0f, batty + 2);
+        nvgLineTo(vg, battx + kBattW * 0.5f + 1.0f, batty + kBattH * 0.5f);
+        nvgLineTo(vg, battx + kBattW * 0.5f - 2.0f, batty + kBattH * 0.5f);
+        nvgLineTo(vg, battx + kBattW * 0.5f + 3.0f, batty + kBattH - 2);
+        nvgStrokeColor(vg, th.accent);
+        nvgStrokeWidth(vg, 1.5f);
+        nvgStroke(vg);
+    }
 
-    // WiFi placeholder: three nested arcs for the signal triangle.
+    // WiFi: three nested arcs forming a signal triangle. Strength
+    // 0..3 controls how many arcs render lit; 0 = disconnected (just
+    // a dim base dot, no arcs).
     const float wifix = battx - 32.0f;
     const float wifiy = avy + 4.0f;
-    nvgStrokeColor(vg, th.text);
+    const int   strength = hos_status::wifi_connected()
+                             ? hos_status::wifi_strength() : 0;
     for (int i = 1; i <= 3; i++) {
         const float r = 4.0f * i;
         nvgBeginPath(vg);
         nvgArc(vg, wifix, wifiy, r,
                -3.14f * 0.75f, -3.14f * 0.25f, NVG_CW);
+        nvgStrokeColor(vg, (i <= strength) ? th.text : th.border);
         nvgStrokeWidth(vg, 1.8f);
         nvgStroke(vg);
     }
     nvgBeginPath(vg);
     nvgCircle(vg, wifix, wifiy, 1.5f);
-    nvgFillColor(vg, th.text);
+    nvgFillColor(vg, hos_status::wifi_connected() ? th.text : th.border);
     nvgFill(vg);
 }
 
