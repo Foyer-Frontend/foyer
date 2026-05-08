@@ -1,4 +1,30 @@
 {
-    "title":             "foyer",
-    "phase_a_subtitle":  "Phase A: borealis bring-up · 0.6.0-alpha"
+    "title":              "foyer",
+    "phase_a_subtitle":   "0.6.0 alpha · borealis preview",
+
+    "actions": {
+        "open_settings":  "Settings",
+        "back":           "Back"
+    },
+
+    "settings": {
+        "title":          "Settings",
+        "general":        "General",
+        "language":       "Language",
+        "language_follow_system": "Follow system",
+        "theme_color":    "Theme color",
+        "color": {
+            "light":      "Light",
+            "dark":       "Dark",
+            "snow":       "Snow",
+            "nord":       "Nord",
+            "dracula":    "Dracula",
+            "emerald":    "Emerald"
+        }
+    },
+
+    "home": {
+        "loading_systems": "Loading systems…",
+        "empty":           "No systems yet — drop ROMs into /foyer/roms"
+    }
 }

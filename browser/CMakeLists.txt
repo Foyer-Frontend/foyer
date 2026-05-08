@@ -22,6 +22,7 @@ FetchContent_MakeAvailable(libhaze)
 add_executable(foyer
     src/main.cpp
     src/home_activity.cpp
+    src/settings_tab.cpp
     src/self_update.cpp
 
     # borealis Switch platform glue (matches borealis_template demo).
@@ -56,7 +57,7 @@ target_compile_definitions(foyer PRIVATE
 
 set_target_properties(foyer PROPERTIES
     C_STANDARD   23
-    CXX_STANDARD 17)  # borealis requires C++17 minimum
+    CXX_STANDARD 20)  # std::span via system_db; borealis itself is C++20
 
 # Embed any blobs from assets/embed/ into the binary (placeholder for now).
 target_compile_options(foyer PRIVATE

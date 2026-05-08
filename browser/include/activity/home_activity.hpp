@@ -4,11 +4,10 @@
 
 namespace foyer::browser {
 
-// Home view. Phase A shipped this as a centred-label stub. Phase B
-// adds a status cluster (clock · wifi · battery) at the top-right of
-// the content area, mirroring HOS's launcher chrome instead of brls's
-// stock bottom-bar placement. Phase C will replace the central area
-// with the system carousel.
+// Home view: top bar (status cluster + Settings button) + horizontal
+// system carousel + bottom hints. Phase C populates the carousel from
+// foyer's system_db; library scan integration arrives in a later
+// alpha when ROMs feed into per-tile game counts.
 class HomeActivity : public brls::Activity
 {
 public:
@@ -16,10 +15,15 @@ public:
 
     void onContentAvailable() override;
 
-    BRLS_BIND(brls::Label, clock, "foyer/clock");
+    BRLS_BIND(brls::Label, clock,        "foyer/clock");
+    BRLS_BIND(brls::Box,   carousel,     "foyer/carousel");
+    BRLS_BIND(brls::Box,   btnSettings,  "foyer/btn_settings");
 
 private:
     brls::RepeatingTask* clockTask = nullptr;
+
+    void populateCarousel();
+    void wireSettingsButton();
 };
 
 }  // namespace foyer::browser

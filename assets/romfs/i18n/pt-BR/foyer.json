@@ -1,0 +1,30 @@
+{
+    "title":              "foyer",
+    "phase_a_subtitle":   "0.6.0 alfa · prévia do borealis",
+
+    "actions": {
+        "open_settings":  "Ajustes",
+        "back":           "Voltar"
+    },
+
+    "settings": {
+        "title":          "Ajustes",
+        "general":        "Geral",
+        "language":       "Idioma",
+        "language_follow_system": "Seguir o sistema",
+        "theme_color":    "Cor do tema",
+        "color": {
+            "light":      "Claro",
+            "dark":       "Escuro",
+            "snow":       "Neve",
+            "nord":       "Nord",
+            "dracula":    "Dracula",
+            "emerald":    "Esmeralda"
+        }
+    },
+
+    "home": {
+        "loading_systems": "Carregando sistemas…",
+        "empty":           "Nenhum sistema ainda — coloque ROMs em /foyer/roms"
+    }
+}

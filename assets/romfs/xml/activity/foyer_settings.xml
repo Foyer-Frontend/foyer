@@ -1,0 +1,7 @@
+<brls:AppletFrame
+    title="@i18n/foyer/settings/title"
+    iconInterpolation="linear">
+
+    <FoyerSettingsTab />
+
+</brls:AppletFrame>

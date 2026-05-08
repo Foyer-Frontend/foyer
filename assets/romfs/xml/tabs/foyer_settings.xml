@@ -1,0 +1,42 @@
+<!--
+    foyer Settings tab. Phase B drop ships only Language and Theme color.
+    The other ~50 settings (display tweaks, scrapers, retroachievements,
+    system hide list, library tools, etc.) re-land cell-by-cell in
+    subsequent alphas.
+-->
+<brls:Box
+    width="auto"
+    height="auto">
+
+    <brls:ScrollingFrame
+        width="auto"
+        height="auto"
+        axis="column"
+        alignItems="stretch"
+        scrollingBehavior="centered"
+        grow="1.0">
+
+        <brls:Box
+            width="10000"
+            height="auto"
+            axis="column"
+            alignItems="stretch"
+            paddingTop="@style/brls/sidebar/padding_top"
+            paddingRight="@style/brls/sidebar/padding_right"
+            paddingBottom="@style/brls/sidebar/padding_bottom"
+            paddingLeft="@style/brls/sidebar/padding_left">
+
+            <brls:Header
+                title="@i18n/foyer/settings/general" />
+
+            <brls:SelectorCell
+                id="foyer/settings/language" />
+
+            <brls:SelectorCell
+                id="foyer/settings/theme_color" />
+
+        </brls:Box>
+
+    </brls:ScrollingFrame>
+
+</brls:Box>

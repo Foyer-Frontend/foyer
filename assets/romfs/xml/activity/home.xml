@@ -1,17 +1,12 @@
 <!--
     foyer Home — borealis edition.
 
-    AppletFrame's stock layout puts wifi/battery/clock in the BottomBar at
-    the bottom-left. HOS's launcher has the status cluster at the
-    top-right, so we replace the frame with our own Box and embed brls's
-    individual status views in a top bar of our own. Hints stay at the
-    bottom (default brls hint bar).
+    Top bar: profile placeholder · Settings button · spacer · status
+    cluster (clock · wifi · battery, top-right).
 
-    Phase order in the top row mirrors the HOS launcher we're aiming for:
-    profiles cluster (left, wired in Phase F) · spacer · clock · wifi ·
-    battery (right). The clock label updates itself via brls timer ticks
-    once we feed it; for the alpha we leave it blank and let the user see
-    just the wifi + battery icons (battery shows percentage built-in).
+    Centre: horizontal system carousel (Phase C). Populated in
+    HomeActivity::onContentAvailable() from foyer's system_db so
+    the data side is decoupled from XML.
 -->
 <brls:Box
     width="auto"
@@ -19,7 +14,7 @@
     grow="1.0"
     axis="column">
 
-    <!-- Top bar: profiles | spacer | clock · wifi · battery -->
+    <!-- Top bar -->
     <brls:Box
         width="auto"
         height="80"
@@ -29,9 +24,32 @@
         paddingRight="@style/brls/hints/footer_padding_sides">
 
         <!-- Profile cluster placeholder (Phase F wires real avatars). -->
-        <brls:Box width="auto" height="auto" grow="1.0" axis="row" />
+        <brls:Box
+            id="foyer/profiles"
+            width="auto"
+            height="auto"
+            axis="row"
+            alignItems="center" />
 
-        <!-- Status cluster — order left → right: clock, wifi, battery. -->
+        <brls:Box width="auto" height="auto" grow="1.0" />
+
+        <!-- Settings button — clicking pushes SettingsActivity. -->
+        <brls:Box
+            id="foyer/btn_settings"
+            width="auto"
+            height="auto"
+            axis="row"
+            alignItems="center"
+            focusable="true"
+            highlightCornerRadius="4"
+            marginRight="20">
+
+            <brls:Label
+                text="@i18n/foyer/actions/open_settings"
+                fontSize="22" />
+        </brls:Box>
+
+        <!-- Status cluster: clock · wifi · battery (left → right) -->
         <brls:Box
             width="auto"
             height="auto"
@@ -58,27 +76,24 @@
         </brls:Box>
     </brls:Box>
 
-    <!-- Central content area: Phase C will host the tile carousel here.
-         For alpha.3 we just centre the version banner so we can confirm
-         the new top-bar layout renders correctly. -->
-    <brls:Box
+    <!-- System carousel — horizontal scrolling row, populated in code. -->
+    <brls:ScrollingFrame
+        id="foyer/carousel_scroll"
         width="auto"
         height="auto"
         grow="1.0"
-        axis="column"
-        justifyContent="center"
-        alignItems="center">
+        axis="row"
+        scrollingBehavior="centered">
 
-        <brls:Label
-            text="foyer 0.6.0"
-            fontSize="48"
-            textColor="@theme/brls/text" />
+        <brls:Box
+            id="foyer/carousel"
+            width="auto"
+            height="auto"
+            axis="row"
+            alignItems="center"
+            paddingLeft="32"
+            paddingRight="32" />
 
-        <brls:Label
-            text="@i18n/foyer/phase_a_subtitle"
-            fontSize="20"
-            marginTop="16"
-            textColor="@theme/brls/text_disabled" />
-    </brls:Box>
+    </brls:ScrollingFrame>
 
 </brls:Box>

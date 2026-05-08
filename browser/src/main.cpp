@@ -14,6 +14,7 @@
 #include <string_view>
 
 #include "activity/home_activity.hpp"
+#include "tab/settings_tab.hpp"
 #include "self_update.hpp"
 
 #include "i18n/i18n.hpp"
@@ -73,6 +74,11 @@ int main(int argc, char* argv[])
 
     brls::Application::createWindow("foyer/title"_i18n);
     brls::Application::setGlobalQuit(false);
+
+    // Custom XML views referenced from XML layouts must register before
+    // the first activity push so the inflater finds them.
+    brls::Application::registerXMLView(
+        "FoyerSettingsTab", ::foyer::browser::SettingsTab::create);
 
     brls::Application::pushActivity(new ::foyer::browser::HomeActivity());
 
