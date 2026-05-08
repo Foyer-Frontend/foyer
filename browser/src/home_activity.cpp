@@ -1,5 +1,6 @@
 #include "activity/home_activity.hpp"
 #include "activity/settings_activity.hpp"
+#include "activity/system_activity.hpp"
 
 #include "library/system_db.hpp"
 
@@ -15,28 +16,46 @@ namespace foyer::browser {
 
 namespace {
 
-// One carousel tile. Pure image — the alekfull-nx splash fills the
-// tile entirely, no text overlay. Tiles for systems without a splash
-// fall back to a flat-coloured rectangle (no label).
+// One carousel tile. Programmatic-only Image (no XML — the demo uses
+// the image="@res/..." attribute and CaptionedImage forwards it to
+// brls::Image::setImageFromRes; we replicate that in code so we can
+// feed the path from foyer's system_db). Image is sized in absolute
+// pixels because percentage sizing relies on yoga having computed
+// the parent's size, which doesn't always happen before draw().
 class SystemTile : public brls::Box {
 public:
-    SystemTile(std::string_view folder, std::string_view /*label*/) {
-        this->setWidth(220.0f);
-        this->setHeight(220.0f);
-        this->setMargins(0.0f, 12.0f, 0.0f, 12.0f);
+    SystemTile(std::string_view folder, std::string_view label) {
+        constexpr float kSize = 280.0f;
+        this->setWidth(kSize);
+        this->setHeight(kSize);
+        this->setMargins(0.0f, 14.0f, 0.0f, 14.0f);
         this->setFocusable(true);
         this->setHighlightCornerRadius(6.0f);
         this->setBackgroundColor(nvgRGB(40, 50, 70));
 
         auto* img = new brls::Image();
-        img->setWidthPercentage(100.0f);
-        img->setHeightPercentage(100.0f);
-        img->setScalingType(brls::ImageScalingType::FILL);
+        img->setWidth(kSize);
+        img->setHeight(kSize);
+        img->setScalingType(brls::ImageScalingType::FIT);
         const std::string path =
             "themes/foyer/systems/" + std::string(folder) + "/splash.png";
         img->setImageFromRes(path);
         this->addView(img);
+
+        // Click → push SystemActivity for this system. Phase D ships
+        // the stub; library scan + game list arrive in alpha.8.
+        m_folder = folder;
+        m_label  = label;
+        this->registerClickAction([this](brls::View*) {
+            brls::Application::pushActivity(
+                new SystemActivity(m_folder, m_label));
+            return true;
+        });
     }
+
+private:
+    std::string m_folder;
+    std::string m_label;
 };
 
 class ClockTask : public brls::RepeatingTask {
