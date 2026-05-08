@@ -101,7 +101,9 @@
                 id="foyer/carousel"
                 width="auto"
                 height="auto"
-                axis="row" />
+                axis="row"
+                paddingLeft="48"
+                paddingRight="48" />
 
         </brls:HScrollingFrame>
 
