@@ -185,6 +185,15 @@ struct State {
     // service-call surface.
     bool        request_sleep            = false;
     bool        request_power_off        = false;
+    // Profile switcher modal state. Opened via Y on Home; A picks the
+    // focused profile; B cancels. The cursor walks the secondary
+    // avatars (active user is shown but not selectable since it's
+    // already active).
+    bool        profile_switcher_open    = false;
+    int         profile_switcher_cursor  = 0;
+    // Pending switch the main loop drains so the libnx call happens
+    // outside the input handler.
+    int         pending_profile_switch   = -1;
     // When true, install_cores is invoked with `force=true`, bypassing
     // the version-match skip. Used by the explicit "Re-install" path.
     // Cleared after the install runs.

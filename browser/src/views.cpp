@@ -477,40 +477,45 @@ void draw_hos_top_bar(NVGcontext* vg, float w) {
     nvgFillColor(vg, th.border);
     nvgFill(vg);
 
-    // Profile slot: avatar disc + nickname pulled from the active
-    // libnx profile (see hos_status::init at startup). When no avatar
-    // could be loaded we fall back to a flat accent disc + "Player".
-    constexpr float kAvatarR = 24.0f;
-    const float avx = th.pad + kAvatarR;
+    // Profile slot: row of avatars, mirroring HOS. Active user is the
+    // largest disc on the left; remaining users render at a smaller
+    // size beside it. No nickname text — HOS doesn't display a name
+    // until the user enters the profile-detail view. Pressing Y on
+    // Home opens the profile switcher modal.
+    constexpr float kAvatarR     = 24.0f;
+    constexpr float kSecondaryR  = 14.0f;  // smaller disc per other user
+    constexpr float kAvatarGap   = 8.0f;
     const float avy = kHosTopBarH * 0.5f;
-    const int   av_handle = hos_status::avatar_handle();
-    if (av_handle > 0) {
-        // Image painted as a circular pattern: clip to the disc, then
-        // fill with the JPEG scaled to fit. The 1.5 px outline goes
-        // on top so the seam against the panel reads cleanly.
-        nvgSave(vg);
-        nvgBeginPath(vg);
-        nvgCircle(vg, avx, avy, kAvatarR);
-        auto pat = nvgImagePattern(vg, avx - kAvatarR, avy - kAvatarR,
-                                   kAvatarR * 2, kAvatarR * 2,
-                                   0.0f, av_handle, 1.0f);
-        nvgFillPaint(vg, pat);
-        nvgFill(vg);
-        nvgRestore(vg);
-        nvgBeginPath(vg);
-        nvgCircle(vg, avx, avy, kAvatarR);
-        nvgStrokeColor(vg, th.border);
-        nvgStrokeWidth(vg, 1.5f);
-        nvgStroke(vg);
-    } else {
-        hos_circle(vg, avx, avy, kAvatarR, th.bg_panel_hi, th.border);
+    auto draw_avatar = [&](float cx, float r, int handle) {
+        if (handle > 0) {
+            nvgSave(vg);
+            nvgBeginPath(vg);
+            nvgCircle(vg, cx, avy, r);
+            auto pat = nvgImagePattern(vg, cx - r, avy - r, r * 2, r * 2,
+                                       0.0f, handle, 1.0f);
+            nvgFillPaint(vg, pat);
+            nvgFill(vg);
+            nvgRestore(vg);
+            nvgBeginPath(vg);
+            nvgCircle(vg, cx, avy, r);
+            nvgStrokeColor(vg, th.border);
+            nvgStrokeWidth(vg, 1.5f);
+            nvgStroke(vg);
+        } else {
+            hos_circle(vg, cx, avy, r, th.bg_panel_hi, th.border);
+        }
+    };
+    const float ax0 = th.pad + kAvatarR;
+    draw_avatar(ax0, kAvatarR, hos_status::avatar_handle());
+    // Secondary avatars to the right of the active one — up to 3 more
+    // so the cluster doesn't overflow the top bar on consoles with
+    // every Switch profile slot used.
+    const int sec_count = std::min(3, hos_status::other_avatar_count());
+    for (int i = 0; i < sec_count; i++) {
+        const float cx = ax0 + kAvatarR + kAvatarGap
+            + kSecondaryR + i * (kSecondaryR * 2 + kAvatarGap);
+        draw_avatar(cx, kSecondaryR, hos_status::other_avatar_handle(i));
     }
-    nvgFontSize(vg, th.head_size);
-    nvgFillColor(vg, th.text_strong);
-    nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
-    const auto& nick = hos_status::nickname();
-    nvgText(vg, avx + kAvatarR + 14.0f, avy,
-            nick.empty() ? "Player" : nick.c_str(), nullptr);
 
     // Status cluster (right) right-to-left: clock, battery, wifi.
 
@@ -579,14 +584,7 @@ void draw_hos_top_bar(NVGcontext* vg, float w) {
 }
 
 // Action-row layout helpers. The row supports two visual styles
-// switchable via the Settings → Display → "Action row dock" toggle:
-//   - Floating circles  (older HOS firmware): individual circle
-//                       buttons separated by gaps, with a thin
-//                       border line above the row.
-//   - Dock pill         (newer HOS firmware): every button sits inside
-//                       a single rounded-pill background; the pill
-//                       has a soft drop shadow and a subtle border.
-// Both render the same 7 buttons in the same order.
+// switchable via the Settings → Display → "Action row dock" toggle.
 constexpr int kHosActionCount = 7;
 const char* hos_action_label(int i) {
     switch (i) {
@@ -599,6 +597,193 @@ const char* hos_action_label(int i) {
         case 6: return "Power";
     }
     return "";
+}
+
+// Vector glyphs for the action-row buttons. Each is hand-drawn with
+// nanovg paths so they stay sharp at any size and don't depend on a
+// glyph font. All accept a center (cx, cy), the button radius `r`, and
+// a stroke color that contrasts against the disc fill (th.bg when
+// focused, th.text otherwise). Stroke width scales with the button
+// radius so the icons read consistently if button sizing ever changes.
+void glyph_news(NVGcontext* vg, float cx, float cy, float r, NVGcolor c) {
+    const float sw = r * 0.10f;
+    nvgStrokeColor(vg, c);
+    nvgStrokeWidth(vg, sw);
+    nvgLineJoin(vg, NVG_ROUND);
+    // Speech bubble: rounded rect with a small tail at the bottom-left.
+    const float bx = cx - r * 0.55f, by = cy - r * 0.42f;
+    const float bw = r * 1.10f, bh = r * 0.78f;
+    nvgBeginPath(vg);
+    nvgRoundedRect(vg, bx, by, bw, bh, r * 0.16f);
+    nvgStroke(vg);
+    nvgBeginPath(vg);
+    nvgMoveTo(vg, bx + bw * 0.22f, by + bh);
+    nvgLineTo(vg, bx + bw * 0.16f, by + bh + r * 0.28f);
+    nvgLineTo(vg, bx + bw * 0.42f, by + bh);
+    nvgClosePath(vg);
+    nvgFillColor(vg, c);
+    nvgFill(vg);
+    // Two text lines inside the bubble.
+    for (int i = 0; i < 2; i++) {
+        nvgBeginPath(vg);
+        nvgMoveTo(vg, bx + bw * 0.18f, by + bh * (0.34f + i * 0.30f));
+        nvgLineTo(vg, bx + bw * 0.82f, by + bh * (0.34f + i * 0.30f));
+        nvgStroke(vg);
+    }
+}
+
+void glyph_eshop(NVGcontext* vg, float cx, float cy, float r, NVGcolor c) {
+    const float sw = r * 0.10f;
+    nvgStrokeColor(vg, c);
+    nvgStrokeWidth(vg, sw);
+    nvgLineJoin(vg, NVG_ROUND);
+    // Shopping bag: trapezoid body + two handle arcs above.
+    const float bw = r * 1.05f, bh = r * 0.85f;
+    const float bx = cx - bw * 0.5f;
+    const float by = cy - bh * 0.30f;
+    nvgBeginPath(vg);
+    nvgMoveTo(vg, bx + bw * 0.12f, by);
+    nvgLineTo(vg, bx + bw * 0.88f, by);
+    nvgLineTo(vg, bx + bw,         by + bh);
+    nvgLineTo(vg, bx,              by + bh);
+    nvgClosePath(vg);
+    nvgStroke(vg);
+    // Two handle arcs.
+    nvgBeginPath(vg);
+    nvgArc(vg, bx + bw * 0.32f, by, r * 0.20f, 3.14f, 0.0f, NVG_CW);
+    nvgStroke(vg);
+    nvgBeginPath(vg);
+    nvgArc(vg, bx + bw * 0.68f, by, r * 0.20f, 3.14f, 0.0f, NVG_CW);
+    nvgStroke(vg);
+}
+
+void glyph_album(NVGcontext* vg, float cx, float cy, float r, NVGcolor c) {
+    const float sw = r * 0.10f;
+    nvgStrokeColor(vg, c);
+    nvgStrokeWidth(vg, sw);
+    nvgLineJoin(vg, NVG_ROUND);
+    // Picture: rounded rect frame, mountain triangle inside, small sun.
+    const float bw = r * 1.10f, bh = r * 0.85f;
+    const float bx = cx - bw * 0.5f;
+    const float by = cy - bh * 0.5f;
+    nvgBeginPath(vg);
+    nvgRoundedRect(vg, bx, by, bw, bh, r * 0.10f);
+    nvgStroke(vg);
+    // Sun.
+    nvgBeginPath(vg);
+    nvgCircle(vg, bx + bw * 0.30f, by + bh * 0.32f, r * 0.10f);
+    nvgFillColor(vg, c);
+    nvgFill(vg);
+    // Mountain.
+    nvgBeginPath(vg);
+    nvgMoveTo(vg, bx + bw * 0.10f, by + bh * 0.85f);
+    nvgLineTo(vg, bx + bw * 0.45f, by + bh * 0.42f);
+    nvgLineTo(vg, bx + bw * 0.65f, by + bh * 0.62f);
+    nvgLineTo(vg, bx + bw * 0.80f, by + bh * 0.50f);
+    nvgLineTo(vg, bx + bw * 0.92f, by + bh * 0.85f);
+    nvgClosePath(vg);
+    nvgStroke(vg);
+}
+
+void glyph_controllers(NVGcontext* vg, float cx, float cy, float r, NVGcolor c) {
+    const float sw = r * 0.10f;
+    nvgStrokeColor(vg, c);
+    nvgStrokeWidth(vg, sw);
+    nvgLineJoin(vg, NVG_ROUND);
+    // Two joycons stylised as rounded rectangles touching at the
+    // center, with a circle (analog stick) in the middle of each.
+    const float gh = r * 0.92f;
+    const float gw = r * 0.55f;
+    nvgBeginPath(vg);
+    nvgRoundedRect(vg, cx - gw, cy - gh * 0.5f, gw, gh,
+                   r * 0.20f);
+    nvgStroke(vg);
+    nvgBeginPath(vg);
+    nvgRoundedRect(vg, cx, cy - gh * 0.5f, gw, gh, r * 0.20f);
+    nvgStroke(vg);
+    // Stick / d-pad indicators.
+    nvgBeginPath(vg);
+    nvgCircle(vg, cx - gw * 0.5f, cy, r * 0.13f);
+    nvgFillColor(vg, c);
+    nvgFill(vg);
+    nvgBeginPath(vg);
+    nvgCircle(vg, cx + gw * 0.5f, cy, r * 0.13f);
+    nvgFill(vg);
+}
+
+void glyph_settings(NVGcontext* vg, float cx, float cy, float r, NVGcolor c) {
+    const float sw = r * 0.10f;
+    nvgStrokeColor(vg, c);
+    nvgStrokeWidth(vg, sw);
+    // Gear: 8 short notches arranged around a ring; small inner
+    // circle for the center hole.
+    constexpr int kNotches = 8;
+    const float r_inner = r * 0.34f;
+    const float r_outer = r * 0.50f;
+    for (int i = 0; i < kNotches; i++) {
+        const float a = (3.14159f * 2.0f / kNotches) * i;
+        const float ca = std::cos(a), sa = std::sin(a);
+        nvgBeginPath(vg);
+        nvgMoveTo(vg, cx + ca * r_inner, cy + sa * r_inner);
+        nvgLineTo(vg, cx + ca * r_outer, cy + sa * r_outer);
+        nvgStroke(vg);
+    }
+    nvgBeginPath(vg);
+    nvgCircle(vg, cx, cy, r_inner);
+    nvgStroke(vg);
+    nvgBeginPath(vg);
+    nvgCircle(vg, cx, cy, r * 0.13f);
+    nvgFillColor(vg, c);
+    nvgFill(vg);
+}
+
+void glyph_sleep(NVGcontext* vg, float cx, float cy, float r, NVGcolor c) {
+    const float sw = r * 0.10f;
+    nvgStrokeColor(vg, c);
+    nvgStrokeWidth(vg, sw);
+    // Crescent moon: full circle MINUS an offset circle painted as bg
+    // to carve out the crescent. We can't compose path ops cheaply in
+    // nanovg, so draw the disc filled with the disc color, then over-
+    // paint with bg color.
+    nvgFillColor(vg, c);
+    nvgBeginPath(vg);
+    nvgCircle(vg, cx + r * 0.05f, cy, r * 0.45f);
+    nvgFill(vg);
+    nvgFillColor(vg, theme().bg_panel_hi);
+    nvgBeginPath(vg);
+    nvgCircle(vg, cx + r * 0.20f, cy - r * 0.12f, r * 0.42f);
+    nvgFill(vg);
+}
+
+void glyph_power(NVGcontext* vg, float cx, float cy, float r, NVGcolor c) {
+    const float sw = r * 0.12f;
+    nvgStrokeColor(vg, c);
+    nvgStrokeWidth(vg, sw);
+    nvgLineCap(vg, NVG_ROUND);
+    // Power symbol: open arc + vertical line up through the gap.
+    nvgBeginPath(vg);
+    nvgArc(vg, cx, cy + r * 0.05f, r * 0.40f,
+           -3.14f * 0.30f, 3.14f * 1.30f, NVG_CW);
+    nvgStroke(vg);
+    nvgBeginPath(vg);
+    nvgMoveTo(vg, cx, cy - r * 0.42f);
+    nvgLineTo(vg, cx, cy + r * 0.05f);
+    nvgStroke(vg);
+}
+
+void draw_action_glyph(NVGcontext* vg, int idx, float cx, float cy,
+                       float r, NVGcolor c) {
+    nvgSave(vg);
+    switch (idx) {
+        case 0: glyph_news       (vg, cx, cy, r, c); break;
+        case 1: glyph_eshop      (vg, cx, cy, r, c); break;
+        case 2: glyph_album      (vg, cx, cy, r, c); break;
+        case 3: glyph_controllers(vg, cx, cy, r, c); break;
+        case 4: glyph_settings   (vg, cx, cy, r, c); break;
+        case 5: glyph_sleep      (vg, cx, cy, r, c); break;
+        case 6: glyph_power      (vg, cx, cy, r, c); break;
+    }
+    nvgRestore(vg);
 }
 
 void draw_hos_action_row(NVGcontext* vg, float w, float h, const State& s) {
@@ -650,17 +835,13 @@ void draw_hos_action_row(NVGcontext* vg, float w, float h, const State& s) {
         const NVGcolor fill   = active ? th.accent : th.bg_panel_hi;
         const NVGcolor stroke = active ? th.accent : th.border;
         hos_circle(vg, cx, cy, kBtnR, fill, stroke);
-        // Glyph: a single character placeholder per button until a
-        // dedicated icon font / SVG asset lands. The first letter
-        // reads at-a-glance and matches HOS's solid fills better than
-        // the previous full-text rendering.
-        nvgFontSize(vg, 22.0f);
-        nvgFillColor(vg, active ? th.bg : th.text);
-        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-        char glyph[4] = {hos_action_label(i)[0], 0};
-        nvgText(vg, cx, cy + 1, glyph, nullptr);
+        // Vector glyph drawn via nanovg paths — no font / asset
+        // dependency, stays sharp at any size.
+        const NVGcolor glyph_c = active ? th.bg : th.text;
+        draw_action_glyph(vg, i, cx, cy, kBtnR, glyph_c);
 
-        // Label — only on the focused button to keep the row clean.
+        // Label only on the focused button (HOS only labels what's
+        // currently focused).
         if (active) {
             nvgFontSize(vg, th.label_size);
             nvgFillColor(vg, th.text_strong);
@@ -1323,6 +1504,102 @@ void draw_quit_confirm(NVGcontext* vg, float w, float h, const State& s) {
     };
     button(yes_x, _(SId::Yes), s.quit_confirm_index == 0);
     button(no_x,  _(SId::No),  s.quit_confirm_index == 1);
+}
+
+// HOS-style profile switcher. Y on Home opens it; modal shows the
+// active user (large, accent-bordered) plus every other registered
+// profile in a row of avatar discs. A picks; B closes without
+// switching. The actual libnx switch call happens in the main loop
+// via pending_profile_switch so the input handler stays free of
+// service surface.
+void draw_profile_switcher(NVGcontext* vg, float w, float h, const State& s) {
+    if (!s.profile_switcher_open) return;
+    const auto& th = theme();
+
+    nvgBeginPath(vg);
+    nvgRect(vg, 0, 0, w, h);
+    nvgFillColor(vg, nvgRGBAf(0, 0, 0, 0.65f));
+    nvgFill(vg);
+
+    constexpr float kCardW = 720.0f;
+    constexpr float kCardH = 280.0f;
+    const float card_x = (w - kCardW) * 0.5f;
+    const float card_y = (h - kCardH) * 0.5f;
+    rrect(vg, card_x, card_y, kCardW, kCardH, 18.0f, th.bg_panel);
+    rrect_outline(vg, card_x, card_y, kCardW, kCardH, 18.0f, th.border, 1.0f);
+
+    nvgFontSize(vg, th.head_size);
+    nvgFillColor(vg, th.text_strong);
+    nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
+    nvgText(vg, card_x + kCardW * 0.5f, card_y + 24,
+            "Switch profile", nullptr);
+
+    constexpr float kPickerR  = 56.0f;
+    constexpr float kPickerGap = 24.0f;
+    const int n_others = hos_status::other_avatar_count();
+    const int n_total  = 1 + n_others;
+    const float row_w = n_total * (kPickerR * 2) + (n_total - 1) * kPickerGap;
+    const float row_x = card_x + (kCardW - row_w) * 0.5f;
+    const float row_y = card_y + kCardH * 0.5f - 8.0f;
+
+    auto draw_picker = [&](float cx, float r, int handle, bool selected,
+                           const char* nick, bool active) {
+        // Selected ring (cursor) + active ring (already-active user).
+        if (selected) {
+            nvgBeginPath(vg);
+            nvgCircle(vg, cx, row_y, r + 8.0f);
+            nvgStrokeColor(vg, th.accent);
+            nvgStrokeWidth(vg, 3.0f);
+            nvgStroke(vg);
+        }
+        if (handle > 0) {
+            nvgSave(vg);
+            nvgBeginPath(vg);
+            nvgCircle(vg, cx, row_y, r);
+            auto pat = nvgImagePattern(vg, cx - r, row_y - r,
+                                       r * 2, r * 2, 0.0f, handle, 1.0f);
+            nvgFillPaint(vg, pat);
+            nvgFill(vg);
+            nvgRestore(vg);
+        } else {
+            hos_circle(vg, cx, row_y, r, th.bg_panel_hi, th.border);
+        }
+        // Nickname below.
+        nvgFontSize(vg, th.label_size);
+        nvgFillColor(vg, active ? th.accent : th.text);
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
+        nvgText(vg, cx, row_y + r + 10, nick, nullptr);
+        if (active) {
+            nvgFontSize(vg, th.label_size);
+            nvgFillColor(vg, th.text_dim);
+            nvgText(vg, cx, row_y + r + 28, "current", nullptr);
+        }
+    };
+
+    // Active user first — non-selectable since they're already active.
+    const auto& active_nick = hos_status::nickname();
+    draw_picker(row_x + kPickerR, kPickerR, hos_status::avatar_handle(),
+                /*selected=*/false,
+                active_nick.empty() ? "(active)" : active_nick.c_str(),
+                /*active=*/true);
+    // Secondaries.
+    for (int i = 0; i < n_others; i++) {
+        const float cx = row_x + kPickerR
+            + (i + 1) * (kPickerR * 2 + kPickerGap);
+        const auto& nick = hos_status::other_nickname(i);
+        draw_picker(cx, kPickerR, hos_status::other_avatar_handle(i),
+                    /*selected=*/(s.profile_switcher_cursor == i),
+                    nick.empty() ? "(profile)" : nick.c_str(),
+                    /*active=*/false);
+    }
+
+    if (n_others == 0) {
+        nvgFontSize(vg, th.label_size);
+        nvgFillColor(vg, th.text_dim);
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+        nvgText(vg, card_x + kCardW * 0.5f, card_y + kCardH * 0.5f,
+                "No other profiles on this console.", nullptr);
+    }
 }
 
 void draw_update_confirm(NVGcontext* vg, float w, float h, const State& s) {
@@ -4603,6 +4880,24 @@ void update(State& s, const Library& lib,
     if (lib.systems.empty()) return;
 
     if (s.view == View::Home) {
+        // Profile-switcher modal intercepts every input while open.
+        if (s.profile_switcher_open) {
+            const int n = hos_status::other_avatar_count();
+            if (down & HidNpadButton_AnyRight) {
+                if (s.profile_switcher_cursor + 1 < n)
+                    s.profile_switcher_cursor++;
+            } else if (down & HidNpadButton_AnyLeft) {
+                if (s.profile_switcher_cursor > 0)
+                    s.profile_switcher_cursor--;
+            } else if (down & HidNpadButton_B) {
+                s.profile_switcher_open = false;
+            } else if ((down & HidNpadButton_A) && n > 0) {
+                s.pending_profile_switch = s.profile_switcher_cursor;
+                s.profile_switcher_open  = false;
+            }
+            return;
+        }
+
         const auto n = lib.systems.size();
         const int  ni = (int)n;
         auto step = [&](int delta) {
@@ -4768,27 +5063,17 @@ void update(State& s, const Library& lib,
             s.game_index = 0;
         }
         if (down & HidNpadButton_Y) {
-            // Quick-resume: launch the most-recently-played game
-            // straight from Home without going through the carousel.
-            // Same logic as the popup's "Resume Last" entry — kept
-            // there too so the discoverability path still works.
-            std::size_t best_sys = 0, best_game = 0;
-            std::uint64_t best_t = 0;
-            for (std::size_t si = 0; si < lib.systems.size(); si++) {
-                const auto& sysr = lib.systems[si];
-                for (std::size_t gi = 0; gi < sysr.games.size(); gi++) {
-                    const auto t = sysr.games[gi].last_played;
-                    if (t > best_t) { best_t = t; best_sys = si; best_game = gi; }
-                }
-            }
-            if (best_t == 0) {
-                s.banner_text = _(SId::BannerNoRecentlyPlayed);
-                s.banner_ttl  = 180;
+            // Y on Home opens the profile switcher (HOS analog: tap the
+            // avatar). Quick-resume is still reachable via the Plus
+            // popup menu's "Resume Last" entry — Y was the only Home
+            // binding free for the new switcher, and discoverability
+            // for resume is fine since Recents is also a virtual tile.
+            if (hos_status::other_avatar_count() > 0) {
+                s.profile_switcher_open   = true;
+                s.profile_switcher_cursor = 0;
             } else {
-                s.system_index = best_sys;
-                s.game_index   = best_game;
-                s.request_resume_slot = -1;
-                s.request_launch = true;
+                s.banner_text = "No other profiles registered";
+                s.banner_ttl  = 180;
             }
         }
         if (down & HidNpadButton_B) {
@@ -5943,6 +6228,7 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
     // Modal popup floats over everything, including bars.
     draw_popup(vg, w, h, s);
     draw_quit_confirm(vg, w, h, s);
+    draw_profile_switcher(vg, w, h, s);
     draw_update_confirm(vg, w, h, s);
     draw_restart_confirm(vg, w, h, s);
     draw_update_prompt(vg, w, h, s);

@@ -36,6 +36,17 @@ int                avatar_handle();
 // Active user's display nickname. Empty when no profile available.
 const std::string& nickname();
 
+// Number of secondary user avatars known to the system (excluding the
+// currently-active one). 0..3 typical; HOS supports up to 8 profiles.
+int                other_avatar_count();
+int                other_avatar_handle(int i);
+const std::string& other_nickname(int i);
+
+// Switch the active user to the given index (0..other_avatar_count-1
+// -> a secondary avatar; -1 keeps the currently-active one). Reloads
+// the avatar/nickname so the next frame paints the new active user.
+void               switch_active(int secondary_idx, NVGcontext* vg);
+
 // Battery 0..100. -1 when the read failed (rare).
 int                battery_pct();
 

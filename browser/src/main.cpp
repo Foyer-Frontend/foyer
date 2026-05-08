@@ -388,6 +388,12 @@ int main(int argc, char** argv) {
             foyer::log::write("[home_action] sleep requested\n");
             appletStartSleepSequence(true);
         }
+        if (state.pending_profile_switch >= 0) {
+            const int idx = state.pending_profile_switch;
+            state.pending_profile_switch = -1;
+            foyer::log::write("[profile] switching to secondary idx=%d\n", idx);
+            foyer::browser::hos_status::switch_active(idx, app.vg());
+        }
         if (state.request_power_off) {
             state.request_power_off = false;
             foyer::log::write("[home_action] power off requested\n");
