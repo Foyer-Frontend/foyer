@@ -191,6 +191,20 @@ std::string system_splash_path(std::string_view folder) {
     std::snprintf(sd_jpg, sizeof(sd_jpg), "/foyer/assets/systems/%.*s.jpg",
         (int)folder.size(), folder.data());
     if (exists(sd_jpg)) return sd_jpg;
+
+    // 0.5.13+ : fall through to the bundled Alekfull NX tile art even
+    // when the active theme isn't the alekfull-nx pack. Existing
+    // configs upgraded from older foyer versions saved a theme_name
+    // (snow / hos / dark / ...) that no longer resolves, leaving
+    // pack_dir empty — without this fallback they'd see the legacy
+    // 454x1080 portrait splashes despite the new tile art shipping
+    // in romfs.
+    char alek[256];
+    std::snprintf(alek, sizeof(alek),
+        "romfs:/themes/alekfull-nx/systems/%.*s/splash.png",
+        (int)folder.size(), folder.data());
+    if (exists(alek)) return alek;
+
     char rf[256];
     std::snprintf(rf, sizeof(rf), "romfs:/systems/%.*s-splash.png",
         (int)folder.size(), folder.data());
