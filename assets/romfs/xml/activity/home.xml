@@ -7,12 +7,27 @@
     Centre: horizontal system carousel (Phase C). Populated in
     HomeActivity::onContentAvailable() from foyer's system_db so
     the data side is decoupled from XML.
+
+    The full-screen Image at the back is the per-system backdrop —
+    HomeActivity swaps its source on tile focus changes so the
+    backdrop matches the system the user is hovering.
 -->
 <brls:Box
     width="auto"
     height="auto"
     grow="1.0"
     axis="column">
+
+    <!-- Per-system app backdrop — absolute-positioned behind every
+         other view; updated by HomeActivity on tile focus change. -->
+    <brls:Image
+        id="foyer/backdrop"
+        positionType="absolute"
+        positionTop="0"
+        positionLeft="0"
+        width="1280"
+        height="720"
+        scalingType="fill" />
 
     <!-- Top bar -->
     <brls:Box

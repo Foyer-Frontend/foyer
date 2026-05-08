@@ -24,10 +24,13 @@ namespace {
 // - TapGestureRecognizer added in addition to registerClickAction so
 //   touch taps on the tile fire the same handler that controller A
 //   does (registerClickAction alone only binds the gamepad button).
+// - On focus gain the tile pings its owning HomeActivity so the
+//   per-system app backdrop swaps to match.
 class SystemTile : public brls::Box {
 public:
-    SystemTile(std::string_view folder, std::string_view label)
-        : m_folder(folder), m_label(label)
+    SystemTile(HomeActivity* host, std::string_view folder,
+               std::string_view label)
+        : m_host(host), m_folder(folder), m_label(label)
     {
         constexpr float kSize = 280.0f;
         this->setWidth(kSize);
@@ -54,15 +57,18 @@ public:
                 new SystemActivity(m_folder, m_label));
             return true;
         });
-        // Touch tap → triggers BUTTON_A action (which is the click
-        // action above). Without this recognizer, touch on the tile
-        // does nothing.
         this->addGestureRecognizer(new brls::TapGestureRecognizer(this));
     }
 
+    void onFocusGained() override {
+        brls::Box::onFocusGained();
+        if (m_host) m_host->setBackdrop(m_folder);
+    }
+
 private:
-    std::string m_folder;
-    std::string m_label;
+    HomeActivity* m_host;
+    std::string   m_folder;
+    std::string   m_label;
 };
 
 class ClockTask : public brls::RepeatingTask {
@@ -102,8 +108,15 @@ void HomeActivity::populateCarousel() {
         const std::string label = sys.short_name.empty()
             ? std::string(sys.folder_name)
             : std::string(sys.short_name);
-        carousel->addView(new SystemTile(sys.folder_name, label));
+        carousel->addView(new SystemTile(this, sys.folder_name, label));
     }
+}
+
+void HomeActivity::setBackdrop(std::string_view folder) {
+    if (!backdrop) return;
+    const std::string path =
+        "themes/foyer/systems/" + std::string(folder) + "/background.jpg";
+    backdrop->setImageFromRes(path);
 }
 
 void HomeActivity::wireSettingsButton() {

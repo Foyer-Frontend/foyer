@@ -5,9 +5,9 @@
 namespace foyer::browser {
 
 // Home view: top bar (status cluster + Settings button) + horizontal
-// system carousel + bottom hints. Phase C populates the carousel from
-// foyer's system_db; library scan integration arrives in a later
-// alpha when ROMs feed into per-tile game counts.
+// system carousel + per-system app backdrop. Tiles call setBackdrop()
+// from their onFocusGained so the backdrop swaps to the focused
+// system's background.jpg as the user pans the carousel.
 class HomeActivity : public brls::Activity
 {
 public:
@@ -15,9 +15,14 @@ public:
 
     void onContentAvailable() override;
 
+    // Swap the app backdrop to the given system folder's
+    // background.jpg. Called by SystemTile on focus change.
+    void setBackdrop(std::string_view folder);
+
     BRLS_BIND(brls::Label, clock,        "foyer/clock");
     BRLS_BIND(brls::Box,   carousel,     "foyer/carousel");
     BRLS_BIND(brls::Box,   btnSettings,  "foyer/btn_settings");
+    BRLS_BIND(brls::Image, backdrop,     "foyer/backdrop");
 
 private:
     brls::RepeatingTask* clockTask = nullptr;
