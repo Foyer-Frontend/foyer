@@ -1,11 +1,66 @@
-<brls:AppletFrame
-    iconInterpolation="linear"
-    title="@i18n/foyer/title"
-    headerHidden="false"
-    footerHidden="false">
+<!--
+    foyer Home — borealis edition.
 
-    <!-- Phase A: a single centred label proving brls boots end-to-end.
-         Replaced by the carousel + status cluster + action row in Phase C. -->
+    AppletFrame's stock layout puts wifi/battery/clock in the BottomBar at
+    the bottom-left. HOS's launcher has the status cluster at the
+    top-right, so we replace the frame with our own Box and embed brls's
+    individual status views in a top bar of our own. Hints stay at the
+    bottom (default brls hint bar).
+
+    Phase order in the top row mirrors the HOS launcher we're aiming for:
+    profiles cluster (left, wired in Phase F) · spacer · clock · wifi ·
+    battery (right). The clock label updates itself via brls timer ticks
+    once we feed it; for the alpha we leave it blank and let the user see
+    just the wifi + battery icons (battery shows percentage built-in).
+-->
+<brls:Box
+    width="auto"
+    height="auto"
+    grow="1.0"
+    axis="column">
+
+    <!-- Top bar: profiles | spacer | clock · wifi · battery -->
+    <brls:Box
+        width="auto"
+        height="80"
+        axis="row"
+        alignItems="center"
+        paddingLeft="@style/brls/hints/footer_padding_sides"
+        paddingRight="@style/brls/hints/footer_padding_sides">
+
+        <!-- Profile cluster placeholder (Phase F wires real avatars). -->
+        <brls:Box width="auto" height="auto" grow="1.0" axis="row" />
+
+        <!-- Status cluster — order left → right: clock, wifi, battery. -->
+        <brls:Box
+            width="auto"
+            height="auto"
+            axis="row"
+            alignItems="center"
+            direction="leftToRight">
+
+            <brls:Label
+                id="foyer/clock"
+                text="--:--"
+                width="auto"
+                height="auto"
+                fontSize="22"
+                marginRight="20" />
+
+            <brls:Wireless
+                id="foyer/wireless"
+                marginRight="20"
+                marginBottom="2" />
+
+            <brls:Battery
+                id="foyer/battery"
+                marginBottom="2" />
+        </brls:Box>
+    </brls:Box>
+
+    <!-- Central content area: Phase C will host the tile carousel here.
+         For alpha.3 we just centre the version banner so we can confirm
+         the new top-bar layout renders correctly. -->
     <brls:Box
         width="auto"
         height="auto"
@@ -24,7 +79,6 @@
             fontSize="20"
             marginTop="16"
             textColor="@theme/brls/text_disabled" />
-
     </brls:Box>
 
-</brls:AppletFrame>
+</brls:Box>
