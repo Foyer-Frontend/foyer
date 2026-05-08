@@ -1,7 +1,12 @@
 #include "activity/system_activity.hpp"
 
+#include "activity/game_activity.hpp"
+#include "library_state.hpp"
+
 #include <borealis/views/applet_frame.hpp>
+#include <borealis/views/cells/cell_detail.hpp>
 #include <borealis/views/label.hpp>
+#include <borealis/views/scrolling_frame.hpp>
 
 using namespace brls::literals;
 
@@ -15,12 +20,43 @@ SystemActivity::SystemActivity(std::string_view folder,
 }
 
 brls::View* SystemActivity::createContentView() {
-    auto* placeholder = new brls::Label();
-    placeholder->setText("Game list arrives in the next alpha.");
-    placeholder->setFontSize(24.0f);
-    placeholder->setMargins(48.0f, 0.0f, 0.0f, 48.0f);
+    const auto* sys = library_state::find_system(m_folder);
 
-    auto* frame = new brls::AppletFrame(placeholder);
+    brls::View* content = nullptr;
+
+    if (!sys || sys->games.empty()) {
+        auto* placeholder = new brls::Label();
+        placeholder->setText(sys
+            ? std::string("No games in this system folder yet.")
+            : std::string("This system folder is empty or absent on disk."));
+        placeholder->setFontSize(20.0f);
+        placeholder->setMargins(48.0f, 0.0f, 0.0f, 48.0f);
+        content = placeholder;
+    } else {
+        auto* scroll = new brls::ScrollingFrame();
+        auto* list   = new brls::Box();
+        list->setAxis(brls::Axis::COLUMN);
+        list->setMargins(16.0f, 32.0f, 16.0f, 32.0f);
+
+        const std::string folder = m_folder;
+        for (const auto& g : sys->games) {
+            auto* cell = new brls::DetailCell();
+            cell->title->setText(g.display);
+            cell->detail->setText(g.filename);
+            const std::string path = g.path;
+            cell->registerClickAction(
+                [folder, path](brls::View*) {
+                    brls::Application::pushActivity(
+                        new GameActivity(folder, path));
+                    return true;
+                });
+            list->addView(cell);
+        }
+        scroll->setContentView(list);
+        content = scroll;
+    }
+
+    auto* frame = new brls::AppletFrame(content);
     frame->setTitle(m_display_name);
 
     // brls pushed activities don't auto-pop on B — AppletFrame's
@@ -37,8 +73,8 @@ brls::View* SystemActivity::createContentView() {
 }
 
 void SystemActivity::onContentAvailable() {
-    // Reserved for alpha.8: kick off library::scan() for m_folder,
-    // populate the RecyclerFrame, etc.
+    // No deferred wiring needed — game list populates synchronously
+    // inside createContentView() from library_state's cached scan.
 }
 
 }  // namespace foyer::browser

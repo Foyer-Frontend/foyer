@@ -16,6 +16,7 @@
 #include "activity/home_activity.hpp"
 #include "tab/settings_tab.hpp"
 #include "self_update.hpp"
+#include "library_state.hpp"
 
 #include "i18n/i18n.hpp"
 #include "library/config.hpp"
@@ -71,6 +72,13 @@ int main(int argc, char* argv[])
     // side on romfs:/i18n.
     foyer::i18n::init();
     apply_saved_language();
+
+    // Walk /foyer/roms and cache the result for activities to read
+    // via library_state::find_system(). Synchronous on the main
+    // thread — fast on a clean library, slower with hundreds of
+    // ROMs; we'll move to a worker + progress splash in a later
+    // alpha if scan latency becomes a problem.
+    foyer::browser::library_state::rescan();
 
     brls::Application::createWindow("foyer/title"_i18n);
     brls::Application::setGlobalQuit(false);

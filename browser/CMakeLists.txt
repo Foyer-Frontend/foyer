@@ -25,16 +25,20 @@ add_executable(foyer
     src/settings_activity.cpp
     src/settings_tab.cpp
     src/system_activity.cpp
+    src/game_activity.cpp
+    src/search_activity.cpp
+    src/library_state.cpp
+    src/launch.cpp
     src/self_update.cpp
 
     # borealis Switch platform glue (matches borealis_template demo).
     ${borealis_SOURCE_DIR}/library/lib/platforms/switch/switch_wrapper.c
 
-    # Phase A intentionally drops launch / mtp / seed_assets / session /
-    # switch_titles from the build. Some of them include legacy
-    # nanovg-dependent headers (e.g. switch_titles.hpp registers NACP icon
-    # JPEGs as nvg image handles). They'll be re-introduced — possibly
-    # refactored — in Phases B–E as the brls views need them.
+    # Still deferred from the brls build: mtp / seed_assets / session /
+    # switch_titles. They rely on the legacy nanovg paths (NACP icon
+    # handles, View enum from views.hpp) and need refactoring before
+    # they fit in. mtp and seed_assets come back in alpha.E; switch_titles
+    # rejoins with hos_status in Phase F.
 )
 
 target_include_directories(foyer PRIVATE

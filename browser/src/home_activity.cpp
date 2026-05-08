@@ -1,4 +1,5 @@
 #include "activity/home_activity.hpp"
+#include "activity/search_activity.hpp"
 #include "activity/settings_activity.hpp"
 #include "activity/system_activity.hpp"
 
@@ -203,6 +204,11 @@ void HomeActivity::buildActionRow() {
     actionRow->addView(make_action_button("img/actions/gallery.png",
         [](brls::View*) {
             brls::Logger::info("foyer: Gallery action — coming soon");
+            return true;
+        }));
+    actionRow->addView(make_action_button("img/actions/search.png",
+        [](brls::View*) {
+            brls::Application::pushActivity(new SearchActivity());
             return true;
         }));
     actionRow->addView(make_action_button("img/actions/settings.png",

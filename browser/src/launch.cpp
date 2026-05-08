@@ -1,5 +1,9 @@
 #include "launch.hpp"
-#include "switch_titles.hpp"
+// 0.6.0 build: switch_titles.hpp pulls nanovg via NACP icon
+// handles. Disable the switch:// path until hos_status comes back
+// in Phase F; until then the rest of launch.cpp still drives the
+// regular libretro player chain-launch.
+// #include "switch_titles.hpp"
 #include "library/config.hpp"
 #include "library/scanner.hpp"
 #include "library/system_db.hpp"
@@ -58,10 +62,11 @@ bool launch_game(const library::System& sys, const library::Game& game,
     // boot. After this returns the firmware terminates foyer and
     // boots the title; the caller's app.quit() drains the rest.
     if (game.path.starts_with("switch://")) {
-        std::uint64_t app_id = 0;
-        const char* hex = game.path.c_str() + 9;
-        std::sscanf(hex, "%lx", &app_id);
-        return foyer::browser::switch_titles::launch(app_id);
+        // Switch title launcher disabled in 0.6.0 alphas — see
+        // include comment above; comes back with hos_status in
+        // Phase F.
+        foyer::log::write("[launch] switch:// not yet wired in 0.6.0\n");
+        return false;
     }
 
     // External-launcher path: when the user has a standalone Switch
