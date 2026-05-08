@@ -426,6 +426,188 @@ void draw_bottombar(NVGcontext* vg, float w, float h, const char* hint) {
             FOYER_DISPLAY_VERSION, nullptr);
 }
 
+// ---- HOS-style chrome (Home view, 0.5.0) ----------------------------------
+// Phase 0: pure paint, no real data wiring. Profile slot, status cluster,
+// round action-button row + connected-controller indicator are all drawn
+// with placeholder content so the layout can be reviewed on hardware
+// before the libnx services hook up in Phase 1+.
+constexpr float kHosTopBarH    = 80.0f;   // taller than vanilla topbar so the
+                                          // 56 px avatar circle has padding
+constexpr float kHosActionRowH = 96.0f;   // 64 px button + 24 px label below
+
+// Round button shorthand: a flat-filled circle with an optional 1.5 px
+// outline. Reused for the avatar slot and every action row button.
+void hos_circle(NVGcontext* vg, float cx, float cy, float r,
+                NVGcolor fill, NVGcolor stroke) {
+    nvgBeginPath(vg);
+    nvgCircle(vg, cx, cy, r);
+    nvgFillColor(vg, fill);
+    nvgFill(vg);
+    if (stroke.a > 0.0f) {
+        nvgBeginPath(vg);
+        nvgCircle(vg, cx, cy, r);
+        nvgStrokeColor(vg, stroke);
+        nvgStrokeWidth(vg, 1.5f);
+        nvgStroke(vg);
+    }
+}
+
+void draw_hos_top_bar(NVGcontext* vg, float w) {
+    const auto& th = theme();
+
+    // Bar background — same panel color as vanilla so the chrome layer
+    // stays visually unified.
+    nvgBeginPath(vg);
+    nvgRect(vg, 0, 0, w, kHosTopBarH);
+    nvgFillColor(vg, th.bg_panel);
+    nvgFill(vg);
+    nvgBeginPath(vg);
+    nvgRect(vg, 0, kHosTopBarH - 1.0f, w, 1.0f);
+    nvgFillColor(vg, th.border);
+    nvgFill(vg);
+
+    // Profile slot: circular avatar placeholder + nickname text. The
+    // libnx wiring (accountGetLastOpenedUser + accountProfileLoadImage)
+    // arrives in Phase 1; this paints a flat accent disc so the slot
+    // is visible on hardware tests.
+    constexpr float kAvatarR = 24.0f;
+    const float avx = th.pad + kAvatarR;
+    const float avy = kHosTopBarH * 0.5f;
+    hos_circle(vg, avx, avy, kAvatarR, th.bg_panel_hi, th.border);
+    nvgFontSize(vg, th.head_size);
+    nvgFillColor(vg, th.text_strong);
+    nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+    nvgText(vg, avx + kAvatarR + 14.0f, avy, "Player", nullptr);
+
+    // Status cluster (right): WiFi / battery / clock placeholders. All
+    // three render right-to-left so adding/removing the charging glyph
+    // in Phase 1 won't reflow the rest of the cluster.
+    nvgFontSize(vg, th.body_size);
+    nvgFillColor(vg, th.text);
+    nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+    const std::string clock = clock_label();
+    nvgText(vg, w - th.pad, avy, clock.c_str(), nullptr);
+
+    // Battery placeholder: a rounded rect with a small nub on the right
+    // edge. Phase 1 wires psmGetBatteryChargePercentage to fill the
+    // bar; for now it's drawn at ~70 % so the layout reviews well.
+    constexpr float kBattW = 38.0f;
+    constexpr float kBattH = 16.0f;
+    const float battx = w - th.pad - 64.0f - kBattW;
+    const float batty = avy - kBattH * 0.5f;
+    rrect_outline(vg, battx, batty, kBattW, kBattH, 4.0f, th.text, 1.5f);
+    rrect(vg, battx + 3, batty + 3, (kBattW - 6) * 0.7f, kBattH - 6,
+          1.5f, th.text);
+    nvgBeginPath(vg);
+    nvgRect(vg, battx + kBattW, batty + 4, 3.0f, kBattH - 8);
+    nvgFillColor(vg, th.text);
+    nvgFill(vg);
+
+    // WiFi placeholder: three nested arcs for the signal triangle.
+    const float wifix = battx - 32.0f;
+    const float wifiy = avy + 4.0f;
+    nvgStrokeColor(vg, th.text);
+    for (int i = 1; i <= 3; i++) {
+        const float r = 4.0f * i;
+        nvgBeginPath(vg);
+        nvgArc(vg, wifix, wifiy, r,
+               -3.14f * 0.75f, -3.14f * 0.25f, NVG_CW);
+        nvgStrokeWidth(vg, 1.8f);
+        nvgStroke(vg);
+    }
+    nvgBeginPath(vg);
+    nvgCircle(vg, wifix, wifiy, 1.5f);
+    nvgFillColor(vg, th.text);
+    nvgFill(vg);
+}
+
+void draw_hos_action_row(NVGcontext* vg, float w, float h) {
+    const auto& th = theme();
+    const float row_y = h - kBottomBarH - kHosActionRowH;
+
+    // Background panel for the row so the buttons sit on a clean
+    // band even when the carousel pokes into the lower half of the
+    // screen. Same fill as the bars.
+    nvgBeginPath(vg);
+    nvgRect(vg, 0, row_y, w, kHosActionRowH);
+    nvgFillColor(vg, th.bg);
+    nvgFill(vg);
+    nvgBeginPath(vg);
+    nvgRect(vg, 0, row_y, w, 1.0f);
+    nvgFillColor(vg, th.border);
+    nvgFill(vg);
+
+    // 7 buttons spaced evenly across the row, mirroring HOS's icon
+    // strip layout (News / eShop / Album / Controllers / Settings /
+    // Sleep / Power). Phase 0 renders them as labelled placeholder
+    // circles — Phase 3 wires the actual launches.
+    constexpr int   kBtnCount = 7;
+    constexpr float kBtnR     = 28.0f;
+    constexpr float kLabelGap = 18.0f;
+    const char* labels[kBtnCount] = {
+        "News", "eShop", "Album", "Controllers", "Settings", "Sleep", "Power",
+    };
+    const float total_w = w * 0.7f;
+    const float step    = total_w / (kBtnCount - 1);
+    const float start_x = (w - total_w) * 0.5f;
+    const float cy      = row_y + kHosActionRowH * 0.5f - kLabelGap * 0.5f;
+
+    for (int i = 0; i < kBtnCount; i++) {
+        const float cx = start_x + step * i;
+        hos_circle(vg, cx, cy, kBtnR, th.bg_panel_hi, th.border);
+        nvgFontSize(vg, th.label_size);
+        nvgFillColor(vg, th.text_dim);
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
+        nvgText(vg, cx, cy + kBtnR + 6.0f, labels[i], nullptr);
+    }
+}
+
+// Hint bar variant for Home view: same flat panel as draw_bottombar
+// but reserves the left edge for a connected-controller cluster
+// instead of a free-text hint. The button glyphs sit on the right
+// next to the version stamp.
+void draw_hos_bottom_hints(NVGcontext* vg, float w, float h, const char* hint) {
+    const auto& th = theme();
+    const float by = h - kBottomBarH;
+
+    nvgBeginPath(vg);
+    nvgRect(vg, 0, by, w, kBottomBarH);
+    nvgFillColor(vg, th.bg_panel);
+    nvgFill(vg);
+    nvgBeginPath(vg);
+    nvgRect(vg, 0, by, w, 1.0f);
+    nvgFillColor(vg, th.border);
+    nvgFill(vg);
+
+    // Connected-controller indicator: placeholder filled circle + "P1"
+    // label. Phase 1 polls hidGetSupportedNpadStyleSet for the actual
+    // count and renders one glyph per pad.
+    constexpr float kPadR = 10.0f;
+    const float padx = th.pad + kPadR;
+    const float pady = by + kBottomBarH * 0.5f;
+    hos_circle(vg, padx, pady, kPadR, th.accent, th.accent);
+    nvgFontSize(vg, th.label_size);
+    nvgFillColor(vg, th.text);
+    nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+    nvgText(vg, padx + kPadR + 8.0f, pady, "P1", nullptr);
+
+    // Right-aligned: button glyph hints (left of version), then the
+    // version stamp at the very right.
+    if (hint && hint[0]) {
+        nvgFontSize(vg, th.body_size);
+        nvgFillColor(vg, th.text);
+        nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+        // Reserve ~140 px for the version stamp so the hints don't
+        // overlap on long strings.
+        nvgText(vg, w - th.pad - 140.0f, pady, hint, nullptr);
+    }
+
+    nvgFontSize(vg, th.label_size);
+    nvgFillColor(vg, th.text_dim);
+    nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+    nvgText(vg, w - th.pad, pady, FOYER_DISPLAY_VERSION, nullptr);
+}
+
 std::string clock_label() {
     std::time_t now = std::time(nullptr);
     struct tm tm;
@@ -5493,8 +5675,18 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
         }
     }
 
-    draw_topbar   (vg, w,    title.c_str(), clock.c_str());
-    draw_bottombar(vg, w, h, hint.c_str());
+    if (s.view == View::Home) {
+        // 0.5.0 Phase 0: HOS-styled chrome. Profile (left) + status
+        // cluster (right) replace the breadcrumb + clock; an action-
+        // button row sits above the hint bar; the hint bar carries
+        // the connected-controller indicator on the left.
+        draw_hos_top_bar      (vg, w);
+        draw_hos_action_row   (vg, w, h);
+        draw_hos_bottom_hints (vg, w, h, hint.c_str());
+    } else {
+        draw_topbar   (vg, w,    title.c_str(), clock.c_str());
+        draw_bottombar(vg, w, h, hint.c_str());
+    }
 
     // Modal popup floats over everything, including bars.
     draw_popup(vg, w, h, s);
