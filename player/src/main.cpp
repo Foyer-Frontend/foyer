@@ -202,6 +202,37 @@ int main(int argc, char** argv) {
         const int seeded = seed_tree("romfs:/ppsspp_assets", kSysDir);
         foyer::log::write("[player] ppsspp assets seeded=%d (sys=%s)\n",
             seeded, kSysDir);
+
+        // Force PPSSPP's native config to start in software rendering
+        // BEFORE any GL surface gets created. The libretro option
+        // ppsspp_software_rendering=enabled is honoured but only
+        // checked AFTER PPSSPP has already initialised the GLES
+        // backend — which is where the Switch nouveau Mesa 20.1
+        // GLES 3.1 stack crashes (PC into a non-code address inside
+        // PPSSPP's renderer init). Writing GraphicsBackend=4
+        // (Software) to the .ini intercepts the choice during
+        // NativeInit, before any eglCreateContext / context_reset.
+        // Only written if the file doesn't already exist so the user
+        // can flip it back via PPSSPP's in-app menu if Mesa ever
+        // gets fixed.
+        const std::string ppsspp_ini =
+            std::string{kSysDir} + "/PSP/SYSTEM/ppsspp.ini";
+        struct stat st{};
+        if (::stat(ppsspp_ini.c_str(), &st) != 0) {
+            ::mkdir((std::string{kSysDir} + "/PSP").c_str(), 0777);
+            ::mkdir((std::string{kSysDir} + "/PSP/SYSTEM").c_str(), 0777);
+            if (auto* f = std::fopen(ppsspp_ini.c_str(), "w")) {
+                std::fprintf(f,
+                    "[Graphics]\n"
+                    "GraphicsBackend = 4\n"   // 4 = Software
+                    "SoftwareRenderer = True\n"
+                    "InternalResolution = 1\n"
+                    "FrameSkip = 0\n");
+                std::fclose(f);
+                foyer::log::write(
+                    "[player] wrote ppsspp.ini forcing software render\n");
+            }
+        }
         fe.set_system_directory(kSysDir);
     }
 #  undef FOYER_STR

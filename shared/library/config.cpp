@@ -193,6 +193,18 @@ void load_locked() {
     if (auto* v = yyjson_obj_get(root, "theme");
         v && yyjson_is_str(v)) {
         g_config.theme_name = yyjson_get_str(v);
+        // 0.5.18 migration: any saved theme name we no longer ship
+        // (snow / dark / light / midnight / forest / hos) gets
+        // promoted to alekfull-nx so the user lands on the real
+        // bundled theme instead of a fall-through to defaults. Their
+        // explicit /foyer/themes/<name>/ pack picks (anything not in
+        // the obsolete list) are preserved.
+        const std::string& tn = g_config.theme_name;
+        if (tn == "snow" || tn == "dark"     || tn == "light"
+            || tn == "midnight" || tn == "forest" || tn == "hos"
+            || tn.empty()) {
+            g_config.theme_name = "alekfull-nx";
+        }
     }
     if (auto* v = yyjson_obj_get(root, "theme_color");
         v && yyjson_is_str(v)) {

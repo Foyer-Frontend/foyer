@@ -2423,7 +2423,15 @@ std::vector<Item> build_items(Category cat, const State& s) {
             break;
         }
         case Category::Display: {
-            rows.push_back({ItemKind::Cycle,  _(SId::SettingsTheme),        cfg.theme_name,
+            // 0.5.18: Theme row shows the color scheme (Light / Dark)
+            // since foyer ships a single theme with two palettes.
+            // Old configs with theme_name="snow" / "dark" / etc.
+            // would display the stale name here even though it had
+            // no UI effect — the row now strictly mirrors what the
+            // picker offers.
+            const std::string theme_value =
+                (cfg.theme_color == "dark") ? "Dark" : "Light";
+            rows.push_back({ItemKind::Cycle,  _(SId::SettingsTheme),        theme_value,
                 _(SId::SettingsThemeHint),
                 OpTheme});
             rows.push_back({ItemKind::Toggle, _(SId::SettingsShowClock),       "",
