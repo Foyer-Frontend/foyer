@@ -22,6 +22,7 @@ public:
     BRLS_BIND(brls::Label, clock,      "foyer/clock");
     BRLS_BIND(brls::Box,   carousel,   "foyer/carousel");
     BRLS_BIND(brls::Box,   actionRow,  "foyer/action_row");
+    BRLS_BIND(brls::Box,   profiles,   "foyer/profiles");
     BRLS_BIND(brls::Image, backdrop,   "foyer/backdrop");
 
 private:
@@ -29,6 +30,7 @@ private:
 
     void populateCarousel();
     void buildActionRow();
+    void buildProfiles();
 };
 
 }  // namespace foyer::browser

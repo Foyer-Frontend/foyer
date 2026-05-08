@@ -78,14 +78,19 @@
         </brls:Box>
     </brls:Box>
 
-    <!-- System carousel — vertically centred in the available
-         space between top bar and the action row. -->
+    <!-- Vertical layout below the top bar:
+            grow=1 wrapper anchors the carousel to its bottom edge,
+            grow=1 wrapper centres the action row vertically.
+         Equal grow weights ⇒ the action row sits at the midpoint
+         between the bottom of the tile row and the separator
+         (top of the bottom hint bar) — which is where the user
+         asked the buttons to land. -->
     <brls:Box
         width="auto"
         height="auto"
         grow="1.0"
         axis="column"
-        justifyContent="center">
+        justifyContent="flexEnd">
 
         <brls:HScrollingFrame
             id="foyer/carousel_scroll"
@@ -105,19 +110,15 @@
 
     </brls:Box>
 
-    <!-- HOS-style round action row, centred horizontally. The
-         Settings circle is built programmatically in HomeActivity
-         (round corner-radius + click handler that pushes
-         SettingsActivity). -->
     <brls:Box
         width="auto"
-        height="96"
-        axis="row"
-        alignItems="center"
+        height="auto"
+        grow="1.0"
+        axis="column"
         justifyContent="center"
-        paddingTop="8"
-        paddingBottom="8">
+        alignItems="center">
 
+        <!-- Round action buttons — populated by HomeActivity. -->
         <brls:Box
             id="foyer/action_row"
             width="auto"
