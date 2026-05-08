@@ -76,24 +76,34 @@
         </brls:Box>
     </brls:Box>
 
-    <!-- System carousel — horizontal scrolling row, populated in code. -->
-    <brls:ScrollingFrame
-        id="foyer/carousel_scroll"
+    <!-- System carousel — vertically centred between top bar and the
+         bottom edge. HScrollingFrame is brls's horizontal-only scroller
+         (the plain ScrollingFrame is vertical even with axis="row");
+         it auto-scrolls to keep the focused child centred. -->
+    <brls:Box
         width="auto"
         height="auto"
         grow="1.0"
-        axis="row"
-        scrollingBehavior="centered">
+        axis="column"
+        justifyContent="center">
 
-        <brls:Box
-            id="foyer/carousel"
+        <brls:HScrollingFrame
+            id="foyer/carousel_scroll"
             width="auto"
-            height="auto"
-            axis="row"
-            alignItems="center"
-            paddingLeft="32"
-            paddingRight="32" />
+            height="240"
+            scrollingBehavior="centered">
 
-    </brls:ScrollingFrame>
+            <brls:Box
+                id="foyer/carousel"
+                width="auto"
+                height="auto"
+                axis="row"
+                alignItems="center"
+                paddingLeft="32"
+                paddingRight="32" />
+
+        </brls:HScrollingFrame>
+
+    </brls:Box>
 
 </brls:Box>

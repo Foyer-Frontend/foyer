@@ -1,7 +1,8 @@
 <!--
-    foyer Settings tab. Phase B drop ships only Language and Theme color.
-    The other ~50 settings (display tweaks, scrapers, retroachievements,
-    system hide list, library tools, etc.) re-land cell-by-cell in
+    foyer Settings tab. Phase B drop = Language only. The theme follows
+    the Switch system Light/Dark setting automatically (brls reads it
+    via setsysGetColorSetId on platform init), so there's no theme
+    picker. The other ~50 settings rows re-land cell-by-cell in
     subsequent alphas.
 -->
 <brls:Box
@@ -31,9 +32,6 @@
 
             <brls:SelectorCell
                 id="foyer/settings/language" />
-
-            <brls:SelectorCell
-                id="foyer/settings/theme_color" />
 
         </brls:Box>
 

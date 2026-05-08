@@ -28,29 +28,6 @@ constexpr std::array<LanguageOption, 4> kLanguages = {{
     {"Português",                             "pt-BR"},
 }};
 
-constexpr std::array<const char*, 6> kThemeColorI18nKeys = {
-    "foyer/settings/color/light",
-    "foyer/settings/color/dark",
-    "foyer/settings/color/snow",
-    "foyer/settings/color/nord",
-    "foyer/settings/color/dracula",
-    "foyer/settings/color/emerald",
-};
-constexpr std::array<const char*, 6> kThemeColorCodes = {
-    "light", "dark", "snow", "nord", "dracula", "emerald",
-};
-
-template <std::size_t N>
-int index_for_code(const std::array<const char*, N>& codes,
-                   std::string_view current,
-                   int fallback)
-{
-    for (std::size_t i = 0; i < codes.size(); i++) {
-        if (codes[i] == current) return static_cast<int>(i);
-    }
-    return fallback;
-}
-
 int index_for_language(std::string_view current) {
     for (std::size_t i = 0; i < kLanguages.size(); i++) {
         if (kLanguages[i].code == current) return static_cast<int>(i);
@@ -79,9 +56,9 @@ SettingsTab::SettingsTab() {
     std::vector<std::string> lang_labels;
     lang_labels.reserve(kLanguages.size());
     for (const auto& l : kLanguages) {
-        // i18n_key for the system option, raw label for the
-        // explicit codes (English / Español / Português stay
-        // self-named regardless of locale).
+        // i18n key for the system option, raw label for the explicit
+        // codes (English / Español / Português stay self-named
+        // regardless of the active locale).
         const std::string key = l.i18n_key;
         if (key.find('/') != std::string::npos) {
             lang_labels.emplace_back(brls::getStr(key));
@@ -94,22 +71,6 @@ SettingsTab::SettingsTab() {
                    index_for_language(cfg.language),
                    [](int) {},
                    [](int selected) { apply_language(selected); });
-
-    std::vector<std::string> theme_labels;
-    theme_labels.reserve(kThemeColorI18nKeys.size());
-    for (const auto* key : kThemeColorI18nKeys) {
-        theme_labels.emplace_back(brls::getStr(key));
-    }
-    themeColor->init("foyer/settings/theme_color"_i18n,
-                     theme_labels,
-                     index_for_code(kThemeColorCodes, cfg.theme_color, 0),
-                     [](int) {},
-                     [](int selected) {
-                         if (selected < 0 ||
-                             selected >= (int)kThemeColorCodes.size()) return;
-                         foyer::library::set_theme_color(
-                             kThemeColorCodes[selected]);
-                     });
 }
 
 brls::View* SettingsTab::create() {
