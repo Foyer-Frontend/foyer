@@ -31,6 +31,7 @@ CoreManifest fetch_manifest(const std::string& manifest_url);
 
 // Per-core install outcome reported to the progress callback.
 enum class InstallAction {
+    Started,    // about to download (skip-or-fetch decision still upcoming)
     Skipped,    // already present at the manifest's version
     Installed,  // wasn't on disk, downloaded fresh
     Updated,    // version mismatch — replaced

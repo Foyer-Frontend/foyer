@@ -290,7 +290,7 @@ const std::array<const char*, kCount> kPortugueseBrazilStrings = [] {
         "Cancela a transferência no próximo callback.";
 
     a[(std::size_t)StringId::UpdatesEverythingUpToDate]  = "Tudo está atualizado";
-    a[(std::size_t)StringId::UpdatesUpdateEverything]    = "Atualizar tudo";
+    a[(std::size_t)StringId::UpdatesUpdateEverything]    = "Atualizar todos os cores";
     a[(std::size_t)StringId::UpdatesLastJustNow]         = "Última: agora mesmo";
     a[(std::size_t)StringId::UpdatesRescrapeNow]         = "Buscar novamente";
     a[(std::size_t)StringId::UpdatesRescrapeHint]        =
@@ -422,7 +422,7 @@ const std::array<const char*, kCount> kPortugueseBrazilStrings = [] {
     a[(std::size_t)StringId::BannerInstallingBezelPacks]    = "Instalando todos os pacotes de molduras...";
     a[(std::size_t)StringId::BannerInstallingCheatPack]     = "Instalando pacote de cheats: %s...";
     a[(std::size_t)StringId::BannerCancelling]              = "Cancelando...";
-    a[(std::size_t)StringId::BannerUpdatingEverything]      = "Atualizando tudo...";
+    a[(std::size_t)StringId::BannerUpdatingEverything]      = "Atualizando todos os cores...";
     a[(std::size_t)StringId::BannerDrillDownComingNextPass] =
         "Visão detalhada virá na próxima versão";
     a[(std::size_t)StringId::BannerScraperFieldSaved]       = "%s salvo";

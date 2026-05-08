@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <sys/stat.h>
 
 // libretro core symbols. Declared `extern` because the core is statically
 // linked into the same binary as the frontend.
@@ -28,6 +29,8 @@ extern "C" {
     void retro_unload_game(void);
     unsigned retro_get_region(void);
     unsigned retro_api_version(void);
+    void* retro_get_memory_data(unsigned id);
+    size_t retro_get_memory_size(unsigned id);
 }
 
 namespace foyer::libretro {
@@ -343,19 +346,92 @@ bool Frontend::load_game(const std::string& rom_path) {
         }
     }
 
-    m_game_loaded = true;
+    m_game_loaded        = true;
+    m_rom_path           = rom_path;
+    m_sram_flush_counter = 0;
+
+    // Restore battery-backed RAM if a previous run wrote one. Cores
+    // map their SRAM region after retro_load_game returns, which is
+    // why this lives down here rather than alongside set_rom_path.
+    load_sram_for(rom_path);
     return true;
 }
 
 void Frontend::unload_game() {
     if (!m_game_loaded) return;
+    // Capture SRAM before retro_unload_game tears down the memory
+    // map. After unload retro_get_memory_data returns nullptr.
+    if (!m_rom_path.empty()) {
+        save_sram_for(m_rom_path);
+    }
     if (HwContext::instance().active()) {
         HwContext::instance().shutdown();
     }
     retro_unload_game();
     m_rom_buffer.clear();
     m_rom_buffer.shrink_to_fit();
+    m_rom_path.clear();
     m_game_loaded = false;
+}
+
+namespace {
+
+// /foyer/saves/<rom_basename>.srm. One file per ROM, shared across
+// every core that runs that ROM (libretro guarantees the SRAM layout
+// is core-stable for a given system). Created lazily on first save.
+std::string sram_path_for(const std::string& rom_path) {
+    auto slash = rom_path.find_last_of('/');
+    auto start = (slash == std::string::npos) ? 0 : slash + 1;
+    auto dot   = rom_path.find_last_of('.');
+    auto end   = (dot != std::string::npos && dot > start) ? dot
+                                                           : rom_path.size();
+    return std::string{"/foyer/saves/"} + rom_path.substr(start, end - start)
+         + ".srm";
+}
+
+} // namespace
+
+void Frontend::load_sram_for(const std::string& rom_path) {
+    void* mem = retro_get_memory_data(RETRO_MEMORY_SAVE_RAM);
+    const size_t sz = retro_get_memory_size(RETRO_MEMORY_SAVE_RAM);
+    if (!mem || sz == 0) return;
+
+    const auto path = sram_path_for(rom_path);
+    std::ifstream in{path, std::ios::binary};
+    if (!in) return;
+    in.seekg(0, std::ios::end);
+    const auto file_sz = (std::size_t)in.tellg();
+    in.seekg(0, std::ios::beg);
+    if (file_sz != sz) {
+        // Size mismatch most often means the user changed cores
+        // (different SRAM layout) or the .srm came from a different
+        // emulator. Don't silently corrupt their save — leave the
+        // core's default region untouched and log it.
+        foyer::log::write(
+            "[sram] size mismatch for %s (file=%zu core=%zu) — skipping load\n",
+            path.c_str(), file_sz, sz);
+        return;
+    }
+    in.read(reinterpret_cast<char*>(mem), (std::streamsize)sz);
+    foyer::log::write("[sram] loaded %zu bytes from %s\n", sz, path.c_str());
+}
+
+void Frontend::save_sram_for(const std::string& rom_path) {
+    void* mem = retro_get_memory_data(RETRO_MEMORY_SAVE_RAM);
+    const size_t sz = retro_get_memory_size(RETRO_MEMORY_SAVE_RAM);
+    if (!mem || sz == 0) return;
+
+    ::mkdir("/foyer", 0755);
+    ::mkdir("/foyer/saves", 0755);
+
+    const auto path = sram_path_for(rom_path);
+    std::ofstream out{path, std::ios::binary | std::ios::trunc};
+    if (!out) {
+        foyer::log::write("[sram] could not write %s\n", path.c_str());
+        return;
+    }
+    out.write(reinterpret_cast<const char*>(mem), (std::streamsize)sz);
+    foyer::log::write("[sram] saved %zu bytes to %s\n", sz, path.c_str());
 }
 
 void Frontend::run_frame() {
@@ -367,6 +443,15 @@ void Frontend::run_frame() {
         hw.end_frame();
     } else {
         retro_run();
+    }
+
+    // Periodic SRAM flush so a hard power-off or atmosphère crash
+    // doesn't lose progress. ~every 30s at 60fps; the 32k mod skews
+    // the timing slightly (32768 vs 30000) but matches a power-of-two
+    // counter cheaper than a divmod.
+    if (++m_sram_flush_counter >= 1800 && !m_rom_path.empty()) {
+        m_sram_flush_counter = 0;
+        save_sram_for(m_rom_path);
     }
 }
 

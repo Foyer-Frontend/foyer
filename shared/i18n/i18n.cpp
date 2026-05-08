@@ -295,7 +295,7 @@ constexpr Catalogue kEnglishStrings = [] {
         "Aborts the in-flight transfer at the next callback.";
 
     a[(std::size_t)StringId::UpdatesEverythingUpToDate]  = "Everything is up to date";
-    a[(std::size_t)StringId::UpdatesUpdateEverything]    = "Update everything";
+    a[(std::size_t)StringId::UpdatesUpdateEverything]    = "Update all cores";
     a[(std::size_t)StringId::UpdatesLastJustNow]         = "Last: just now";
     a[(std::size_t)StringId::UpdatesRescrapeNow]         = "Re-scrape now";
     a[(std::size_t)StringId::UpdatesRescrapeHint]        =
@@ -427,7 +427,7 @@ constexpr Catalogue kEnglishStrings = [] {
     a[(std::size_t)StringId::BannerInstallingBezelPacks]    = "Installing all bezel packs...";
     a[(std::size_t)StringId::BannerInstallingCheatPack]     = "Installing cheat pack: %s...";
     a[(std::size_t)StringId::BannerCancelling]              = "Cancelling...";
-    a[(std::size_t)StringId::BannerUpdatingEverything]      = "Updating everything...";
+    a[(std::size_t)StringId::BannerUpdatingEverything]      = "Updating all cores...";
     a[(std::size_t)StringId::BannerDrillDownComingNextPass] =
         "Drill-down view comes in the next pass";
     a[(std::size_t)StringId::BannerScraperFieldSaved]       = "%s saved";

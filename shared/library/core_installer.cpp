@@ -107,6 +107,13 @@ InstallTotals install_cores(const CoreManifest& manifest,
         p.total = (int)manifest.cores.size();
         p.name  = c.name;
 
+        // Surface the per-core name BEFORE the skip-or-download decision
+        // so the UI can update its banner ("Installing fceumm..." etc.)
+        // for every core walked, even ones that end up skipped. Without
+        // this the banner stays frozen on the click-time text.
+        p.action = InstallAction::Started;
+        if (progress) progress(p);
+
         const std::string dest = std::string{kCoresDir} + "/" + c.nro;
         const auto have = file_size(dest);
         const bool was_present = (have > 0);

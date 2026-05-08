@@ -133,8 +133,18 @@ private:
     retro_system_av_info         m_av_info{};
     retro_pixel_format           m_pixel_format = RETRO_PIXEL_FORMAT_0RGB1555;
     std::vector<std::uint8_t>    m_rom_buffer;     // when need_fullpath==false
+    std::string                  m_rom_path;       // remembered for SRAM .srm naming
+    unsigned                     m_sram_flush_counter = 0;
     InputState                   m_input{};
     std::string                  m_system_dir   = "/foyer/system";
+
+    // Battery-backed memory persistence. retro_get_memory_data(SAVE_RAM)
+    // hands us a pointer the core writes in-place; we mirror it to
+    // /foyer/saves/<rom_basename>.srm on unload, restore on load. No
+    // .srm file => fresh game (the SAVE_RAM region keeps the core's
+    // own initial values).
+    void load_sram_for(const std::string& rom_path);
+    void save_sram_for(const std::string& rom_path);
 
     VideoSink                    m_video_sink = nullptr;
     AudioSink                    m_audio_sink = nullptr;

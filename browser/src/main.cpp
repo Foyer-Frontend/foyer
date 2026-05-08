@@ -561,27 +561,16 @@ int main(int argc, char** argv) {
             state.foyer_job.finish();
         }
 
-        // "Update everything" footer from the Updates page. Fans
-        // out to the existing per-kind request flags so the install
-        // handlers below pick them up sequentially. We don't try to
-        // run them in parallel — libcurl on Switch is synchronous on
-        // this thread and the install handlers all pump app.tick()
-        // between rows.
+        // "Update all cores" footer from the Updates page. Cores
+        // only — bezels/cheats/foyer-self each have their own row.
+        // Bundling them produced an opaque "updating everything"
+        // banner with no per-item visibility, so the action was
+        // narrowed to just the most-asked-for path.
         if (state.request_update_all) {
             state.request_update_all = false;
             state.install_only_core.clear();
-            state.install_only_bezel.clear();
-            state.install_only_cheat.clear();
             state.install_force = false;
-            state.request_install_cores  = true;
-            state.request_install_bezels = true;
-            state.request_install_cheats = true;
-            // Chain in foyer self-update if a check already flagged
-            // a newer version. Skipped versions are honoured by the
-            // install path itself.
-            if (state.foyer_update_available) {
-                state.request_install_foyer_update = true;
-            }
+            state.request_install_cores = true;
         }
 
         // Cores install. Synchronous on the main thread — the
@@ -633,7 +622,19 @@ int main(int argc, char** argv) {
                     // pumps app.tick() between rows so the UI stays
                     // responsive between back-to-back downloads.
                     const auto totals = foyer::library::install_cores(manifest,
-                        [&](const foyer::library::InstallProgress&) {
+                        [&](const foyer::library::InstallProgress& ip) {
+                            // Banner update on Started so the user
+                            // sees per-core progress during the loop
+                            // instead of a stale "Updating all cores"
+                            // string the entire time.
+                            if (ip.action == foyer::library::InstallAction::Started) {
+                                char bb[200];
+                                std::snprintf(bb, sizeof(bb),
+                                    foyer::i18n::tr(foyer::i18n::StringId::BannerInstallingItem),
+                                    ip.name.c_str());
+                                state.banner_text = bb;
+                                state.banner_ttl  = 240;
+                            }
                             app.tick();
                         }, force);
                     if (totals.failed > 0) {

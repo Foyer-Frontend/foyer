@@ -750,8 +750,17 @@ void draw_system(NVGcontext* vg, float w, float h, const State& s, const Library
     // Box art at the top — given more vertical real estate so it carries
     // the visual weight of the sidebar. Aspect-fit inside a soft frame so
     // both portrait and landscape covers look intentional.
+    //
+    // Virtual systems (Recents/Favorites) don't store their own covers
+    // — every game inside one came from a real system folder, and that's
+    // where its cover lives. Resolve via origin_system_for_rom so the
+    // sidebar art works in both real and virtual views.
+    const auto* cover_def = library::is_virtual_system(*sys.def)
+        ? library::origin_system_for_rom(g.path)
+        : sys.def;
+    if (!cover_def) cover_def = sys.def;
     const std::string cover = scrapers::cover_path(
-        sys.def->folder_name, g.stem);
+        cover_def->folder_name, g.stem);
     const float cover_h = 360.0f;
     const float cover_x = side_x + th.pad;
     const float cover_y = content_y + th.pad;
