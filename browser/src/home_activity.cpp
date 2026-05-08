@@ -15,43 +15,27 @@ namespace foyer::browser {
 
 namespace {
 
-// One carousel tile. Layered: full-size brls Image with the
-// alekfull-nx splash, plus a Label fallback that shows the system's
-// short name when the splash is missing. The image's setScalingType
-// fills the tile, preserving the splash's intended composition.
+// One carousel tile. Pure image — the alekfull-nx splash fills the
+// tile entirely, no text overlay. Tiles for systems without a splash
+// fall back to a flat-coloured rectangle (no label).
 class SystemTile : public brls::Box {
 public:
-    SystemTile(std::string_view folder, std::string_view label) {
+    SystemTile(std::string_view folder, std::string_view /*label*/) {
         this->setWidth(220.0f);
         this->setHeight(220.0f);
         this->setMargins(0.0f, 12.0f, 0.0f, 12.0f);
         this->setFocusable(true);
         this->setHighlightCornerRadius(6.0f);
         this->setBackgroundColor(nvgRGB(40, 50, 70));
-        this->setJustifyContent(brls::JustifyContent::CENTER);
-        this->setAlignItems(brls::AlignItems::CENTER);
 
-        // Splash image — alekfull-nx ships portrait splash.png per
-        // system at romfs:/themes/alekfull-nx/systems/<folder>/.
         auto* img = new brls::Image();
         img->setWidthPercentage(100.0f);
         img->setHeightPercentage(100.0f);
         img->setScalingType(brls::ImageScalingType::FILL);
-        img->setPositionType(brls::PositionType::ABSOLUTE);
-        img->setPositionTop(0.0f);
-        img->setPositionLeft(0.0f);
-        std::string path =
-            "themes/alekfull-nx/systems/" + std::string(folder) + "/splash.png";
+        const std::string path =
+            "themes/foyer/systems/" + std::string(folder) + "/splash.png";
         img->setImageFromRes(path);
         this->addView(img);
-
-        // Text fallback — sits behind the image. If the image loads,
-        // it covers the label; if it fails, the label shows through.
-        auto* lbl = new brls::Label();
-        lbl->setText(std::string{label});
-        lbl->setFontSize(36.0f);
-        lbl->setTextColor(nvgRGB(0xFF, 0xFF, 0xFF));
-        this->addView(lbl);
     }
 };
 

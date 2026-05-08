@@ -91,16 +91,14 @@
             id="foyer/carousel_scroll"
             width="auto"
             height="240"
+            grow="1.0"
             scrollingBehavior="centered">
 
             <brls:Box
                 id="foyer/carousel"
                 width="auto"
                 height="auto"
-                axis="row"
-                alignItems="center"
-                paddingLeft="32"
-                paddingRight="32" />
+                axis="row" />
 
         </brls:HScrollingFrame>
 
