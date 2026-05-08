@@ -1,0 +1,18 @@
+// Alekfull NX — Snow color scheme. Active when Settings →
+// Display → Theme color = Snow. Even cooler / cleaner than the
+// default Light scheme — pure-white panels on an off-white bg
+// with a steel-blue accent.
+{
+    "bg":          "#FAFBFD",
+    "bg_panel":    "#FFFFFF",
+    "bg_panel_hi": "#EEF1F6",
+
+    "accent":      "#4A90E2",
+    "accent_dim":  "#2D6FB7",
+
+    "text_strong": "#1A1F2C",
+    "text":        "#2E3340",
+    "text_dim":    "#6F778A",
+
+    "border":      "#DCE2EC"
+}

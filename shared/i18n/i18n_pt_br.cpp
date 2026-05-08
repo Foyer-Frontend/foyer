@@ -516,6 +516,51 @@ const std::array<const char*, kCount> kPortugueseBrazilStrings = [] {
     a[(std::size_t)StringId::ActionPastInstalled]           = "instalado";
     a[(std::size_t)StringId::ActionPastFailed]              = "FALHOU";
 
+    a[(std::size_t)StringId::ActionNews]                    = "Notícias";
+    a[(std::size_t)StringId::ActionEshop]                   = "eShop";
+    a[(std::size_t)StringId::ActionAlbum]                   = "Álbum";
+    a[(std::size_t)StringId::ActionControllers]             = "Controles";
+    a[(std::size_t)StringId::ActionSettings]                = "Ajustes";
+    a[(std::size_t)StringId::ActionPower]                   = "Energia";
+    a[(std::size_t)StringId::PowerMenuTitle]                = "Energia";
+    a[(std::size_t)StringId::PowerMenuRestart]              = "Reiniciar";
+    a[(std::size_t)StringId::PowerMenuSleep]                = "Modo de espera";
+    a[(std::size_t)StringId::PowerMenuShutdown]             = "Desligar";
+    a[(std::size_t)StringId::PowerMenuRebootHekate]         = "Reiniciar para Hekate";
+    a[(std::size_t)StringId::ColorSchemeLight]              = "Claro";
+    a[(std::size_t)StringId::ColorSchemeDark]               = "Escuro";
+    a[(std::size_t)StringId::ColorSchemeSnow]               = "Neve";
+    a[(std::size_t)StringId::ColorSchemeNord]               = "Nord";
+    a[(std::size_t)StringId::ColorSchemeDracula]            = "Dracula";
+    a[(std::size_t)StringId::ColorSchemeEmerald]            = "Esmeralda";
+    a[(std::size_t)StringId::BootLoadingSwitchTitles]       = "Carregando títulos do Switch...";
+    a[(std::size_t)StringId::BootLoadingSwitchTitlesProgress]
+                                                            = "Carregando títulos do Switch (%d / %d)...";
+    a[(std::size_t)StringId::BannerSwitchLaunchDenied]      =
+        "Lançamento de título do Switch negado (permissões do hbloader?)";
+    a[(std::size_t)StringId::BannerSwitchNotInManifest]     =
+        "Título do Switch não encontrado: %s";
+    a[(std::size_t)StringId::BannerExternalEshopMissing]    =
+        "NRO da eShop não encontrado nos caminhos configurados";
+    a[(std::size_t)StringId::BannerExternalAlbumMissing]    =
+        "Defina external_album_nro em general.jsonc para usar";
+    a[(std::size_t)StringId::BannerComingNews]              =
+        "Notícias chegarão em uma versão futura";
+    a[(std::size_t)StringId::BannerComingEshop]             =
+        "Acesso à eShop chegará em uma versão futura";
+    a[(std::size_t)StringId::BannerComingAlbum]             =
+        "Acesso ao álbum chegará em uma versão futura";
+    a[(std::size_t)StringId::BannerComingControllers]       =
+        "Pareamento de controles chegará em uma versão futura";
+    a[(std::size_t)StringId::ProfileSwitcherTitle]          = "Trocar perfil";
+    a[(std::size_t)StringId::ProfileEmptyOthers]            =
+        "Não há outros perfis neste console.";
+    a[(std::size_t)StringId::ProfileTagCurrent]             = "atual";
+    a[(std::size_t)StringId::ProfileFallbackName]           = "Jogador";
+    a[(std::size_t)StringId::ProfileNoNickname]             = "(perfil)";
+    a[(std::size_t)StringId::ProfileNoActiveNick]           = "(ativo)";
+    a[(std::size_t)StringId::FavoritesRowLabel]             = "Favoritos";
+
     a[(std::size_t)StringId::AccountUnset]                  = "não definido";
     a[(std::size_t)StringId::UpdatesMetadataKindLabel]      = "metadados";
 

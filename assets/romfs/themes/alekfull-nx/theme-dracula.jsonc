@@ -1,0 +1,17 @@
+// Alekfull NX — Dracula color scheme. Active when Settings →
+// Display → Theme color = Dracula. Palette taken from the
+// canonical Dracula spec (https://draculatheme.com/contribute).
+{
+    "bg":          "#282A36",
+    "bg_panel":    "#373948",
+    "bg_panel_hi": "#44475A",
+
+    "accent":      "#BD93F9",
+    "accent_dim":  "#9D6FE0",
+
+    "text_strong": "#F8F8F2",
+    "text":        "#E0E0DA",
+    "text_dim":    "#8A8B97",
+
+    "border":      "#6272A4"
+}

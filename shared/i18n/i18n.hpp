@@ -536,6 +536,42 @@ enum class StringId : std::uint16_t {
     ActionPastInstalled,               // "installed"
     ActionPastFailed,                  // "FAILED"
 
+    // 0.5.x chrome strings
+    ActionNews,                        // "News"
+    ActionEshop,                       // "eShop"
+    ActionAlbum,                       // "Album"
+    ActionControllers,                 // "Controllers"
+    ActionSettings,                    // "Settings"
+    ActionPower,                       // "Power"
+    PowerMenuTitle,                    // "Power"
+    PowerMenuRestart,                  // "Restart"
+    PowerMenuSleep,                    // "Sleep mode"
+    PowerMenuShutdown,                 // "Power off"
+    PowerMenuRebootHekate,             // "Reboot to Hekate"
+    ColorSchemeLight,                  // "Light"
+    ColorSchemeDark,                   // "Dark"
+    ColorSchemeSnow,                   // "Snow"
+    ColorSchemeNord,                   // "Nord"
+    ColorSchemeDracula,                // "Dracula"
+    ColorSchemeEmerald,                // "Emerald"
+    BootLoadingSwitchTitles,           // "Loading Switch titles..."
+    BootLoadingSwitchTitlesProgress,   // "Loading Switch titles (%d / %d)..."
+    BannerSwitchLaunchDenied,          // "Switch title launch denied (hbloader permission?)"
+    BannerSwitchNotInManifest,         // "Switch title not in manifest: %s"
+    BannerExternalEshopMissing,        // "eShop NRO not found at configured paths"
+    BannerExternalAlbumMissing,        // "Set external_album_nro in general.jsonc to use this"
+    BannerComingNews,                  // "News feed coming in a future release"
+    BannerComingEshop,                 // "eShop launcher coming in a future release"
+    BannerComingAlbum,                 // "Album launcher coming in a future release"
+    BannerComingControllers,           // "Controller pairing coming in a future release"
+    ProfileSwitcherTitle,              // "Switch profile"
+    ProfileEmptyOthers,                // "No other profiles on this console."
+    ProfileTagCurrent,                 // "current"
+    ProfileFallbackName,               // "Player"
+    ProfileNoNickname,                 // "(profile)"
+    ProfileNoActiveNick,               // "(active)"
+    FavoritesRowLabel,                 // "Favorites" (kept for any legacy use)
+
     // Misc account/value labels
     AccountUnset,                      // "unset" (placeholder for empty credentials)
     UpdatesMetadataKindLabel,          // "metadata" (Scrape-all-systems row value)

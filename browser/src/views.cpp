@@ -446,10 +446,22 @@ void rrect(NVGcontext* vg, float x, float y, float ww, float hh,
            float r, NVGcolor fill);
 void rrect_outline(NVGcontext* vg, float x, float y, float ww, float hh,
                    float r, NVGcolor c, float thick);
+// Forward decls for action-row contents — needed because 0.5.25 inlines
+// the button row into draw_hos_top_bar (middle column), but the glyph /
+// label helpers live further down alongside the rest of the action-row
+// code. Kept in one place so paint order matches the rest of the file.
+constexpr int kHosActionCount = 6;
+const char* hos_action_label(int i);
+void draw_action_glyph(NVGcontext* vg, int idx, float cx, float cy,
+                       float r, NVGcolor c);
 
-constexpr float kHosTopBarH    = 80.0f;   // taller than vanilla topbar so the
-                                          // 56 px avatar circle has padding
-constexpr float kHosActionRowH = 96.0f;   // 64 px button + 24 px label below
+// 0.5.25: collapsed top bar + action row into a single 3-column row —
+// profiles | action buttons | status cluster. The action buttons now
+// share the top bar; kHosActionRowH stays as a named zero so older
+// layout maths still compile. Tile carousel hangs off this height +
+// floats just above the separator line.
+constexpr float kHosTopBarH    = 100.0f;  // fits 26-px button + label below
+constexpr float kHosActionRowH = 0.0f;    // merged into top bar
 
 // Round button shorthand: a flat-filled circle with an optional 1.5 px
 // outline. Reused for the avatar slot and every action row button.
@@ -522,6 +534,40 @@ void draw_hos_top_bar(NVGcontext* vg, float w, const State& s) {
                     /*focused=*/s.avatar_row_focus && s.avatar_index == (i + 1));
     }
 
+    // Action buttons (top-middle): 6 small circles centred on the
+    // top bar. 0.5.25 promoted these out of the dedicated action row
+    // and into the same horizontal band as profiles + status — that's
+    // closer to how HOS lays out its launcher chrome and frees up
+    // ~96 px of vertical space for the tile carousel.
+    {
+        const bool has_focus = s.action_row_focus &&
+                               s.action_button_index >= 0 &&
+                               s.action_button_index < kHosActionCount;
+        constexpr float kBtnR     = 26.0f;
+        constexpr float kBtnPitch = kBtnR * 2 + 12.0f;
+        const float total_w = kBtnPitch * (kHosActionCount - 1);
+        const float start_x = (w - total_w) * 0.5f;
+        const float btn_cy  = avy;
+
+        for (int i = 0; i < kHosActionCount; i++) {
+            const float cx     = start_x + kBtnPitch * i;
+            const bool  active = has_focus && i == s.action_button_index;
+            const NVGcolor fill   = active ? th.accent : th.bg_panel_hi;
+            const NVGcolor stroke = active ? th.accent : th.border;
+            hos_circle(vg, cx, btn_cy, kBtnR, fill, stroke);
+            const NVGcolor glyph_c = active ? th.bg : th.text;
+            draw_action_glyph(vg, i, cx, btn_cy, kBtnR, glyph_c);
+
+            if (active) {
+                nvgFontSize(vg, th.label_size);
+                nvgFillColor(vg, th.text_strong);
+                nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
+                nvgText(vg, cx, btn_cy + kBtnR + 4.0f,
+                        hos_action_label(i), nullptr);
+            }
+        }
+    }
+
     // Status cluster (top-right): left-to-right order = clock,
     // wifi, battery percentage + battery icon. Each element is
     // anchored to a fixed slot so the cluster doesn't reflow when
@@ -566,9 +612,11 @@ void draw_hos_top_bar(NVGcontext* vg, float w, const State& s) {
     nvgText(vg, battx - 6.0f, avy, pct_buf, nullptr);
 
     // WiFi: three nested arcs forming a signal triangle. Sits left
-    // of the percentage text.
+    // of the percentage text. 0.5.25 widened the gap (was 36) so the
+    // wifi triangle no longer crowds the percentage glyphs at small
+    // theme font sizes.
     constexpr float kWifiBlock = 28.0f;  // visual width allocation
-    const float wifix = battx - 6.0f - 36.0f - kWifiBlock * 0.5f;
+    const float wifix = battx - 10.0f - 56.0f - kWifiBlock * 0.5f;
     const float wifiy = avy + 4.0f;
     const int   strength = hos_status::wifi_connected()
                              ? hos_status::wifi_strength() : 0;
@@ -597,16 +645,16 @@ void draw_hos_top_bar(NVGcontext* vg, float w, const State& s) {
 
 // Action-row buttons. Sleep moved into the Power menu in 0.5.17 — the
 // stand-alone Sleep slot was redundant once Power opened a modal that
-// already had Sleep as an option.
-constexpr int kHosActionCount = 6;
+// already had Sleep as an option. kHosActionCount declared up top so
+// draw_hos_top_bar can paint the row in its middle column.
 const char* hos_action_label(int i) {
     switch (i) {
-        case 0: return "News";
-        case 1: return "eShop";
-        case 2: return "Album";
-        case 3: return "Controllers";
-        case 4: return "Settings";
-        case 5: return "Power";
+        case 0: return _(SId::ActionNews);
+        case 1: return _(SId::ActionEshop);
+        case 2: return _(SId::ActionAlbum);
+        case 3: return _(SId::ActionControllers);
+        case 4: return _(SId::ActionSettings);
+        case 5: return _(SId::ActionPower);
     }
     return "";
 }
@@ -830,48 +878,12 @@ void draw_action_glyph(NVGcontext* vg, int idx, float cx, float cy,
 }
 
 void draw_hos_action_row(NVGcontext* vg, float w, float h, const State& s) {
-    const auto& th    = theme();
-    // 0.5.24: action row moved to the top, just under the top bar.
-    const float row_y = kHosTopBarH;
-    (void)h;  // separator + hint bar still reference h elsewhere
-    const bool  has_focus = s.action_row_focus &&
-                            s.action_button_index >= 0 &&
-                            s.action_button_index < kHosActionCount;
-
-    // No row background, no pill — the buttons float directly on
-    // the unified bg, matching HOS's bare action row. Tight
-    // centre-to-centre pitch keeps the cluster compact. Below the
-    // row we draw a thin horizontal separator (95 % of screen
-    // width, theme-contrasting color) that visually splits the
-    // action row from the bottom hint bar — same affordance HOS
-    // uses to indicate the row is interactive.
-    constexpr float kBtnR     = 34.0f;
-    constexpr float kLabelGap = 18.0f;
-    constexpr float kBtnPitch = kBtnR * 2 + 14.0f;
-    const float total_w = kBtnPitch * (kHosActionCount - 1);
-    const float start_x = (w - total_w) * 0.5f;
-    const float cy      = row_y + kHosActionRowH * 0.5f - kLabelGap * 0.5f;
-
-    for (int i = 0; i < kHosActionCount; i++) {
-        const float cx     = start_x + kBtnPitch * i;
-        const bool  active = has_focus && i == s.action_button_index;
-        const NVGcolor fill   = active ? th.accent : th.bg_panel_hi;
-        const NVGcolor stroke = active ? th.accent : th.border;
-        hos_circle(vg, cx, cy, kBtnR, fill, stroke);
-        // Vector glyph drawn via nanovg paths — no font / asset
-        // dependency, stays sharp at any size.
-        const NVGcolor glyph_c = active ? th.bg : th.text;
-        draw_action_glyph(vg, i, cx, cy, kBtnR, glyph_c);
-
-        // Label only on the focused button (HOS only labels what's
-        // currently focused).
-        if (active) {
-            nvgFontSize(vg, th.label_size);
-            nvgFillColor(vg, th.text_strong);
-            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
-            nvgText(vg, cx, cy + kBtnR + 6.0f, hos_action_label(i), nullptr);
-        }
-    }
+    const auto& th = theme();
+    (void)s;  // 0.5.25: buttons moved into draw_hos_top_bar's middle
+              // column. This routine now just paints the separator
+              // line that splits the carousel from the bottom hint
+              // bar, kept as its own function so paint-order calls
+              // in render_home() don't need to change.
 
     // Separator line between the tile area and the bottom hint bar.
     // 95 % of screen width, centred, 3 px thick (was 1.5 — user
@@ -1062,14 +1074,21 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
     const auto& th       = theme();
     const auto idx_centre = (int)s.system_index;
     const auto count      = (int)lib.systems.size();
-    // 0.5.24 layout swap: action row sits just under the top bar,
-    // tile carousel below it, separator + hint bar at the bottom.
-    // Tiles centre is roughly between the action-row baseline and
-    // the separator.
-    const float cy        = kHosTopBarH + kHosActionRowH
-                          + (h - kHosTopBarH - kHosActionRowH
-                             - kBottomBarH) * 0.5f;
+    // 0.5.25 layout: action buttons promoted into the top bar, so the
+    // tile carousel hangs from the top-bar baseline down to the
+    // separator. User asked for the tiles to sit *just above* the
+    // separator (not centred in the tall vertical band) — bias the
+    // centre line so the focused tile bottom lands ~14 px above the
+    // separator regardless of screen height.
+    const float sep_y     = h - kBottomBarH - 2.0f;
+    const float focus_half_h = kHomeTileH * 0.5f * kHomeFocusScale;
+    const float cy        = sep_y - 14.0f - focus_half_h;
     const float pitch     = kHomeTileW + kHomeTileGap;
+    // Highlighted tile = leftmost full square. The carousel is
+    // 5 tiles wide (half + full + full + full + half), and we want
+    // offset 0 (the focused one) to land at the *first* full slot
+    // which is 1 pitch left of centre.
+    const float center_anchor = w * 0.5f - pitch;
     const float radius    = library::config().rounded_tiles
                               ? kHomeRadiusRounded : kHomeRadiusSharp;
 
@@ -1109,17 +1128,9 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
         }
     }
 
-    // System name centered directly above the focused tile.
-    {
-        const auto& sys = lib.systems[idx_centre % count];
-        const std::string label{sys.def->display_name};
-        nvgFontSize(vg, th.head_size);
-        nvgFillColor(vg, th.text_strong);
-        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM);
-        nvgText(vg, w * 0.5f,
-                cy - kHomeTileH * 0.5f * kHomeFocusScale - 18.0f,
-                label.c_str(), nullptr);
-    }
+    // 0.5.25: dropped the focused-system name label above the tile.
+    // The tile art itself already labels the system clearly enough,
+    // and the label crowded the per-system background.
 
     // Two-pass paint so the focused tile's logo + accent border land
     // above the neighbour tiles even when they overlap on touchscreens
@@ -1132,7 +1143,12 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
         const float scale = focused ? kHomeFocusScale : 1.0f;
         const float tw    = kHomeTileW * scale;
         const float thh   = kHomeTileH * scale;
-        const float cx    = w * 0.5f + (float)offset * pitch;
+        // 0.5.25: focused tile lands at the leftmost FULL slot —
+        // anchor is one pitch left of screen centre. offset 0 =
+        // focused, -1 = clipped half on the far left, +1/+2 are the
+        // remaining two full tiles, +3 = clipped half on the far
+        // right.
+        const float cx    = center_anchor + (float)offset * pitch;
         const float x     = cx - tw * 0.5f;
         const float y     = cy - thh * 0.5f;
         const float alpha = focused ? 1.0f : kHomeSideAlpha;
@@ -1237,12 +1253,11 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
     };
 
     // Walk neighbours from far-out → in so the focused tile lands on
-    // top. No second pass for a logo overlay — the system splash PNGs
-    // already include the system wordmark + console art baked in, so
-    // an extra logo blit was painting the same content twice and
-    // making the focused tile look noisy. HOS keeps tile content
-    // entirely inside the splash.
-    for (int off : {-3, 3, -2, 2, -1, 1}) {
+    // top. 0.5.25: anchor shifted left so offset 0 = leftmost full.
+    // Render range -1..+3 (half + focused + 2 full + half) plus a
+    // couple of extras so off-screen tiles are queued in the splash
+    // cache before they scroll into view.
+    for (int off : {-2, 4, -1, 3, 1, 2}) {
         draw_tile_at(off, /*focused=*/false);
     }
     draw_tile_at(0, /*focused=*/true);
@@ -1645,9 +1660,18 @@ void draw_quit_confirm(NVGcontext* vg, float w, float h, const State& s) {
 // as horizontally-arranged buttons. A picks; B closes. The actual
 // libnx call happens in main.cpp via the request_* flags so the
 // input handler stays free of service surface.
-constexpr const char* kPowerMenuLabels[] = {
-    "Restart", "Sleep", "Power off", "Reboot to Hekate",
-};
+// Power-menu row labels resolved at draw time so live language
+// switches reflow correctly. Order matches the request_* dispatch
+// in main.cpp's drain.
+const char* power_menu_label(int i) {
+    switch (i) {
+        case 0: return _(SId::PowerMenuRestart);
+        case 1: return _(SId::PowerMenuSleep);
+        case 2: return _(SId::PowerMenuShutdown);
+        case 3: return _(SId::PowerMenuRebootHekate);
+    }
+    return "";
+}
 constexpr int kPowerMenuCount = 4;
 
 // Per-row glyph for the power menu. HOS uses small line-art icons
@@ -1761,7 +1785,7 @@ void draw_power_menu(NVGcontext* vg, float w, float h, const State& s) {
         nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
         nvgText(vg, px + kRowPadX + kIconR * 2 + 24.0f,
                 ry + kRowH * 0.5f,
-                kPowerMenuLabels[i], nullptr);
+                power_menu_label(i), nullptr);
     }
 }
 
@@ -1791,7 +1815,7 @@ void draw_profile_switcher(NVGcontext* vg, float w, float h, const State& s) {
     nvgFillColor(vg, th.text_strong);
     nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
     nvgText(vg, card_x + kCardW * 0.5f, card_y + 24,
-            "Switch profile", nullptr);
+            _(SId::ProfileSwitcherTitle), nullptr);
 
     constexpr float kPickerR  = 56.0f;
     constexpr float kPickerGap = 24.0f;
@@ -1831,7 +1855,8 @@ void draw_profile_switcher(NVGcontext* vg, float w, float h, const State& s) {
         if (active) {
             nvgFontSize(vg, th.label_size);
             nvgFillColor(vg, th.text_dim);
-            nvgText(vg, cx, row_y + r + 28, "current", nullptr);
+            nvgText(vg, cx, row_y + r + 28,
+                    _(SId::ProfileTagCurrent), nullptr);
         }
     };
 
@@ -1839,7 +1864,8 @@ void draw_profile_switcher(NVGcontext* vg, float w, float h, const State& s) {
     const auto& active_nick = hos_status::nickname();
     draw_picker(row_x + kPickerR, kPickerR, hos_status::avatar_handle(),
                 /*selected=*/false,
-                active_nick.empty() ? "(active)" : active_nick.c_str(),
+                active_nick.empty() ? _(SId::ProfileNoActiveNick)
+                                    : active_nick.c_str(),
                 /*active=*/true);
     // Secondaries.
     for (int i = 0; i < n_others; i++) {
@@ -1848,7 +1874,7 @@ void draw_profile_switcher(NVGcontext* vg, float w, float h, const State& s) {
         const auto& nick = hos_status::other_nickname(i);
         draw_picker(cx, kPickerR, hos_status::other_avatar_handle(i),
                     /*selected=*/(s.profile_switcher_cursor == i),
-                    nick.empty() ? "(profile)" : nick.c_str(),
+                    nick.empty() ? _(SId::ProfileNoNickname) : nick.c_str(),
                     /*active=*/false);
     }
 
@@ -1857,7 +1883,7 @@ void draw_profile_switcher(NVGcontext* vg, float w, float h, const State& s) {
         nvgFillColor(vg, th.text_dim);
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
         nvgText(vg, card_x + kCardW * 0.5f, card_y + kCardH * 0.5f,
-                "No other profiles on this console.", nullptr);
+                _(SId::ProfileEmptyOthers), nullptr);
     }
 }
 
@@ -3472,15 +3498,23 @@ OptionList build_option_list(int op, const std::string& data) {
             break;
         }
         case OpTheme: {
-            // 0.5.10: foyer ships a single theme (alekfull-nx) with
-            // multiple color schemes. The "Theme" Settings entry now
-            // picks the COLOR SCHEME — Light / Dark — instead of the
-            // theme name. Theme name only changes when the user
-            // installs a third-party pack into /foyer/themes/.
+            // foyer ships a single theme (alekfull-nx) with multiple
+            // color schemes. The picker offers them in order; A
+            // applies, L/R cycles. Each option maps to a
+            // theme-<key>.jsonc inside the theme dir; "light" is the
+            // canonical theme.jsonc.
             o.title   = _(SId::SettingsTheme);
-            o.options = { "Light", "Dark" };
+            o.options = {
+                "Light", "Dark", "Snow", "Nord", "Dracula", "Emerald",
+            };
             const auto& cur = library::config().theme_color;
-            o.current_index = (cur == "dark") ? 1 : 0;
+            int idx = 0;
+            if      (cur == "dark")    idx = 1;
+            else if (cur == "snow")    idx = 2;
+            else if (cur == "nord")    idx = 3;
+            else if (cur == "dracula") idx = 4;
+            else if (cur == "emerald") idx = 5;
+            o.current_index = idx;
             break;
         }
         case OpEmuSysCore: {
@@ -3794,11 +3828,15 @@ std::string apply_option(int op, const std::string& data,
             break;
         }
         case OpTheme: {
-            // OpTheme now writes the color scheme rather than the
-            // theme name; reload re-reads the active theme's
-            // theme[-<color>].jsonc to swap palettes in place.
-            const std::string color = (chosen_index == 1) ? "dark" : "light";
-            library::set_theme_color(color);
+            // Map the picker index → theme_color key. Order must
+            // mirror build_option_list above.
+            static const char* kColorKey[] = {
+                "light", "dark", "snow", "nord", "dracula", "emerald",
+            };
+            const int n = (int)(sizeof(kColorKey) / sizeof(kColorKey[0]));
+            const int i = (chosen_index < 0 || chosen_index >= n)
+                              ? 0 : chosen_index;
+            library::set_theme_color(kColorKey[i]);
             load_theme(library::config().theme_name);
             s.request_invalidate_covers = true;
             break;
@@ -5240,8 +5278,8 @@ void update(State& s, const Library& lib,
                 // queue request flags that main.cpp drains so we don't
                 // call libnx services from inside the input handler.
                 switch (s.action_button_index) {
-                    case 0: // News — placeholder until 0.5.2 RSS feed
-                        s.banner_text = "News feed coming in 0.5.2";
+                    case 0: // News — placeholder until RSS lands
+                        s.banner_text = _(SId::BannerComingNews);
                         s.banner_ttl  = 240;
                         break;
                     case 1: { // eShop — chain-launch user's preferred
@@ -5255,8 +5293,7 @@ void update(State& s, const Library& lib,
                             cfg.external_eshop_nro_alt,
                         });
                         if (path.empty()) {
-                            s.banner_text =
-                                "eShop NRO not found at configured paths";
+                            s.banner_text = _(SId::BannerExternalEshopMissing);
                             s.banner_ttl  = 300;
                         } else {
                             // envSetNextLoad already queued — quit so
@@ -5273,8 +5310,7 @@ void update(State& s, const Library& lib,
                             cfg.external_album_nro,
                         });
                         if (path.empty()) {
-                            s.banner_text =
-                                "Set external_album_nro in general.jsonc to use this";
+                            s.banner_text = _(SId::BannerExternalAlbumMissing);
                             s.banner_ttl  = 300;
                         } else {
                             s.request_quit = true;
@@ -5284,7 +5320,7 @@ void update(State& s, const Library& lib,
                     case 3: // Controllers — opens Settings → controller
                             // pairing once that page lands; placeholder
                             // for now.
-                        s.banner_text = "Controller pairing coming in 0.6.0";
+                        s.banner_text = _(SId::BannerComingControllers);
                         s.banner_ttl  = 240;
                         break;
                     case 4: // Settings — open the existing view
@@ -5816,18 +5852,25 @@ void update(State& s, const Library& lib,
                                                       sys->cores[next].name);
                     }
                 } else if (it.payload == settings::OpTheme) {
-                    // L/R cycle the theme COLOR scheme (Light↔Dark) on
-                    // the active theme. The picker (A) shows the same
-                    // two options.
-                    const std::string cur = library::config().theme_color;
-                    const std::string next =
-                        (cur == "dark") ? "light" : "dark";
-                    library::set_theme_color(next);
+                    // L/R cycle through the same six color schemes
+                    // the picker offers. Wrap in either direction.
+                    static const char* kColorKey[] = {
+                        "light", "dark", "snow", "nord", "dracula", "emerald",
+                    };
+                    constexpr int n =
+                        (int)(sizeof(kColorKey) / sizeof(kColorKey[0]));
+                    int cur = 0;
+                    const std::string& cv = library::config().theme_color;
+                    for (int i = 0; i < n; i++) {
+                        if (cv == kColorKey[i]) { cur = i; break; }
+                    }
+                    const int next = ((cur + delta) % n + n) % n;
+                    library::set_theme_color(kColorKey[next]);
                     load_theme(library::config().theme_name);
                     s.request_invalidate_covers = true;
                     char bb[120];
                     std::snprintf(bb, sizeof(bb),
-                        _(SId::BannerThemeChanged), next.c_str());
+                        _(SId::BannerThemeChanged), kColorKey[next]);
                     s.banner_text = bb;
                     s.banner_ttl  = 120;
                 } else if (it.payload == settings::OpSortMode) {

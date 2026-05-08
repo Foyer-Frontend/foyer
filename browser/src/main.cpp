@@ -327,13 +327,14 @@ int main(int argc, char** argv) {
     // progress callback so the boot splash shows live progress —
     // tick EVERY record (was every 4th in 0.5.13, which produced
     // 5-10 second gaps between visible updates and looked frozen).
-    boot_status = "Loading Switch titles...";
+    boot_status = ::foyer::i18n::tr(::foyer::i18n::StringId::BootLoadingSwitchTitles);
     app.tick();
     foyer::browser::switch_titles::load(app.vg(),
         [&](int idx, int total) {
-            char buf[80];
+            char buf[120];
             std::snprintf(buf, sizeof(buf),
-                "Loading Switch titles (%d / %d)...", idx, total);
+                ::foyer::i18n::tr(::foyer::i18n::StringId::BootLoadingSwitchTitlesProgress),
+                idx, total);
             boot_status = buf;
             app.tick();
         });
@@ -1122,8 +1123,8 @@ int main(int argc, char** argv) {
                     // application-launch permission (some 17.x+
                     // setups). Surface a specific banner — the
                     // "Core not installed" wording is meaningless here.
-                    state.banner_text =
-                        "Switch title launch denied (hbloader permission?)";
+                    state.banner_text = foyer::i18n::tr(
+                        foyer::i18n::StringId::BannerSwitchLaunchDenied);
                     state.banner_ttl  = 300;
                 } else {
                     const auto* core = foyer::library::resolve_core(*sys.def, game.path);

@@ -1,0 +1,18 @@
+// Alekfull NX — Nord color scheme. Active when Settings →
+// Display → Theme color = Nord. Palette from the Nord project
+// (https://www.nordtheme.com/) — polar-night backgrounds with
+// frost accents.
+{
+    "bg":          "#2E3440",
+    "bg_panel":    "#3B4252",
+    "bg_panel_hi": "#434C5E",
+
+    "accent":      "#88C0D0",
+    "accent_dim":  "#5E81AC",
+
+    "text_strong": "#ECEFF4",
+    "text":        "#D8DEE9",
+    "text_dim":    "#7C8898",
+
+    "border":      "#4C566A"
+}
