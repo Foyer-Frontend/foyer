@@ -30,17 +30,27 @@ bool exists(const std::string& path) {
 // fallback was dropped — picking an art for a system is now an
 // explicit Settings → Emulator → Bezel per system action.
 std::string resolve_path() {
-    if (!foyer::library::config().show_bezels) return {};
+    const bool enabled = foyer::library::config().show_bezels;
+    foyer::log::write(
+        "[bezel] resolve folder=%s stem=%s show_bezels=%d\n",
+        g_folder.c_str(), g_stem.c_str(), (int)enabled);
+    if (!enabled) return {};
     char buf[512];
     if (!g_folder.empty() && !g_stem.empty()) {
         std::snprintf(buf, sizeof(buf),
             "/foyer/bezels/%s/%s.png", g_folder.c_str(), g_stem.c_str());
-        if (exists(buf)) return std::string{buf};
+        const bool found = exists(buf);
+        foyer::log::write("[bezel]   try per-rom %s -> %s\n",
+            buf, found ? "FOUND" : "miss");
+        if (found) return std::string{buf};
     }
     if (!g_folder.empty()) {
         std::snprintf(buf, sizeof(buf),
             "/foyer/bezels/%s.png", g_folder.c_str());
-        if (exists(buf)) return std::string{buf};
+        const bool found = exists(buf);
+        foyer::log::write("[bezel]   try per-system %s -> %s\n",
+            buf, found ? "FOUND" : "miss");
+        if (found) return std::string{buf};
     }
     return {};
 }
@@ -53,16 +63,20 @@ void ensure_loaded(NVGcontext* vg) {
     g_handle = nvgCreateImage(vg, g_resolved_path.c_str(),
                               NVG_IMAGE_GENERATE_MIPMAPS);
     if (g_handle <= 0) {
-        foyer::log::write("[bezel] failed to load %s\n", g_resolved_path.c_str());
+        foyer::log::write("[bezel] nvgCreateImage failed for %s\n",
+            g_resolved_path.c_str());
         g_resolved_path.clear();
     } else {
-        foyer::log::write("[bezel] using %s\n", g_resolved_path.c_str());
+        foyer::log::write("[bezel] using %s (handle=%d)\n",
+            g_resolved_path.c_str(), g_handle);
     }
 }
 
 } // namespace
 
 void set_bezel_rom_id(const std::string& system_folder, const std::string& rom_stem) {
+    foyer::log::write("[bezel] set_bezel_rom_id folder=\"%s\" stem=\"%s\"\n",
+        system_folder.c_str(), rom_stem.c_str());
     g_folder    = system_folder;
     g_stem      = rom_stem;
     g_resolved  = false;
