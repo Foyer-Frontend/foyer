@@ -520,6 +520,14 @@ constexpr Catalogue kEnglishStrings = [] {
 
     a[(std::size_t)StringId::AccountUnset]                  = "unset";
     a[(std::size_t)StringId::UpdatesMetadataKindLabel]      = "metadata";
+
+    a[(std::size_t)StringId::DetailBezelRowLabel]           = "Bezel";
+    a[(std::size_t)StringId::DetailCoreRowLabel]            = "Core";
+    a[(std::size_t)StringId::DetailUseSystemDefault]        = "(system default)";
+    a[(std::size_t)StringId::DetailValueNone]               = "(none)";
+    a[(std::size_t)StringId::DetailUseSystemDefaultPicker]  = "System default";
+    a[(std::size_t)StringId::BannerPerGameBezelSet]         = "Per-game bezel: %s";
+    a[(std::size_t)StringId::BannerPerGameBezelCleared]     = "Per-game bezel cleared";
     return a;
 }();
 

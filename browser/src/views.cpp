@@ -1546,6 +1546,15 @@ enum : int {
     OpInstallSingleBezelPack,    // Per-row install for one bezel pack
     OpInstallSingleShaderPreset, // Per-row install for one shader preset
     OpRefreshShadersManifest,    // Pull manifest only (per-preset rows after)
+    // ----- GameDetail per-game pickers ----------------------------
+    // Each opens an OptionPicker driven by build_option_list /
+    // apply_option below. data carries the rom path (or
+    // "folder:stem" for OpDetailBezelPerGame which writes to
+    // /foyer/bezels/<folder>/<stem>.png).
+    OpDetailShader,              // Per-game shader override
+    OpDetailRunahead,            // Per-game run-ahead frame count
+    OpDetailCore,                // Per-game core override
+    OpDetailBezelPerGame,        // Per-game bezel PNG (per-rom layer)
     OpUpdCheckFoyer, OpUpdInstallFoyer,
     // Unified Updates page. Replaces the per-kind
     // Install/Refresh/Update Foyer chain on the Updates subpage —
@@ -2749,6 +2758,121 @@ OptionList build_option_list(int op, const std::string& data) {
             o.current_index = -1;  // no "current" badge for actions
             break;
         }
+        case OpDetailShader: {
+            // data = rom path. options[0] = "System default" clears the
+            // override; rest = the same shader keys the L/R cycle path
+            // used, plus any installed user presets under /foyer/shaders/.
+            o.title = _(SId::DetailShaderRowLabel);
+            o.options.emplace_back(_(SId::DetailUseSystemDefaultPicker));
+            o.options.emplace_back("none");
+            o.options.emplace_back("scanlines");
+            o.options.emplace_back("crt_simple");
+            o.options.emplace_back("lcd_grid");
+            o.options.emplace_back("gb_dmg");
+            o.options.emplace_back("gba_correct");
+            // User-installed presets: each subdirectory under
+            // /foyer/shaders/ is one preset. Skip names already in the
+            // builtin list to avoid duplicates.
+            if (auto* d = ::opendir("/foyer/shaders")) {
+                while (auto* e = ::readdir(d)) {
+                    if (e->d_type != DT_DIR) continue;
+                    std::string_view n{e->d_name};
+                    if (n == "." || n == "..") continue;
+                    bool dup = false;
+                    for (std::size_t i = 1; i < o.options.size(); i++) {
+                        if (o.options[i] == n) { dup = true; break; }
+                    }
+                    if (!dup) o.options.emplace_back(std::string{n});
+                }
+                ::closedir(d);
+            }
+            const auto pg = library::per_game_shader(data);
+            o.current_index = 0;
+            if (!pg.empty()) {
+                for (std::size_t i = 1; i < o.options.size(); i++) {
+                    if (o.options[i] == pg) {
+                        o.current_index = (int)i;
+                        break;
+                    }
+                }
+            }
+            break;
+        }
+        case OpDetailRunahead: {
+            // data = rom path. Index 0 = clear (inherit system); 1+ map
+            // directly to frame counts 0..4.
+            o.title = _(SId::DetailRunaheadRowLabel);
+            o.options.emplace_back(_(SId::DetailUseSystemDefaultPicker));
+            o.options.emplace_back(_(SId::DetailRunaheadOff));
+            o.options.emplace_back(_(SId::DetailRunaheadOneFrame));
+            char buf[40];
+            for (int n : {2, 3, 4}) {
+                std::snprintf(buf, sizeof(buf),
+                    _(SId::DetailRunaheadNFrames), n);
+                o.options.emplace_back(buf);
+            }
+            const auto pg = library::per_game_runahead(data);
+            o.current_index = (pg < 0) ? 0 : (pg + 1);
+            break;
+        }
+        case OpDetailCore: {
+            // data = rom path. Resolve the origin system to enumerate
+            // the cores the rom can run on. Index 0 = clear per-game
+            // override; 1+ = each core in def->cores in declared order.
+            o.title = _(SId::DetailCoreRowLabel);
+            o.options.emplace_back(_(SId::DetailUseSystemDefaultPicker));
+            const auto* def = library::origin_system_for_rom(data);
+            if (def) {
+                for (const auto& c : def->cores) {
+                    o.options.emplace_back(std::string{c.name});
+                }
+            }
+            const auto pg = library::per_game_core_for(data);
+            o.current_index = 0;
+            if (!pg.empty()) {
+                for (std::size_t i = 1; i < o.options.size(); i++) {
+                    if (o.options[i] == pg) {
+                        o.current_index = (int)i;
+                        break;
+                    }
+                }
+            }
+            break;
+        }
+        case OpDetailBezelPerGame: {
+            // data = "folder:stem". Apply copies the chosen PNG to
+            // /foyer/bezels/<folder>/<stem>.png; "(none)" unlinks it.
+            // The exclusion list mirrors OpBezelForSystem — the
+            // per-system PNG named after `folder` is skipped (it's the
+            // SYSTEM-level dest, not a candidate source).
+            const auto colon = data.find(':');
+            const std::string folder = (colon == std::string::npos)
+                ? data : data.substr(0, colon);
+            o.title = _(SId::DetailBezelRowLabel);
+            o.options.emplace_back(_(SId::DetailValueNone));
+            std::vector<std::string> names;
+            if (auto* dir = ::opendir("/foyer/bezels")) {
+                while (auto* e = ::readdir(dir)) {
+                    if (e->d_type != DT_REG) continue;
+                    std::string_view n{e->d_name};
+                    if (n.size() < 5) continue;
+                    if (n.substr(n.size() - 4) != ".png") continue;
+                    std::string base{n.substr(0, n.size() - 4)};
+                    if (base == folder) continue;
+                    names.push_back(std::move(base));
+                }
+                ::closedir(dir);
+            }
+            std::sort(names.begin(), names.end());
+            o.image_paths.assign(o.options.size(), std::string{});
+            for (auto& n : names) {
+                const std::string p = "/foyer/bezels/" + n + ".png";
+                o.options.push_back(n);
+                o.image_paths.push_back(p);
+            }
+            o.current_index = -1;  // fire-and-forget; no badge
+            break;
+        }
         default: break;
     }
     return o;
@@ -2887,6 +3011,86 @@ std::string apply_option(int op, const std::string& data,
             std::snprintf(prefix, sizeof(prefix),
                 _(SId::BezelForPrefix), data.c_str());
             return std::string{prefix} + ": " + chosen;
+        }
+        case OpDetailShader: {
+            // data = rom path. Index 0 = clear per-game override
+            // (inherit from Settings); 1+ = shader key.
+            if (chosen_index == 0) {
+                library::set_per_game_shader(data, "");
+                return std::string{_(SId::BannerShaderOverrideCleared)};
+            }
+            library::set_per_game_shader(data, chosen);
+            char bb[160];
+            std::snprintf(bb, sizeof(bb),
+                _(SId::BannerPerGameShaderSet), chosen.c_str());
+            return std::string{bb};
+        }
+        case OpDetailRunahead: {
+            // data = rom path. Index 0 = clear; 1..5 = frame count 0..4.
+            if (chosen_index == 0) {
+                library::set_per_game_runahead(data, -1);
+                return std::string{_(SId::BannerRunaheadOverrideCleared)};
+            }
+            const int n = chosen_index - 1;
+            library::set_per_game_runahead(data, n);
+            char bb[120];
+            if (n == 0) {
+                std::snprintf(bb, sizeof(bb), "%s",
+                    _(SId::BannerPerGameRunaheadOff));
+            } else if (n == 1) {
+                std::snprintf(bb, sizeof(bb), "%s",
+                    _(SId::BannerPerGameRunaheadOneFrame));
+            } else {
+                std::snprintf(bb, sizeof(bb),
+                    _(SId::BannerPerGameRunaheadNFrames), n);
+            }
+            return std::string{bb};
+        }
+        case OpDetailCore: {
+            // data = rom path. Index 0 = clear per-game override (will
+            // resolve to system default). Otherwise set per-game core.
+            if (chosen_index == 0) {
+                library::set_per_game_core(data, "");
+                return std::string{_(SId::BannerPerGameOverrideCleared)};
+            }
+            library::set_per_game_core(data, chosen);
+            char bb[160];
+            std::snprintf(bb, sizeof(bb),
+                _(SId::BannerPerGameCoreSet), chosen.c_str());
+            return std::string{bb};
+        }
+        case OpDetailBezelPerGame: {
+            // data = "folder:stem". Apply copies the chosen PNG to
+            // /foyer/bezels/<folder>/<stem>.png; "(none)" unlinks it.
+            const auto colon = data.find(':');
+            if (colon == std::string::npos) return {};
+            const std::string folder = data.substr(0, colon);
+            const std::string stem   = data.substr(colon + 1);
+            const std::string dst_dir =
+                std::string{"/foyer/bezels/"} + folder;
+            const std::string dst = dst_dir + "/" + stem + ".png";
+            if (chosen_index == 0) {
+                ::unlink(dst.c_str());
+                return std::string{_(SId::BannerPerGameBezelCleared)};
+            }
+            ::mkdir("/foyer/bezels", 0755);
+            ::mkdir(dst_dir.c_str(), 0755);
+            const std::string src =
+                std::string{"/foyer/bezels/"} + chosen + ".png";
+            std::FILE* in = std::fopen(src.c_str(), "rb");
+            if (!in) return {};
+            std::FILE* out = std::fopen(dst.c_str(), "wb");
+            if (!out) { std::fclose(in); return {}; }
+            char buf[16 * 1024];
+            std::size_t n;
+            while ((n = std::fread(buf, 1, sizeof(buf), in)) > 0)
+                std::fwrite(buf, 1, n, out);
+            std::fclose(in);
+            std::fclose(out);
+            char bb[200];
+            std::snprintf(bb, sizeof(bb),
+                _(SId::BannerPerGameBezelSet), chosen.c_str());
+            return std::string{bb};
         }
         case OpUpdSingleItem: {
             // Parse "kind:id" out of `data` and dispatch the chosen
@@ -3333,22 +3537,19 @@ void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Li
     nvgText(vg, cx, cy + ch + 60,
         fmt_playtime(library::per_game_playtime(g.path)).c_str(), nullptr);
 
-    // Core picker + per-game knob rows. Layout in this order:
-    //   - Continue (if a save state exists)
-    //   - Shader   (per-game override; cycles via L/R, A clears it)
-    //   - Run-ahead (same)
-    //   - Core 1..N
-    //
-    // detail_core_index navigates the whole list; helpers below map
-    // the index back to a row kind so input dispatch stays linear.
+    // Single-row-per-setting layout:
+    //   - Continue   (if a save state exists)
+    //   - Shader     (A opens picker)
+    //   - Run-ahead  (A opens picker)
+    //   - Core       (A opens picker)
+    //   - Bezel      (A opens picker — per-game override on top of system)
+    // Each row right-aligns the current effective value so the user can
+    // see the active setting at a glance without entering the picker.
     const auto* resolved   = library::resolve_core(*def, g.path);
-    const auto  per_game   = library::per_game_core_for(g.path);
-    const char* per_sys    = library::config().default_core_for(def->folder_name);
+    const auto  per_game_c = library::per_game_core_for(g.path);
     const int   resume_slot = latest_state_slot(sys, g);
     const bool  has_resume  = (resume_slot >= 0);
 
-    // Resolve the active per-game knob values (per-game override
-    // beats the Config default; we render whichever wins).
     const auto pg_shader   = library::per_game_shader(g.path);
     const auto pg_runahead = library::per_game_runahead(g.path);
     const std::string eff_shader =
@@ -3381,6 +3582,30 @@ void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Li
     float ry = content_y + th.pad + 40.0f;
     int row = 0;
 
+    auto draw_picker_row = [&](const char* label,
+                               const std::string& value,
+                               bool overridden) {
+        const bool sel = (row == (int)s.detail_core_index);
+        if (sel) {
+            rrect(vg, right_x + th.pad * 0.5f, ry, right_w - th.pad,
+                  kRow - 6, 8.0f, th.bg_panel_hi);
+        }
+        nvgFontSize(vg, th.body_size);
+        nvgFillColor(vg, sel ? th.text_strong : th.text);
+        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+        nvgText(vg, right_x + th.pad + 8,
+                ry + (kRow - 6) * 0.5f, label, nullptr);
+
+        nvgFontSize(vg, th.label_size);
+        nvgFillColor(vg, overridden ? th.accent : th.text_dim);
+        nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+        nvgText(vg, right_x + right_w - th.pad,
+                ry + (kRow - 6) * 0.5f,
+                value.c_str(), nullptr);
+        ry += kRow;
+        row++;
+    };
+
     if (has_resume) {
         const bool sel = (row == (int)s.detail_core_index);
         if (sel) {
@@ -3390,7 +3615,8 @@ void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Li
         nvgFontSize(vg, th.body_size);
         nvgFillColor(vg, sel ? th.text_strong : th.text);
         nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
-        nvgText(vg, right_x + th.pad + 8, ry + (kRow - 6) * 0.5f - 8,
+        nvgText(vg, right_x + th.pad + 8,
+                ry + (kRow - 6) * 0.5f - 8,
                 _(SId::GameDetailContinueLabel), nullptr);
 
         char hint[64];
@@ -3408,49 +3634,13 @@ void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Li
         nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
         nvgText(vg, right_x + right_w - th.pad,
                 ry + (kRow - 6) * 0.5f, _(SId::ResumeBadge), nullptr);
-
         ry += kRow;
         row++;
     }
 
-    // ---- Per-game knob rows (Shader, Run-ahead) ----------------------
-    // Both render as Cycle-style: left/right cycles the value, A
-    // clears the per-game override (reverts to the general default).
-    // The right-aligned tag shows whether the displayed value is
-    // overridden ("per-game") or inherited ("default").
-    auto draw_knob_row = [&](const char* label,
-                             const std::string& value_label,
-                             bool overridden) {
-        const bool sel = (row == (int)s.detail_core_index);
-        if (sel) {
-            rrect(vg, right_x + th.pad * 0.5f, ry, right_w - th.pad,
-                  kRow - 6, 8.0f, th.bg_panel_hi);
-        }
-        nvgFontSize(vg, th.body_size);
-        nvgFillColor(vg, sel ? th.text_strong : th.text);
-        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
-        nvgText(vg, right_x + th.pad + 8,
-                ry + (kRow - 6) * 0.5f - 8, label, nullptr);
-
-        nvgFontSize(vg, th.label_size);
-        nvgFillColor(vg, th.text_dim);
-        nvgText(vg, right_x + th.pad + 8,
-                ry + (kRow - 6) * 0.5f + 12,
-                value_label.c_str(), nullptr);
-
-        nvgFontSize(vg, th.label_size);
-        nvgFillColor(vg, th.accent);
-        nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
-        nvgText(vg, right_x + right_w - th.pad,
-                ry + (kRow - 6) * 0.5f,
-                overridden ? _(SId::KnobBadgePerGame)
-                           : _(SId::KnobBadgeDefault), nullptr);
-        ry += kRow;
-        row++;
-    };
-
-    draw_knob_row(_(SId::DetailShaderRowLabel),
-                  pretty_shader(eff_shader), !pg_shader.empty());
+    draw_picker_row(_(SId::DetailShaderRowLabel),
+                    pretty_shader(eff_shader),
+                    !pg_shader.empty());
 
     {
         char buf[40];
@@ -3461,48 +3651,44 @@ void draw_game_detail(NVGcontext* vg, float w, float h, const State& s, const Li
         else                        std::snprintf(buf, sizeof(buf),
                                         _(SId::DetailRunaheadNFrames),
                                         eff_runahead);
-        draw_knob_row(_(SId::DetailRunaheadRowLabel), buf, pg_runahead >= 0);
+        draw_picker_row(_(SId::DetailRunaheadRowLabel),
+                        std::string{buf},
+                        pg_runahead >= 0);
     }
 
-    for (const auto& c : def->cores) {
-        const bool sel = (row == (int)s.detail_core_index);
-        if (sel) {
-            rrect(vg, right_x + th.pad * 0.5f, ry, right_w - th.pad,
-                  kRow - 6, 8.0f, th.bg_panel_hi);
+    {
+        // Effective core: per-game override beats system default beats
+        // the resolver's first-match. Tagged "per-game" only when the
+        // override file actually carried a name.
+        std::string core_value;
+        if (!per_game_c.empty()) {
+            core_value = per_game_c;
+        } else if (resolved) {
+            core_value = std::string{resolved->name};
+        } else {
+            core_value = _(SId::DetailUseSystemDefault);
         }
-
-        nvgFontSize(vg, th.body_size);
-        nvgFillColor(vg, sel ? th.text_strong : th.text);
-        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
-        const std::string name{c.name};
-        nvgText(vg, right_x + th.pad + 8, ry + (kRow - 6) * 0.5f - 8,
-                name.c_str(), nullptr);
-
-        nvgFontSize(vg, th.label_size);
-        nvgFillColor(vg, th.text_dim);
-        const std::string disp{c.display_name};
-        nvgText(vg, right_x + th.pad + 8, ry + (kRow - 6) * 0.5f + 12,
-                disp.c_str(), nullptr);
-
-        // Tag column.
-        std::string tag;
-        if (!per_game.empty() && per_game == name)   tag = _(SId::CoreTagPerGame);
-        else if (per_sys && per_sys == name)         tag = _(SId::CoreTagSystemDefault);
-        else if (resolved && resolved->name == name) tag = _(SId::CoreTagActive);
-        else if (row == 0)                            tag = _(SId::CoreTagBuiltInDefault);
-
-        if (!tag.empty()) {
-            nvgFontSize(vg, th.label_size);
-            nvgFillColor(vg, th.accent);
-            nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
-            nvgText(vg, right_x + right_w - th.pad,
-                    ry + (kRow - 6) * 0.5f, tag.c_str(), nullptr);
-        }
-
-        ry += kRow;
-        row++;
+        draw_picker_row(_(SId::DetailCoreRowLabel),
+                        core_value,
+                        !per_game_c.empty());
     }
 
+    {
+        // Per-game bezel state: the resolver in libretro/bezel.cpp
+        // checks /foyer/bezels/<folder>/<stem>.png first. Show that
+        // file's basename if it exists, else show "(none)".
+        char path[256];
+        std::snprintf(path, sizeof(path),
+            "/foyer/bezels/%.*s/%s.png",
+            (int)def->folder_name.size(), def->folder_name.data(),
+            g.stem.c_str());
+        struct stat st{};
+        const bool has_pg = (::stat(path, &st) == 0 && st.st_size > 0);
+        draw_picker_row(_(SId::DetailBezelRowLabel),
+                        has_pg ? g.stem
+                               : std::string{_(SId::DetailValueNone)},
+                        has_pg);
+    }
 }
 
 // Shoulder-button bitmasks. We accept either the upper shoulder (L/R) or the
@@ -4354,9 +4540,6 @@ void update(State& s, const Library& lib,
             return;
         }
         const auto& g = sys.games[s.game_index];
-        // Effective SystemDef: real one for normal systems; the rom's
-        // origin SystemDef when the user opened the game from a
-        // virtual carousel tile.
         const auto* def = library::is_virtual_system(*sys.def)
             ? library::origin_system_for_rom(g.path)
             : sys.def;
@@ -4366,79 +4549,27 @@ void update(State& s, const Library& lib,
         }
         const int  resume_slot = latest_state_slot(sys, g);
         const bool has_resume  = (resume_slot >= 0);
-        const auto core_count  = def->cores.size();
-        // Layout: Continue? + Shader + Run-ahead + cores
+        // Row layout: Continue? + Shader + Run-ahead + Core + Bezel.
+        // Single row per setting; A on a row opens the corresponding
+        // OptionPicker (apply_option then writes the per-game override).
         const int  resume_idx   = 0;
         const int  shader_idx   = (has_resume ? 1 : 0);
         const int  runahead_idx = shader_idx + 1;
-        const int  cores_start  = runahead_idx + 1;
-        const int  row_count    = (int)cores_start + (int)core_count;
+        const int  core_idx     = runahead_idx + 1;
+        const int  bezel_idx    = core_idx + 1;
+        const int  row_count    = bezel_idx + 1;
 
-        const bool on_resume   = has_resume && s.detail_core_index == resume_idx;
+        const bool on_resume   = has_resume && (int)s.detail_core_index == resume_idx;
         const bool on_shader   = (int)s.detail_core_index == shader_idx;
         const bool on_runahead = (int)s.detail_core_index == runahead_idx;
-        const bool on_core     = (int)s.detail_core_index >= cores_start;
-        const auto core_idx    = on_core
-                                   ? (s.detail_core_index - cores_start)
-                                   : 0;
+        const bool on_core     = (int)s.detail_core_index == core_idx;
+        const bool on_bezel    = (int)s.detail_core_index == bezel_idx;
 
         if (down & HidNpadButton_AnyDown) {
             if (s.detail_core_index + 1 < (std::size_t)row_count)
                 s.detail_core_index++;
         } else if (down & HidNpadButton_AnyUp) {
             if (s.detail_core_index > 0) s.detail_core_index--;
-        }
-
-        // L/R: cycle Cycle-row values when focus is on the knob rows;
-        // jump to first / last otherwise.
-        if (const int sh = shoulder_step(s, held, down); sh != 0) {
-            if (on_shader) {
-                static const char* kShaderNames[] = {
-                    "none", "scanlines", "crt_simple", "lcd_grid",
-                    "gb_dmg", "gba_correct",
-                };
-                constexpr int kCount = (int)(sizeof(kShaderNames) /
-                                             sizeof(kShaderNames[0]));
-                int cur = 0;
-                const std::string current = library::per_game_shader(g.path);
-                const std::string ref = current.empty()
-                    ? library::config().shader_name : current;
-                for (int i = 0; i < kCount; i++) {
-                    if (ref == kShaderNames[i]) { cur = i; break; }
-                }
-                cur = ((cur + sh) % kCount + kCount) % kCount;
-                library::set_per_game_shader(g.path, kShaderNames[cur]);
-                char bb[120];
-                std::snprintf(bb, sizeof(bb),
-                    _(SId::BannerPerGameShaderSet), kShaderNames[cur]);
-                s.banner_text = bb;
-                s.banner_ttl  = 120;
-            } else if (on_runahead) {
-                constexpr int kMax = 4;
-                const int cur =
-                    library::per_game_runahead(g.path) >= 0
-                        ? library::per_game_runahead(g.path)
-                        : library::config().runahead_frames;
-                int next = cur + sh;
-                if (next < 0)    next = kMax;
-                if (next > kMax) next = 0;
-                library::set_per_game_runahead(g.path, next);
-                char buf[80];
-                if (next == 0) {
-                    std::snprintf(buf, sizeof(buf),
-                        "%s", _(SId::BannerPerGameRunaheadOff));
-                } else if (next == 1) {
-                    std::snprintf(buf, sizeof(buf),
-                        "%s", _(SId::BannerPerGameRunaheadOneFrame));
-                } else {
-                    std::snprintf(buf, sizeof(buf),
-                        _(SId::BannerPerGameRunaheadNFrames), next);
-                }
-                s.banner_text = buf;
-                s.banner_ttl  = 120;
-            } else if (row_count > 0) {
-                s.detail_core_index = (sh > 0) ? row_count - 1 : 0;
-            }
         }
 
         if (down & HidNpadButton_B) {
@@ -4448,39 +4579,30 @@ void update(State& s, const Library& lib,
             if (on_resume) {
                 s.request_resume_slot = resume_slot;
                 s.request_launch      = true;
-            } else if (on_shader) {
-                library::set_per_game_shader(g.path, "");
-                s.banner_text = _(SId::BannerShaderOverrideCleared);
-                s.banner_ttl  = 180;
-            } else if (on_runahead) {
-                library::set_per_game_runahead(g.path, -1);
-                s.banner_text = _(SId::BannerRunaheadOverrideCleared);
-                s.banner_ttl  = 180;
-            } else if (on_core) {
-                const auto& chosen = def->cores[core_idx];
-                library::set_per_game_core(g.path, chosen.name);
-                char bb[120];
-                std::snprintf(bb, sizeof(bb),
-                    _(SId::BannerPerGameCoreSet),
-                    std::string{chosen.name}.c_str());
-                s.banner_text = bb;
-                s.banner_ttl  = 180;
+            } else if (on_shader || on_runahead || on_core || on_bezel) {
+                const int op = on_shader   ? settings::OpDetailShader
+                             : on_runahead ? settings::OpDetailRunahead
+                             : on_core     ? settings::OpDetailCore
+                                           : settings::OpDetailBezelPerGame;
+                std::string data;
+                if (on_bezel) {
+                    data = std::string{def->folder_name} + ":" + g.stem;
+                } else {
+                    data = g.path;
+                }
+                auto list = settings::build_option_list(op, data);
+                if (!list.options.empty()) {
+                    s.option_picker.open        = true;
+                    s.option_picker.title       = std::move(list.title);
+                    s.option_picker.options     = std::move(list.options);
+                    s.option_picker.image_paths = std::move(list.image_paths);
+                    s.option_picker.current     = list.current_index;
+                    s.option_picker.cursor      = list.current_index < 0
+                                                  ? 0 : list.current_index;
+                    s.option_picker.op          = op;
+                    s.option_picker.data        = std::move(data);
+                }
             }
-        }
-        if (on_core && (down & HidNpadButton_Y)) {
-            const auto& chosen = def->cores[core_idx];
-            library::set_default_core_for(def->folder_name, chosen.name);
-            char bb[120];
-            std::snprintf(bb, sizeof(bb),
-                _(SId::BannerSystemDefaultCoreSet),
-                std::string{chosen.name}.c_str());
-            s.banner_text = bb;
-            s.banner_ttl  = 180;
-        }
-        if (on_core && (down & HidNpadButton_X)) {
-            library::set_per_game_core(g.path, "");
-            s.banner_text = _(SId::BannerPerGameOverrideCleared);
-            s.banner_ttl  = 180;
         }
     } else if (s.view == View::Settings) {
         // (Don't reset_input_state here — Settings consumes touch taps.)
@@ -5289,39 +5411,19 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
             if (!game_ptr) {
                 hint = std::string{B} + " " + _(SId::HintBack);
             } else {
-                const auto* def = library::is_virtual_system(*sys_ptr->def)
-                    ? library::origin_system_for_rom(game_ptr->path)
-                    : sys_ptr->def;
-                if (!def) def = sys_ptr->def;
                 const int  resume_slot = latest_state_slot(*sys_ptr, *game_ptr);
                 const bool has_resume  = (resume_slot >= 0);
-                const int  shader_idx   = (has_resume ? 1 : 0);
-                const int  runahead_idx = shader_idx + 1;
-                const int  cores_start  = runahead_idx + 1;
-                const int  cur          = (int)s.detail_core_index;
-
-                if (has_resume && cur == 0) {
+                const bool on_resume   = has_resume &&
+                                         (int)s.detail_core_index == 0;
+                if (on_resume) {
                     hint = std::string{DPad} + " " + _(SId::HintPick) + "   "
                          + A + " " + _(SId::HintContinueVerb) + "   "
                          + B + " " + _(SId::HintBack);
-                } else if (cur == shader_idx) {
-                    hint = std::string{DPad} + " " + _(SId::HintPick) + "   "
-                         + Left + Right + " " + _(SId::HintCycleShader) + "   "
-                         + A + " " + _(SId::HintClearOverride) + "   "
-                         + B + " " + _(SId::HintBack);
-                } else if (cur == runahead_idx) {
-                    hint = std::string{DPad} + " " + _(SId::HintPick) + "   "
-                         + Left + Right + " " + _(SId::HintCycleRunAhead) + "   "
-                         + A + " " + _(SId::HintClearOverride) + "   "
-                         + B + " " + _(SId::HintBack);
-                } else if (cur >= cores_start && !def->cores.empty()) {
-                    hint = std::string{DPad} + " " + _(SId::HintPick) + "   "
-                         + A + " " + _(SId::HintSetPerGame) + "   "
-                         + Y + " " + _(SId::HintSetSysDefault) + "   "
-                         + X + " " + _(SId::HintClearOverride) + "   "
-                         + B + " " + _(SId::HintBack);
                 } else {
-                    hint = std::string{B} + " " + _(SId::HintBack);
+                    // All other rows open a picker on A; B backs out.
+                    hint = std::string{DPad} + " " + _(SId::HintPick) + "   "
+                         + A + " " + _(SId::HintEdit) + "   "
+                         + B + " " + _(SId::HintBack);
                 }
             }
             break;

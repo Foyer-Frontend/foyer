@@ -514,6 +514,14 @@ const std::array<const char*, kCount> kPortugueseBrazilStrings = [] {
 
     a[(std::size_t)StringId::AccountUnset]                  = "não definido";
     a[(std::size_t)StringId::UpdatesMetadataKindLabel]      = "metadados";
+
+    a[(std::size_t)StringId::DetailBezelRowLabel]           = "Moldura";
+    a[(std::size_t)StringId::DetailCoreRowLabel]            = "Core";
+    a[(std::size_t)StringId::DetailUseSystemDefault]        = "(padrão do sistema)";
+    a[(std::size_t)StringId::DetailValueNone]               = "(nenhuma)";
+    a[(std::size_t)StringId::DetailUseSystemDefaultPicker]  = "Padrão do sistema";
+    a[(std::size_t)StringId::BannerPerGameBezelSet]         = "Moldura por jogo: %s";
+    a[(std::size_t)StringId::BannerPerGameBezelCleared]     = "Moldura por jogo removida";
     return a;
 }();
 

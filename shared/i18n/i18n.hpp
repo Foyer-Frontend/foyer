@@ -536,6 +536,15 @@ enum class StringId : std::uint16_t {
     AccountUnset,                      // "unset" (placeholder for empty credentials)
     UpdatesMetadataKindLabel,          // "metadata" (Scrape-all-systems row value)
 
+    // GameDetail per-game picker rows + values
+    DetailBezelRowLabel,               // "Bezel"
+    DetailCoreRowLabel,                // "Core"
+    DetailUseSystemDefault,            // "(system default)"
+    DetailValueNone,                   // "(none)"
+    DetailUseSystemDefaultPicker,      // "System default"
+    BannerPerGameBezelSet,             // "Per-game bezel: %s"
+    BannerPerGameBezelCleared,         // "Per-game bezel cleared"
+
     // Sentinel — keep last.
     kStringIdCount,
 };

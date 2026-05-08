@@ -515,6 +515,14 @@ const std::array<const char*, kCount> kSpanishStrings = [] {
 
     a[(std::size_t)StringId::AccountUnset]                  = "sin definir";
     a[(std::size_t)StringId::UpdatesMetadataKindLabel]      = "metadatos";
+
+    a[(std::size_t)StringId::DetailBezelRowLabel]           = "Marco";
+    a[(std::size_t)StringId::DetailCoreRowLabel]            = "Núcleo";
+    a[(std::size_t)StringId::DetailUseSystemDefault]        = "(predet. del sistema)";
+    a[(std::size_t)StringId::DetailValueNone]               = "(ninguno)";
+    a[(std::size_t)StringId::DetailUseSystemDefaultPicker]  = "Predeterminado del sistema";
+    a[(std::size_t)StringId::BannerPerGameBezelSet]         = "Marco por juego: %s";
+    a[(std::size_t)StringId::BannerPerGameBezelCleared]     = "Marco por juego eliminado";
     return a;
 }();
 
