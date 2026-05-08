@@ -465,7 +465,7 @@ void hos_circle(NVGcontext* vg, float cx, float cy, float r,
     }
 }
 
-void draw_hos_top_bar(NVGcontext* vg, float w) {
+void draw_hos_top_bar(NVGcontext* vg, float w, const State& s) {
     const auto& th = theme();
 
     // Bar background.
@@ -6318,7 +6318,7 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
     }
 
     if (s.view == View::Home) {
-        draw_hos_top_bar      (vg, w);
+        draw_hos_top_bar      (vg, w, s);
         draw_hos_action_row   (vg, w, h, s);
         draw_hos_bottom_hints (vg, w, h, hint.c_str());
     } else {

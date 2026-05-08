@@ -10,6 +10,7 @@
 
 #include <yyjson.h>
 
+#include "library/config.hpp"
 #include "platform/log.hpp"
 
 namespace foyer::browser {
@@ -109,7 +110,7 @@ void load_theme(std::string_view name) {
     // we load the canonical theme.jsonc; any other value loads
     // theme-<color>.jsonc, allowing one theme to ship multiple
     // palettes without duplicating the entire pack.
-    const auto& color = library::config().theme_color;
+    const auto& color = ::foyer::library::config().theme_color;
     char fname[64];
     if (color.empty() || color == "light") {
         std::snprintf(fname, sizeof(fname), "theme.jsonc");
