@@ -1,12 +1,15 @@
 <!--
     foyer Home — borealis edition.
 
-    Top bar: profile placeholder · Settings button · spacer · status
-    cluster (clock · wifi · battery, top-right).
+    Top bar: profile placeholder · spacer · status cluster
+    (clock · wifi · battery, top-right).
 
-    Centre: horizontal system carousel (Phase C). Populated in
-    HomeActivity::onContentAvailable() from foyer's system_db so
-    the data side is decoupled from XML.
+    Centre: horizontal system carousel populated by
+    HomeActivity::onContentAvailable() from foyer's system_db.
+
+    Below the carousel: HOS-style round action row. Phase B ships
+    only Settings; News / eShop / Album / Controllers / Power land
+    in alpha.11+ when their handlers exist.
 
     The full-screen Image at the back is the per-system backdrop —
     HomeActivity swaps its source on tile focus changes so the
@@ -48,22 +51,6 @@
 
         <brls:Box width="auto" height="auto" grow="1.0" />
 
-        <!-- Settings button — clicking pushes SettingsActivity. -->
-        <brls:Box
-            id="foyer/btn_settings"
-            width="auto"
-            height="auto"
-            axis="row"
-            alignItems="center"
-            focusable="true"
-            highlightCornerRadius="4"
-            marginRight="20">
-
-            <brls:Label
-                text="@i18n/foyer/actions/open_settings"
-                fontSize="22" />
-        </brls:Box>
-
         <!-- Status cluster: clock · wifi · battery (left → right) -->
         <brls:Box
             width="auto"
@@ -91,10 +78,8 @@
         </brls:Box>
     </brls:Box>
 
-    <!-- System carousel — vertically centred between top bar and the
-         bottom edge. HScrollingFrame is brls's horizontal-only scroller
-         (the plain ScrollingFrame is vertical even with axis="row");
-         it auto-scrolls to keep the focused child centred. -->
+    <!-- System carousel — vertically centred in the available
+         space between top bar and the action row. -->
     <brls:Box
         width="auto"
         height="auto"
@@ -102,15 +87,6 @@
         axis="column"
         justifyContent="center">
 
-        <!-- Frame height must accommodate the tiles (280 px) plus
-             the brls focus highlight stroke + shadow (a few extra
-             px). 320 leaves headroom; smaller heights clip the
-             bottom of each tile, which the user perceived as a
-             "white bottom bar" hiding the lower edge of the art.
-             grow="1.0" omitted on purpose — the wrapping column has
-             justifyContent="center", so a fixed-height frame is
-             what makes the row vertically centre between the top
-             bar and the bottom of the screen. -->
         <brls:HScrollingFrame
             id="foyer/carousel_scroll"
             width="auto"
@@ -126,6 +102,28 @@
                 paddingRight="48" />
 
         </brls:HScrollingFrame>
+
+    </brls:Box>
+
+    <!-- HOS-style round action row, centred horizontally. The
+         Settings circle is built programmatically in HomeActivity
+         (round corner-radius + click handler that pushes
+         SettingsActivity). -->
+    <brls:Box
+        width="auto"
+        height="96"
+        axis="row"
+        alignItems="center"
+        justifyContent="center"
+        paddingTop="8"
+        paddingBottom="16">
+
+        <brls:Box
+            id="foyer/action_row"
+            width="auto"
+            height="auto"
+            axis="row"
+            alignItems="center" />
 
     </brls:Box>
 

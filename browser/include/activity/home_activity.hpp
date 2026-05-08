@@ -19,16 +19,16 @@ public:
     // background.jpg. Called by SystemTile on focus change.
     void setBackdrop(std::string_view folder);
 
-    BRLS_BIND(brls::Label, clock,        "foyer/clock");
-    BRLS_BIND(brls::Box,   carousel,     "foyer/carousel");
-    BRLS_BIND(brls::Box,   btnSettings,  "foyer/btn_settings");
-    BRLS_BIND(brls::Image, backdrop,     "foyer/backdrop");
+    BRLS_BIND(brls::Label, clock,      "foyer/clock");
+    BRLS_BIND(brls::Box,   carousel,   "foyer/carousel");
+    BRLS_BIND(brls::Box,   actionRow,  "foyer/action_row");
+    BRLS_BIND(brls::Image, backdrop,   "foyer/backdrop");
 
 private:
     brls::RepeatingTask* clockTask = nullptr;
 
     void populateCarousel();
-    void wireSettingsButton();
+    void buildActionRow();
 };
 
 }  // namespace foyer::browser

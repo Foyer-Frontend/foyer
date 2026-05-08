@@ -22,6 +22,7 @@ FetchContent_MakeAvailable(libhaze)
 add_executable(foyer
     src/main.cpp
     src/home_activity.cpp
+    src/settings_activity.cpp
     src/settings_tab.cpp
     src/system_activity.cpp
     src/self_update.cpp

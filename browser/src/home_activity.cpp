@@ -96,7 +96,7 @@ void HomeActivity::onContentAvailable() {
         clockTask->run();
     }
     populateCarousel();
-    wireSettingsButton();
+    buildActionRow();
 }
 
 void HomeActivity::populateCarousel() {
@@ -119,12 +119,41 @@ void HomeActivity::setBackdrop(std::string_view folder) {
     backdrop->setImageFromRes(path);
 }
 
-void HomeActivity::wireSettingsButton() {
-    if (!btnSettings) return;
-    btnSettings->registerClickAction([](brls::View* v) {
+void HomeActivity::buildActionRow() {
+    if (!actionRow) return;
+
+    // HOS-style action button: focusable circle with the action's
+    // glyph centred. Phase B drop ships only Settings; News /
+    // eShop / Album / Controllers / Power follow in alpha.11+.
+    auto* btn = new brls::Box();
+    constexpr float kBtnSize = 72.0f;
+    btn->setWidth(kBtnSize);
+    btn->setHeight(kBtnSize);
+    btn->setMargins(0.0f, 12.0f, 0.0f, 12.0f);
+    btn->setFocusable(true);
+    btn->setHighlightCornerRadius(kBtnSize * 0.5f);
+    btn->setCornerRadius(kBtnSize * 0.5f);   // circular tile
+    btn->setBackgroundColor(nvgRGB(45, 55, 75));
+    btn->setJustifyContent(brls::JustifyContent::CENTER);
+    btn->setAlignItems(brls::AlignItems::CENTER);
+
+    // Settings glyph — material symbol gear. brls bundles material
+    // symbols at romfs:/material; the icon font path varies by
+    // build, so we just stack a plain Label until we have a font
+    // hooked up. Looks fine for the alpha.
+    auto* glyph = new brls::Label();
+    glyph->setText("Settings");
+    glyph->setFontSize(16.0f);
+    glyph->setTextColor(nvgRGB(0xFF, 0xFF, 0xFF));
+    btn->addView(glyph);
+
+    btn->registerClickAction([](brls::View*) {
         brls::Application::pushActivity(new SettingsActivity());
         return true;
     });
+    btn->addGestureRecognizer(new brls::TapGestureRecognizer(btn));
+
+    actionRow->addView(btn);
 }
 
 }  // namespace foyer::browser
