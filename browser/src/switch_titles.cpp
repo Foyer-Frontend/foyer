@@ -111,11 +111,14 @@ std::size_t load(NVGcontext* vg) {
         if (read <= 0) break;
 
         for (s32 i = 0; i < read; i++) {
-            // Filter the records HOS itself hides on the home menu —
-            // type=3 is "installed normal application", everything else
-            // is gamecard / aoc / patch / phantom and not directly
-            // launchable from the launcher.
-            if (page[i].type != 0x3) continue;
+            // The libnx version on devkitPro's builder image doesn't
+            // expose a `type` field on NsApplicationRecord, so we
+            // can't pre-filter for installed-normal-application
+            // (type=3) records here. Instead the NACP fetch acts as
+            // the natural filter — records that aren't backed by
+            // proper control data (gamecard, aoc, phantom, patch)
+            // return failure and we skip them.
+            if (page[i].application_id == 0) continue;
 
             ControlBuf buf;
             if (!fetch_control(page[i].application_id, buf)) continue;
