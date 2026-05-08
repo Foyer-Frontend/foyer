@@ -831,7 +831,9 @@ void draw_action_glyph(NVGcontext* vg, int idx, float cx, float cy,
 
 void draw_hos_action_row(NVGcontext* vg, float w, float h, const State& s) {
     const auto& th    = theme();
-    const float row_y = h - kBottomBarH - kHosActionRowH;
+    // 0.5.24: action row moved to the top, just under the top bar.
+    const float row_y = kHosTopBarH;
+    (void)h;  // separator + hint bar still reference h elsewhere
     const bool  has_focus = s.action_row_focus &&
                             s.action_button_index >= 0 &&
                             s.action_button_index < kHosActionCount;
@@ -871,23 +873,19 @@ void draw_hos_action_row(NVGcontext* vg, float w, float h, const State& s) {
         }
     }
 
-    // Separator line between the action row and the bottom hint bar.
-    // 95 % of screen width, centred. Color picks contrast against
-    // the active bg — light strokes on dark themes, dark strokes on
-    // light. Same line HOS draws above its bottom button-hint row.
+    // Separator line between the tile area and the bottom hint bar.
+    // 95 % of screen width, centred, 3 px thick (was 1.5 — user
+    // wanted it bolder). Light stroke on dark themes, dark stroke
+    // on light, picked off the theme bg luminance.
     const float sep_w = w * 0.95f;
     const float sep_x = (w - sep_w) * 0.5f;
-    const float sep_y = h - kBottomBarH - 1.0f;
-    // Brightness heuristic: theme bg luminance > 0.5 → "light theme",
-    // use a darker stroke. Otherwise → "dark theme", use a light
-    // stroke. nvgRGBAf scales the components 0..1 so luminance is
-    // a simple weighted sum.
+    const float sep_y = h - kBottomBarH - 2.0f;
     const float lum = th.bg.r * 0.30f + th.bg.g * 0.59f + th.bg.b * 0.11f;
     const NVGcolor sep_c = (lum > 0.5f)
-        ? nvgRGBA(0x44, 0x44, 0x44, 0x80)
-        : nvgRGBA(0xCC, 0xCC, 0xCC, 0x80);
+        ? nvgRGBA(0x44, 0x44, 0x44, 0xC0)
+        : nvgRGBA(0xCC, 0xCC, 0xCC, 0xC0);
     nvgBeginPath(vg);
-    nvgRect(vg, sep_x, sep_y, sep_w, 1.5f);
+    nvgRect(vg, sep_x, sep_y, sep_w, 3.0f);
     nvgFillColor(vg, sep_c);
     nvgFill(vg);
 }
@@ -1064,65 +1062,50 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
     const auto& th       = theme();
     const auto idx_centre = (int)s.system_index;
     const auto count      = (int)lib.systems.size();
-    // Carousel sits in the lower half so the Favorites quick-access
-    // row above it has vertical room.
-    const float cy        = h * 0.58f;
+    // 0.5.24 layout swap: action row sits just under the top bar,
+    // tile carousel below it, separator + hint bar at the bottom.
+    // Tiles centre is roughly between the action-row baseline and
+    // the separator.
+    const float cy        = kHosTopBarH + kHosActionRowH
+                          + (h - kHosTopBarH - kHosActionRowH
+                             - kBottomBarH) * 0.5f;
     const float pitch     = kHomeTileW + kHomeTileGap;
     const float radius    = library::config().rounded_tiles
                               ? kHomeRadiusRounded : kHomeRadiusSharp;
 
-    // ---- Favorites row -----------------------------------------------
-    // Quick-access row of small square tiles, one per favorited game
-    // across every real system. Empty when nothing's favorited (the
-    // row's vertical slot then stays clean instead of placeholder
-    // boxes). HOS analog: the small "Recently Played" row above the
-    // main tile strip on consoles with online subscriptions.
+    // Per-system background — alekfull-nx ships a 1280x720 jpg per
+    // system at <pack_dir>/systems/<folder>/background.jpg. Drawn
+    // edge-to-edge behind the entire UI when present, dimmed so the
+    // carousel + action row still read clearly. Falls through to
+    // solid bg color when no backdrop ships for the focused system.
     {
-        struct FavRef {
-            const library::System* sys = nullptr;
-            const library::Game*   game = nullptr;
-        };
-        std::vector<FavRef> favs;
-        favs.reserve(16);
-        for (const auto& sys : lib.systems) {
-            if (library::is_virtual_system(*sys.def)) continue;
-            for (const auto& g : sys.games) {
-                if (!g.favorite) continue;
-                favs.push_back({&sys, &g});
-                if (favs.size() >= 12) break;
-            }
-            if (favs.size() >= 12) break;
-        }
-        if (!favs.empty()) {
-            constexpr float kFavTileW = 96.0f;
-            constexpr float kFavGap   = 12.0f;
-            const float row_w = favs.size() * kFavTileW
-                              + (favs.size() - 1) * kFavGap;
-            const float row_x = (w - row_w) * 0.5f;
-            const float row_y = kHosTopBarH + 32.0f;
-            for (std::size_t i = 0; i < favs.size(); i++) {
-                const float fx = row_x + i * (kFavTileW + kFavGap);
-                const std::string p = scrapers::cover_path(
-                    favs[i].sys->def->folder_name, favs[i].game->stem);
-                rrect(vg, fx, row_y, kFavTileW, kFavTileW, 6.0f, th.bg_panel_hi);
-                const int handle = library::config().show_covers
-                    ? cover_cache().get_or_load(vg, p) : 0;
-                if (handle > 0) {
-                    int iw = 0, ih = 0;
-                    nvgImageSize(vg, handle, &iw, &ih);
-                    auto pat = nvgImagePattern(vg, fx, row_y,
-                        kFavTileW, kFavTileW, 0.0f, handle, 1.0f);
-                    nvgBeginPath(vg);
-                    nvgRoundedRect(vg, fx, row_y, kFavTileW, kFavTileW, 6.0f);
-                    nvgFillPaint(vg, pat);
-                    nvgFill(vg);
-                }
-            }
-            // Row label above the strip.
-            nvgFontSize(vg, th.label_size);
-            nvgFillColor(vg, th.text_dim);
-            nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_BOTTOM);
-            nvgText(vg, row_x, row_y - 4.0f, "Favorites", nullptr);
+        const auto& sys = lib.systems[idx_centre % count];
+        char bg_path[256];
+        std::snprintf(bg_path, sizeof(bg_path),
+            "romfs:/themes/alekfull-nx/systems/%.*s/background.jpg",
+            (int)sys.def->folder_name.size(),
+            sys.def->folder_name.data());
+        const int bg_handle = backdrop_cache().get_or_load(vg, bg_path);
+        if (bg_handle > 0) {
+            int iw = 0, ih = 0;
+            nvgImageSize(vg, bg_handle, &iw, &ih);
+            const float scale = std::max(w / (float)iw, h / (float)ih);
+            const float dw = iw * scale;
+            const float dh = ih * scale;
+            const float dx = (w - dw) * 0.5f;
+            const float dy = (h - dh) * 0.5f;
+            auto pat = nvgImagePattern(vg, dx, dy, dw, dh, 0.0f,
+                                       bg_handle, 1.0f);
+            nvgBeginPath(vg);
+            nvgRect(vg, 0, 0, w, h);
+            nvgFillPaint(vg, pat);
+            nvgFill(vg);
+            // Dim overlay so foreground UI stays legible regardless
+            // of how bright the system background is.
+            nvgBeginPath(vg);
+            nvgRect(vg, 0, 0, w, h);
+            nvgFillColor(vg, nvgRGBAf(th.bg.r, th.bg.g, th.bg.b, 0.55f));
+            nvgFill(vg);
         }
     }
 
