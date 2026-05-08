@@ -1078,48 +1078,16 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
         nvgRestore(vg);
     };
 
-    // Walk neighbours from far-out → in so the focused tile lands on top.
+    // Walk neighbours from far-out → in so the focused tile lands on
+    // top. No second pass for a logo overlay — the system splash PNGs
+    // already include the system wordmark + console art baked in, so
+    // an extra logo blit was painting the same content twice and
+    // making the focused tile look noisy. HOS keeps tile content
+    // entirely inside the splash.
     for (int off : {-3, 3, -2, 2, -1, 1}) {
         draw_tile_at(off, /*focused=*/false);
     }
     draw_tile_at(0, /*focused=*/true);
-
-    // Logo overlay on the focused tile. Uses the existing logo PNG if
-    // present, falls back to the system's display name centered in the
-    // tile so the slot is legible without art.
-    {
-        const auto& sys = lib.systems[idx_centre % count];
-        const float scale = kHomeFocusScale;
-        const float tw    = kHomeTileW * scale;
-        const float thh   = kHomeTileH * scale;
-        const float x     = w * 0.5f - tw * 0.5f;
-        const float y     = cy - thh * 0.5f;
-        const auto logo_path = system_logo_path(sys.def->folder_name);
-        const int  logo_h    = system_logo_cache().get_or_load(vg, logo_path);
-        if (logo_h > 0) {
-            blit_aspect_fit_with_shadow(vg, logo_h,
-                x + tw * 0.10f, y + thh * 0.65f,
-                tw * 0.80f, thh * 0.25f,
-                0.0f, 1.0f);
-        }
-    }
-
-    // Game count below the focused tile (HOS shows play time / ownership;
-    // for a libretro frontend the equivalent is the rom count).
-    {
-        const auto& sys = lib.systems[idx_centre % count];
-        char buf[64];
-        const char* gword = _(sys.games.size() == 1
-                                  ? SId::CountGameSingular
-                                  : SId::CountGamePlural);
-        std::snprintf(buf, sizeof(buf), "%zu %s", sys.games.size(), gword);
-        nvgFontSize(vg, th.label_size);
-        nvgFillColor(vg, th.text_dim);
-        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
-        nvgText(vg, w * 0.5f,
-                cy + kHomeTileH * 0.5f * kHomeFocusScale + 12.0f,
-                buf, nullptr);
-    }
 }
 
 // ---- SYSTEM VIEW (game list + sidebar) ------------------------------------
