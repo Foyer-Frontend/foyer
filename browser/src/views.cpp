@@ -482,33 +482,25 @@ void hos_circle(NVGcontext* vg, float cx, float cy, float r,
 void draw_hos_top_bar(NVGcontext* vg, float w, const State& s) {
     const auto& th = theme();
 
-    // Bar background.
-    nvgBeginPath(vg);
-    nvgRect(vg, 0, 0, w, kHosTopBarH);
-    nvgFillColor(vg, th.bg_panel);
-    nvgFill(vg);
-    nvgBeginPath(vg);
-    nvgRect(vg, 0, kHosTopBarH - 1.0f, w, 1.0f);
-    nvgFillColor(vg, th.border);
-    nvgFill(vg);
+    // No bar background — the Home view paints a single bg color
+    // edge-to-edge. The top "bar" is just the area where the
+    // avatars + status cluster sit on top of the unified bg.
 
-    // Profile slot: row of avatars, mirroring HOS. Active user is the
-    // largest disc on the left; remaining users render at a smaller
-    // size beside it. No nickname text — HOS doesn't display a name
-    // until the user enters the profile-detail view. Tap a secondary
-    // avatar to switch to that user instantly (HOS's interaction);
-    // controller users hit Up from the carousel to focus the row,
-    // then Left/Right + A.
-    constexpr float kAvatarR     = 24.0f;
-    constexpr float kSecondaryR  = 14.0f;  // smaller disc per other user
-    constexpr float kAvatarGap   = 8.0f;
+    // Profile cluster (top-left): every registered profile rendered
+    // at the SAME size. The currently-active user gets a thin accent
+    // ring around their disc; others are bare. Tap a non-active disc
+    // to instantly switch to that user.
+    constexpr float kAvatarR   = 22.0f;
+    constexpr float kAvatarGap = 12.0f;
     const float avy = kHosTopBarH * 0.5f;
-    auto draw_avatar = [&](float cx, float r, int handle, bool selected) {
-        if (selected) {
-            // Outer focus ring drawn before the avatar so it sits
-            // behind the disc.
+    auto draw_avatar = [&](float cx, int handle, bool active, bool focused) {
+        // Active or controller-focused get the same ring treatment so
+        // the user always knows where focus sits even when nothing has
+        // been tapped yet.
+        const bool ring = active || focused;
+        if (ring) {
             nvgBeginPath(vg);
-            nvgCircle(vg, cx, avy, r + 4.0f);
+            nvgCircle(vg, cx, avy, kAvatarR + 3.5f);
             nvgStrokeColor(vg, th.accent);
             nvgStrokeWidth(vg, 2.5f);
             nvgStroke(vg);
@@ -516,55 +508,43 @@ void draw_hos_top_bar(NVGcontext* vg, float w, const State& s) {
         if (handle > 0) {
             nvgSave(vg);
             nvgBeginPath(vg);
-            nvgCircle(vg, cx, avy, r);
-            auto pat = nvgImagePattern(vg, cx - r, avy - r, r * 2, r * 2,
+            nvgCircle(vg, cx, avy, kAvatarR);
+            auto pat = nvgImagePattern(vg, cx - kAvatarR, avy - kAvatarR,
+                                       kAvatarR * 2, kAvatarR * 2,
                                        0.0f, handle, 1.0f);
             nvgFillPaint(vg, pat);
             nvgFill(vg);
             nvgRestore(vg);
-            nvgBeginPath(vg);
-            nvgCircle(vg, cx, avy, r);
-            nvgStrokeColor(vg, th.border);
-            nvgStrokeWidth(vg, 1.5f);
-            nvgStroke(vg);
         } else {
-            hos_circle(vg, cx, avy, r, th.bg_panel_hi, th.border);
+            hos_circle(vg, cx, avy, kAvatarR, th.bg_panel_hi, th.border);
         }
     };
+    // Layout order: active user first, then secondaries. All same
+    // size, fixed pitch.
     const float ax0 = th.pad + kAvatarR;
-    const bool av_focus = s.avatar_row_focus;
-    draw_avatar(ax0, kAvatarR, hos_status::avatar_handle(),
-                av_focus && s.avatar_index == 0);
-    // Secondary avatars to the right of the active one — up to 3 more
-    // so the cluster doesn't overflow the top bar on consoles with
-    // every Switch profile slot used.
-    const int sec_count = std::min(3, hos_status::other_avatar_count());
-    for (int i = 0; i < sec_count; i++) {
-        const float cx = ax0 + kAvatarR + kAvatarGap
-            + kSecondaryR + i * (kSecondaryR * 2 + kAvatarGap);
-        draw_avatar(cx, kSecondaryR, hos_status::other_avatar_handle(i),
-                    av_focus && s.avatar_index == (i + 1));
+    const int n_others = hos_status::other_avatar_count();
+    draw_avatar(ax0, hos_status::avatar_handle(),
+                /*active=*/true,
+                /*focused=*/s.avatar_row_focus && s.avatar_index == 0);
+    for (int i = 0; i < n_others; i++) {
+        const float cx = ax0 + (i + 1) * (kAvatarR * 2 + kAvatarGap);
+        draw_avatar(cx, hos_status::other_avatar_handle(i),
+                    /*active=*/false,
+                    /*focused=*/s.avatar_row_focus && s.avatar_index == (i + 1));
     }
 
-    // Status cluster (right) right-to-left: clock, battery, wifi.
+    // Status cluster (top-right): left-to-right order = clock,
+    // wifi, battery percentage + battery icon. Each element is
+    // anchored to a fixed slot so the cluster doesn't reflow when
+    // values change width.
+    const float right_edge = w - th.pad;
 
-    // Clock — already localized via clock_label().
-    nvgFontSize(vg, th.body_size);
-    nvgFillColor(vg, th.text);
-    nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
-    const std::string clock = clock_label();
-    nvgText(vg, w - th.pad, avy, clock.c_str(), nullptr);
-
-    // Battery: outline + filled portion proportional to charge. The
-    // small nub on the right edge sells it as a battery icon at a
-    // glance. Charging adds an accent overlay (lightning bolt — drawn
-    // as a thin '/' through the center for now; a glyph font swap
-    // comes later).
-    constexpr float kBattW = 38.0f;
-    constexpr float kBattH = 16.0f;
-    const float battx = w - th.pad - 64.0f - kBattW;
+    // Battery: pct text + icon. Sits at the rightmost slot.
+    constexpr float kBattW = 30.0f;
+    constexpr float kBattH = 14.0f;
     const float batty = avy - kBattH * 0.5f;
-    rrect_outline(vg, battx, batty, kBattW, kBattH, 4.0f, th.text, 1.5f);
+    const float battx = right_edge - kBattW;
+    rrect_outline(vg, battx, batty, kBattW, kBattH, 3.0f, th.text, 1.5f);
     int pct = hos_status::battery_pct();
     if (pct < 0)   pct = 0;
     if (pct > 100) pct = 100;
@@ -579,7 +559,6 @@ void draw_hos_top_bar(NVGcontext* vg, float w, const State& s) {
     nvgFillColor(vg, th.text);
     nvgFill(vg);
     if (hos_status::charging()) {
-        // Lightning bolt as a thin diagonal across the center.
         nvgBeginPath(vg);
         nvgMoveTo(vg, battx + kBattW * 0.5f - 3.0f, batty + 2);
         nvgLineTo(vg, battx + kBattW * 0.5f + 1.0f, batty + kBattH * 0.5f);
@@ -589,11 +568,18 @@ void draw_hos_top_bar(NVGcontext* vg, float w, const State& s) {
         nvgStrokeWidth(vg, 1.5f);
         nvgStroke(vg);
     }
+    // Battery percentage text right of the icon's left edge.
+    char pct_buf[8];
+    std::snprintf(pct_buf, sizeof(pct_buf), "%d%%", pct);
+    nvgFontSize(vg, th.label_size);
+    nvgFillColor(vg, th.text);
+    nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+    nvgText(vg, battx - 6.0f, avy, pct_buf, nullptr);
 
-    // WiFi: three nested arcs forming a signal triangle. Strength
-    // 0..3 controls how many arcs render lit; 0 = disconnected (just
-    // a dim base dot, no arcs).
-    const float wifix = battx - 32.0f;
+    // WiFi: three nested arcs forming a signal triangle. Sits left
+    // of the percentage text.
+    constexpr float kWifiBlock = 28.0f;  // visual width allocation
+    const float wifix = battx - 6.0f - 36.0f - kWifiBlock * 0.5f;
     const float wifiy = avy + 4.0f;
     const int   strength = hos_status::wifi_connected()
                              ? hos_status::wifi_strength() : 0;
@@ -610,6 +596,14 @@ void draw_hos_top_bar(NVGcontext* vg, float w, const State& s) {
     nvgCircle(vg, wifix, wifiy, 1.5f);
     nvgFillColor(vg, hos_status::wifi_connected() ? th.text : th.border);
     nvgFill(vg);
+
+    // Clock — leftmost element of the cluster.
+    nvgFontSize(vg, th.body_size);
+    nvgFillColor(vg, th.text);
+    nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+    const std::string clock = clock_label();
+    nvgText(vg, wifix - kWifiBlock * 0.5f - 8.0f, avy,
+            clock.c_str(), nullptr);
 }
 
 // Action-row layout helpers. The row supports two visual styles
@@ -845,48 +839,23 @@ void draw_action_glyph(NVGcontext* vg, int idx, float cx, float cy,
 void draw_hos_action_row(NVGcontext* vg, float w, float h, const State& s) {
     const auto& th    = theme();
     const float row_y = h - kBottomBarH - kHosActionRowH;
-    const bool  dock  = library::config().action_row_dock;
     const bool  has_focus = s.action_row_focus &&
                             s.action_button_index >= 0 &&
                             s.action_button_index < kHosActionCount;
 
-    // Row background — subtle border line in the floating style so the
-    // user reads it as a separated band. The dock variant skips the
-    // line because the pill itself provides the visual seam.
-    nvgBeginPath(vg);
-    nvgRect(vg, 0, row_y, w, kHosActionRowH);
-    nvgFillColor(vg, th.bg);
-    nvgFill(vg);
-    if (!dock) {
-        nvgBeginPath(vg);
-        nvgRect(vg, 0, row_y, w, 1.0f);
-        nvgFillColor(vg, th.border);
-        nvgFill(vg);
-    }
-
-    constexpr float kBtnR     = 28.0f;
+    // No row background, no pill, no separator line — the buttons
+    // float directly on the unified bg, matching HOS's bare action
+    // row. Tighter centre-to-centre pitch so the cluster stays
+    // compact instead of spreading across the screen.
+    constexpr float kBtnR     = 26.0f;
     constexpr float kLabelGap = 18.0f;
-    const float total_w = dock ? w * 0.62f : w * 0.7f;
-    const float step    = total_w / (kHosActionCount - 1);
+    constexpr float kBtnPitch = kBtnR * 2 + 14.0f;  // tight HOS-style
+    const float total_w = kBtnPitch * (kHosActionCount - 1);
     const float start_x = (w - total_w) * 0.5f;
     const float cy      = row_y + kHosActionRowH * 0.5f - kLabelGap * 0.5f;
 
-    if (dock) {
-        // Pill background spans every button with margin equal to the
-        // button radius on each side. Same panel fill as the topbar.
-        const float pill_pad_x = kBtnR + 18.0f;
-        const float pill_pad_y = kBtnR + 6.0f;
-        const float pill_x = start_x - pill_pad_x;
-        const float pill_y = cy - pill_pad_y;
-        const float pill_w = total_w + pill_pad_x * 2;
-        const float pill_h = pill_pad_y * 2;
-        rrect(vg, pill_x, pill_y, pill_w, pill_h, pill_h * 0.5f, th.bg_panel);
-        rrect_outline(vg, pill_x, pill_y, pill_w, pill_h, pill_h * 0.5f,
-                      th.border, 1.0f);
-    }
-
     for (int i = 0; i < kHosActionCount; i++) {
-        const float cx     = start_x + step * i;
+        const float cx     = start_x + kBtnPitch * i;
         const bool  active = has_focus && i == s.action_button_index;
         const NVGcolor fill   = active ? th.accent : th.bg_panel_hi;
         const NVGcolor stroke = active ? th.accent : th.border;
@@ -915,14 +884,7 @@ void draw_hos_bottom_hints(NVGcontext* vg, float w, float h, const char* hint) {
     const auto& th = theme();
     const float by = h - kBottomBarH;
 
-    nvgBeginPath(vg);
-    nvgRect(vg, 0, by, w, kBottomBarH);
-    nvgFillColor(vg, th.bg_panel);
-    nvgFill(vg);
-    nvgBeginPath(vg);
-    nvgRect(vg, 0, by, w, 1.0f);
-    nvgFillColor(vg, th.border);
-    nvgFill(vg);
+    // No bar background — floats over the unified bg color.
 
     // Connected-controller cluster: a small badge per attached
     // npad. libnx's HID exposes per-id activity flags; we walk the
