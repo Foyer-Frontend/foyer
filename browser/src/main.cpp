@@ -656,10 +656,14 @@ int main(int argc, char** argv) {
                         state.banner_ttl = 0;
                     }
                     // Refresh manifest cache so per-row state
-                    // reflects the new "up to date" status.
+                    // reflects the new "up to date" status, and drop
+                    // the per-row sidecar cache so the next build_items
+                    // re-reads disk truth instead of stale "not
+                    // installed" markers.
                     foyer::browser::set_manifest_cache(
                         foyer::library::fetch_manifest(
                             foyer::library::config().cores_manifest_url));
+                    foyer::browser::invalidate_install_caches();
                     // If the install was triggered by the pre-launch
                     // update prompt ("Update before playing?"), the
                     // pending launch is suspended on State. Re-fire
@@ -686,6 +690,8 @@ int main(int argc, char** argv) {
         // /foyer/shaders/<name>/.
         if (state.request_install_shaders) {
             state.request_install_shaders = false;
+            const std::string only = std::move(state.install_only_shader);
+            state.install_only_shader.clear();
             state.banner_text = foyer::i18n::tr(foyer::i18n::StringId::BannerFetchingShaderManifest);
             state.banner_ttl  = 60;
             app.tick();
@@ -695,35 +701,66 @@ int main(int argc, char** argv) {
                 state.banner_text = foyer::i18n::tr(foyer::i18n::StringId::BannerShadersManifestFetchFail);
                 state.banner_ttl  = 240;
             } else {
-                const auto totals = foyer::library::install_shaders(sm,
-                    [&](const foyer::library::ShaderInstallProgress& p) {
-                        char b[160];
-                        const char* verb =
-                            foyer::i18n::tr(
-                                p.action == foyer::library::ShaderInstallAction::Skipped   ? foyer::i18n::StringId::ActionPastSkipped :
-                                p.action == foyer::library::ShaderInstallAction::Updated   ? foyer::i18n::StringId::ActionPastUpdated :
-                                p.action == foyer::library::ShaderInstallAction::Installed ? foyer::i18n::StringId::ActionPastInstalled
-                                                                                           : foyer::i18n::StringId::ActionPastFailed);
-                        std::snprintf(b, sizeof(b), "[%d/%d] %s - %s",
-                            p.index, p.total, p.name.c_str(), verb);
-                        state.banner_text = b;
-                        state.banner_ttl  = 60;
-                        app.tick();
-                    });
-                if (totals.failed > 0) {
-                    char b[120];
-                    std::snprintf(b, sizeof(b),
-                        "%d shader preset%s failed - check log",
-                        totals.failed, totals.failed == 1 ? "" : "s");
-                    state.banner_text = b;
-                } else {
-                    char b[120];
-                    std::snprintf(b, sizeof(b),
-                        "Shader presets ready (%d new, %d updated, %d skipped)",
-                        totals.installed, totals.updated, totals.skipped);
-                    state.banner_text = b;
+                if (!only.empty()) {
+                    std::erase_if(sm.presets,
+                        [&](const auto& p) { return p.name != only; });
                 }
-                state.banner_ttl = 360;
+                if (sm.presets.empty()) {
+                    char b[200];
+                    std::snprintf(b, sizeof(b),
+                        "Shader preset not in manifest: %s", only.c_str());
+                    state.banner_text = b;
+                    state.banner_ttl  = 240;
+                } else {
+                    foyer::browser::set_shaders_manifest_cache(sm);
+                    const auto totals = foyer::library::install_shaders(sm,
+                        [&](const foyer::library::ShaderInstallProgress& p) {
+                            // Banner-update on Started so the user sees
+                            // per-preset progress during the loop;
+                            // terminal action codes (Installed/Updated/
+                            // Skipped/Failed) only get logged below.
+                            if (p.action == foyer::library::ShaderInstallAction::Started) {
+                                char b[200];
+                                std::snprintf(b, sizeof(b),
+                                    foyer::i18n::tr(foyer::i18n::StringId::BannerInstallingItem),
+                                    p.name.c_str());
+                                state.banner_text = b;
+                                state.banner_ttl  = 240;
+                            }
+                            app.tick();
+                        });
+                    if (totals.failed > 0) {
+                        char b[160];
+                        std::snprintf(b, sizeof(b),
+                            "%d shader preset%s failed - check log",
+                            totals.failed, totals.failed == 1 ? "" : "s");
+                        state.banner_text = b;
+                        state.banner_ttl = 360;
+                    } else {
+                        // Success: nothing to surface — the per-preset
+                        // banner during the loop already showed every
+                        // step the user cares about.
+                        state.banner_text.clear();
+                        state.banner_ttl = 0;
+                    }
+                }
+            }
+            foyer::browser::invalidate_install_caches();
+        }
+
+        // Shader manifest refresh (pull-only — per-preset install
+        // happens via OpInstallSingleShaderPreset above).
+        if (state.request_refresh_shaders_manifest) {
+            state.request_refresh_shaders_manifest = false;
+            auto sm = foyer::library::fetch_shader_manifest(
+                foyer::library::config().shaders_manifest_url);
+            if (sm.presets.empty()) {
+                state.banner_text = foyer::i18n::tr(foyer::i18n::StringId::BannerShadersManifestFetchFail);
+                state.banner_ttl  = 240;
+            } else {
+                foyer::browser::set_shaders_manifest_cache(std::move(sm));
+                state.banner_text.clear();
+                state.banner_ttl = 0;
             }
         }
 
@@ -818,6 +855,7 @@ int main(int argc, char** argv) {
                 }
                 state.banner_ttl = 360;
             }
+            foyer::browser::invalidate_install_caches();
         }
 
         // Bezel-pack install. Mirrors cheats; honors
@@ -868,6 +906,7 @@ int main(int argc, char** argv) {
                 }
                 state.banner_ttl = 360;
             }
+            foyer::browser::invalidate_install_caches();
         }
 
         if (state.request_launch) {

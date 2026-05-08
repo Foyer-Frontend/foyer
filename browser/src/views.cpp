@@ -7,6 +7,7 @@
 #include "library/config.hpp"
 #include "library/per_game.hpp"
 #include "library/game_meta.hpp"
+#include "library/shader_installer.hpp"
 #include "library/skipped_versions.hpp"
 #include "library/updates.hpp"
 #include "net/http.hpp"
@@ -1413,6 +1414,15 @@ BezelsManifestCache& bezels_manifest_cache() {
     return c;
 }
 
+struct ShadersManifestCache {
+    library::ShaderManifest data;
+    bool loaded = false;
+};
+ShadersManifestCache& shaders_manifest_cache() {
+    static ShadersManifestCache c;
+    return c;
+}
+
 // Wall-clock of the most recent successful manifest fetch. Bumped by
 // each set_*_manifest_cache(); read by the Updates page footer for
 // the "Last: 2 min ago" hint. 0 = never scraped this run.
@@ -1439,6 +1449,69 @@ PendingUpdatesCache& pending_updates_cache() {
 }
 void invalidate_pending_updates_cache() {
     pending_updates_cache().valid = false;
+}
+
+// Per-row sidecar/stat results for the four catalog subpages
+// (Cores, Bezels, Cheats, Shaders). Without this, every frame
+// of every catalog re-stats the .nro and re-reads the .version
+// sidecar for ~120 entries combined — at 60 fps that's thousands
+// of FAT operations a second and the UI hitches into single-digit
+// FPS. Cached on demand; invalidated by install/refresh completions
+// (see catalog_cache_invalidate() call sites in main.cpp).
+struct CatalogCache {
+    bool valid = false;
+    std::unordered_map<std::string, std::string> core_version;
+    std::unordered_map<std::string, bool>        core_present;
+    std::unordered_map<std::string, std::string> bezel_version;
+    std::unordered_map<std::string, std::string> cheat_version;
+    std::unordered_map<std::string, std::string> shader_version;
+};
+CatalogCache& catalog_cache() {
+    static CatalogCache c;
+    return c;
+}
+void invalidate_catalog_cache() {
+    auto& c = catalog_cache();
+    c.valid = false;
+    c.core_version.clear();
+    c.core_present.clear();
+    c.bezel_version.clear();
+    c.cheat_version.clear();
+    c.shader_version.clear();
+}
+
+const std::string& cached_core_version(const std::string& nro) {
+    auto& c = catalog_cache();
+    auto it = c.core_version.find(nro);
+    if (it != c.core_version.end()) return it->second;
+    return c.core_version[nro] = library::installed_core_version(nro);
+}
+bool cached_core_present(const std::string& nro) {
+    auto& c = catalog_cache();
+    auto it = c.core_present.find(nro);
+    if (it != c.core_present.end()) return it->second;
+    const std::string path = std::string{"/foyer/cores/"} + nro;
+    struct stat st{};
+    const bool ok = (::stat(path.c_str(), &st) == 0 && st.st_size > 0);
+    return c.core_present[nro] = ok;
+}
+const std::string& cached_bezel_version(const std::string& pack) {
+    auto& c = catalog_cache();
+    auto it = c.bezel_version.find(pack);
+    if (it != c.bezel_version.end()) return it->second;
+    return c.bezel_version[pack] = library::installed_bezel_version(pack);
+}
+const std::string& cached_cheat_version(const std::string& pack) {
+    auto& c = catalog_cache();
+    auto it = c.cheat_version.find(pack);
+    if (it != c.cheat_version.end()) return it->second;
+    return c.cheat_version[pack] = library::installed_cheat_version(pack);
+}
+const std::string& cached_shader_version(const std::string& preset) {
+    auto& c = catalog_cache();
+    auto it = c.shader_version.find(preset);
+    if (it != c.shader_version.end()) return it->second;
+    return c.shader_version[preset] = library::installed_shader_version(preset);
 }
 
 const char* scraper_label(library::Config::Scraper sc) {
@@ -1471,6 +1544,8 @@ enum : int {
     OpRefreshBezelsManifest,
     OpInstallSingleCheatPack,    // Per-row install for one cheat pack
     OpInstallSingleBezelPack,    // Per-row install for one bezel pack
+    OpInstallSingleShaderPreset, // Per-row install for one shader preset
+    OpRefreshShadersManifest,    // Pull manifest only (per-preset rows after)
     OpUpdCheckFoyer, OpUpdInstallFoyer,
     // Unified Updates page. Replaces the per-kind
     // Install/Refresh/Update Foyer chain on the Updates subpage —
@@ -1723,10 +1798,10 @@ std::vector<Item> build_items(Category cat, const State& s) {
                     int n_updates = 0;
                     for (const auto& c : mc.data.cores) {
                         const bool installed =
-                            file_present(std::string{"/foyer/cores/"} + c.nro);
+                            cached_core_present(std::string{c.nro});
                         if (!installed) continue;
-                        const auto local_v =
-                            library::installed_core_version(c.nro);
+                        const auto& local_v =
+                            cached_core_version(std::string{c.nro});
                         if (!local_v.empty() && local_v != c.version) n_updates++;
                     }
                     if (n_updates > 0) {
@@ -1742,7 +1817,7 @@ std::vector<Item> build_items(Category cat, const State& s) {
                     }
                     for (const auto& c : mc.data.cores) {
                         const bool installed =
-                            file_present(std::string{"/foyer/cores/"} + c.nro);
+                            cached_core_present(std::string{c.nro});
                         Item it;
                         it.kind  = ItemKind::Action;
                         // Display "<core> (<system>)" when the core
@@ -1775,8 +1850,8 @@ std::vector<Item> build_items(Category cat, const State& s) {
                                                : std::string{_(SId::VerbDownload)};
                             it.payload = OpUpdInstallSingleCore;
                         } else {
-                            const auto local_v =
-                                library::installed_core_version(c.nro);
+                            const auto& local_v =
+                                cached_core_version(std::string{c.nro});
                             const bool up_to_date =
                                 !local_v.empty() && local_v == c.version;
                             if (up_to_date) {
@@ -1811,8 +1886,8 @@ std::vector<Item> build_items(Category cat, const State& s) {
                         it.kind  = ItemKind::Action;
                         it.label = p.name;
                         it.data  = p.name;
-                        const auto local_v =
-                            library::installed_bezel_version(p.name);
+                        const auto& local_v =
+                            cached_bezel_version(p.name);
                         if (local_v.empty()) {
                             it.value = _(SId::VerbDownload);
                         } else if (local_v == p.version) {
@@ -1847,8 +1922,8 @@ std::vector<Item> build_items(Category cat, const State& s) {
                         it.kind  = ItemKind::Action;
                         it.label = p.name;
                         it.data  = p.name;
-                        const auto local_v =
-                            library::installed_cheat_version(p.name);
+                        const auto& local_v =
+                            cached_cheat_version(p.name);
                         if (local_v.empty()) {
                             it.value = _(SId::VerbDownload);
                         } else if (local_v == p.version) {
@@ -1871,12 +1946,40 @@ std::vector<Item> build_items(Category cat, const State& s) {
             }
 
             if (s.settings_subpage == 5) {
-                // Shader presets: single install-all action (per-preset
-                // picker can land later if the catalog grows further).
+                // Shader presets: refresh + per-preset install rows +
+                // install-all footer. Same shape as Bezel/Cheat
+                // catalogs above.
                 rows.push_back({ItemKind::Action,
-                    _(SId::EmuInstallShaders), _(SId::VerbRun),
-                    _(SId::EmuInstallShadersHint),
-                    OpInstallShaderPresets});
+                    _(SId::EmuRefreshManifest), _(SId::VerbFetch),
+                    "Pulls the latest foyer-shaders release listing.",
+                    OpRefreshShadersManifest});
+
+                const auto& smc = shaders_manifest_cache();
+                if (smc.loaded && !smc.data.presets.empty()) {
+                    for (const auto& p : smc.data.presets) {
+                        Item it;
+                        it.kind  = ItemKind::Action;
+                        it.label = p.name;
+                        it.data  = p.name;
+                        const auto& local_v = cached_shader_version(p.name);
+                        if (local_v.empty()) {
+                            it.value = _(SId::VerbDownload);
+                        } else if (local_v == p.version) {
+                            it.value = _(SId::VerbInstalledReinstall);
+                        } else {
+                            it.value = _(SId::VerbUpdateAvailable);
+                        }
+                        it.payload = OpInstallSingleShaderPreset;
+                        rows.push_back(std::move(it));
+                    }
+                    rows.push_back({ItemKind::Action,
+                        _(SId::EmuInstallShaders), _(SId::VerbRun),
+                        _(SId::EmuInstallShadersHint),
+                        OpInstallShaderPresets});
+                } else {
+                    rows.push_back({ItemKind::Static,
+                        _(SId::EmuLoadingCatalog), "", "", 0});
+                }
                 break;
             }
 
@@ -4665,7 +4768,20 @@ void update(State& s, const Library& lib,
                             s.banner_ttl  = 180;
                         } else if (it.payload == settings::OpInstallShaderPresets) {
                             s.request_install_shaders = true;
+                            s.install_only_shader.clear();
                             s.banner_text = _(SId::BannerFetchingShaderManifest);
+                            s.banner_ttl  = 180;
+                        } else if (it.payload == settings::OpRefreshShadersManifest) {
+                            s.request_refresh_shaders_manifest = true;
+                            s.banner_text = _(SId::BannerFetchingShaderManifest);
+                            s.banner_ttl  = 180;
+                        } else if (it.payload == settings::OpInstallSingleShaderPreset) {
+                            s.request_install_shaders = true;
+                            s.install_only_shader = it.data;
+                            char buf[200];
+                            std::snprintf(buf, sizeof(buf),
+                                _(SId::BannerInstallingItem), it.data.c_str());
+                            s.banner_text = buf;
                             s.banner_ttl  = 180;
                         } else if (it.payload == settings::OpInstallCheatPacks) {
                             s.request_install_cheats = true;
@@ -5030,6 +5146,19 @@ void set_bezels_manifest_cache(library::BezelManifest manifest) {
     mc.data   = std::move(manifest);
     mc.loaded = true;
     settings::last_scrape_at() = std::time(nullptr);
+    settings::invalidate_pending_updates_cache();
+}
+
+void set_shaders_manifest_cache(library::ShaderManifest manifest) {
+    auto& mc = settings::shaders_manifest_cache();
+    mc.data   = std::move(manifest);
+    mc.loaded = true;
+    settings::last_scrape_at() = std::time(nullptr);
+    settings::invalidate_pending_updates_cache();
+}
+
+void invalidate_install_caches() {
+    settings::invalidate_catalog_cache();
     settings::invalidate_pending_updates_cache();
 }
 

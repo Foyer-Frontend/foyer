@@ -13,6 +13,7 @@
 #include "library/core_install_job.hpp"
 #include "library/cheat_installer.hpp"
 #include "library/bezel_installer.hpp"
+#include "library/shader_installer.hpp"
 #include "library/foyer_update_job.hpp"
 #include "library/scrape_job.hpp"
 #include "platform/app.hpp"
@@ -146,6 +147,7 @@ struct State {
     bool        request_refresh_manifest  = false;
     bool        request_refresh_cheats_manifest = false;
     bool        request_refresh_bezels_manifest = false;
+    bool        request_refresh_shaders_manifest = false;
     // Set by the Updates page "Update everything" footer. main.cpp
     // chains the per-kind install paths once and clears the flag.
     bool        request_update_all        = false;
@@ -164,6 +166,13 @@ struct State {
     std::string install_only_core;
     std::string install_only_cheat;
     std::string install_only_bezel;
+    std::string install_only_shader;
+    // Bumped by main.cpp after every install/refresh completes so the
+    // catalog subpages know to re-stat /foyer/cores etc. instead of
+    // reusing per-frame caches keyed by this generation. Without this,
+    // build_items() did 30+ stat() + sidecar reads every frame, locking
+    // the Cores Catalog and Cheat Packs subpages at single-digit FPS.
+    int         install_cache_gen        = 0;
     // When true, install_cores is invoked with `force=true`, bypassing
     // the version-match skip. Used by the explicit "Re-install" path.
     // Cleared after the install runs.
@@ -278,6 +287,13 @@ const library::CoreManifest* cached_core_manifest();
 // these to render per-pack install rows.
 void set_cheats_manifest_cache(library::CheatManifest manifest);
 void set_bezels_manifest_cache(library::BezelManifest manifest);
+void set_shaders_manifest_cache(library::ShaderManifest manifest);
+
+// Drop the catalog hot-cache (per-row install state read from
+// /foyer/cores/<nro>.version sidecars + presence stat) and the
+// Updates page summary cache. Called by main.cpp after every
+// install completes so the next frame re-reads disk truth.
+void invalidate_install_caches();
 
 // Open the cover-picker overlay with the list of candidate paths the
 // caller already downloaded. The picker shows each as a thumbnail

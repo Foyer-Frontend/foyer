@@ -30,6 +30,7 @@ struct ShaderManifest {
 ShaderManifest fetch_shader_manifest(const std::string& manifest_url);
 
 enum class ShaderInstallAction {
+    Started,    // about to download (banner update hook)
     Skipped,    // already at the manifest's version
     Installed,  // wasn't on disk, downloaded fresh
     Updated,    // version mismatch — replaced

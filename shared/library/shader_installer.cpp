@@ -218,6 +218,13 @@ ShaderInstallTotals install_shaders(
         prog.total = (int)manifest.presets.size();
         prog.name  = p.name;
 
+        // Surface the per-preset name BEFORE the skip-or-download
+        // decision so the UI can update its banner each step instead
+        // of staying frozen on the click-time "Installing all
+        // shaders..." text.
+        prog.action = ShaderInstallAction::Started;
+        if (progress) progress(prog);
+
         const auto dir = preset_dir(p.name);
         const bool was_present = dir_exists(dir);
 
