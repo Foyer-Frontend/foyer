@@ -481,13 +481,24 @@ void draw_hos_top_bar(NVGcontext* vg, float w) {
     // Profile slot: row of avatars, mirroring HOS. Active user is the
     // largest disc on the left; remaining users render at a smaller
     // size beside it. No nickname text — HOS doesn't display a name
-    // until the user enters the profile-detail view. Pressing Y on
-    // Home opens the profile switcher modal.
+    // until the user enters the profile-detail view. Tap a secondary
+    // avatar to switch to that user instantly (HOS's interaction);
+    // controller users hit Up from the carousel to focus the row,
+    // then Left/Right + A.
     constexpr float kAvatarR     = 24.0f;
     constexpr float kSecondaryR  = 14.0f;  // smaller disc per other user
     constexpr float kAvatarGap   = 8.0f;
     const float avy = kHosTopBarH * 0.5f;
-    auto draw_avatar = [&](float cx, float r, int handle) {
+    auto draw_avatar = [&](float cx, float r, int handle, bool selected) {
+        if (selected) {
+            // Outer focus ring drawn before the avatar so it sits
+            // behind the disc.
+            nvgBeginPath(vg);
+            nvgCircle(vg, cx, avy, r + 4.0f);
+            nvgStrokeColor(vg, th.accent);
+            nvgStrokeWidth(vg, 2.5f);
+            nvgStroke(vg);
+        }
         if (handle > 0) {
             nvgSave(vg);
             nvgBeginPath(vg);
@@ -507,7 +518,9 @@ void draw_hos_top_bar(NVGcontext* vg, float w) {
         }
     };
     const float ax0 = th.pad + kAvatarR;
-    draw_avatar(ax0, kAvatarR, hos_status::avatar_handle());
+    const bool av_focus = s.avatar_row_focus;
+    draw_avatar(ax0, kAvatarR, hos_status::avatar_handle(),
+                av_focus && s.avatar_index == 0);
     // Secondary avatars to the right of the active one — up to 3 more
     // so the cluster doesn't overflow the top bar on consoles with
     // every Switch profile slot used.
@@ -515,7 +528,8 @@ void draw_hos_top_bar(NVGcontext* vg, float w) {
     for (int i = 0; i < sec_count; i++) {
         const float cx = ax0 + kAvatarR + kAvatarGap
             + kSecondaryR + i * (kSecondaryR * 2 + kAvatarGap);
-        draw_avatar(cx, kSecondaryR, hos_status::other_avatar_handle(i));
+        draw_avatar(cx, kSecondaryR, hos_status::other_avatar_handle(i),
+                    av_focus && s.avatar_index == (i + 1));
     }
 
     // Status cluster (right) right-to-left: clock, battery, wifi.
@@ -598,6 +612,33 @@ const char* hos_action_label(int i) {
         case 6: return "Power";
     }
     return "";
+}
+
+// Hit-test the avatar cluster in the top bar. Returns the avatar
+// index (0 = active, 1..N = secondaries) under (tx, ty), or -1 if
+// the tap missed every disc. Constants must mirror draw_hos_top_bar.
+int avatar_hit_test(float tx, float ty) {
+    const auto& th = theme();
+    constexpr float kAvatarR    = 24.0f;
+    constexpr float kSecondaryR = 14.0f;
+    constexpr float kAvatarGap  = 8.0f;
+    const float avy = kHosTopBarH * 0.5f;
+    if (ty < 0 || ty >= kHosTopBarH) return -1;
+    const float ax0 = th.pad + kAvatarR;
+    const float dx = tx - ax0;
+    const float dy = ty - avy;
+    if (dx * dx + dy * dy <= kAvatarR * kAvatarR) return 0;
+    const int sec_count = std::min(3, hos_status::other_avatar_count());
+    for (int i = 0; i < sec_count; i++) {
+        const float cx = ax0 + kAvatarR + kAvatarGap
+            + kSecondaryR + i * (kSecondaryR * 2 + kAvatarGap);
+        const float ddx = tx - cx;
+        const float ddy = ty - avy;
+        if (ddx * ddx + ddy * ddy <= kSecondaryR * kSecondaryR) {
+            return i + 1;
+        }
+    }
+    return -1;
 }
 
 // Vector glyphs for the action-row buttons. Each is hand-drawn with
@@ -1006,16 +1047,15 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
     const float radius    = library::config().rounded_tiles
                               ? kHomeRadiusRounded : kHomeRadiusSharp;
 
-    // Title-preview row (HOS shows the focused system's display name above
-    // the carousel). Right-aligned to mirror the newer firmware.
+    // System name centered directly above the focused tile.
     {
         const auto& sys = lib.systems[idx_centre % count];
         const std::string label{sys.def->display_name};
         nvgFontSize(vg, th.head_size);
-        nvgFillColor(vg, th.accent);
-        nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_TOP);
-        nvgText(vg, w - th.pad,
-                cy - kHomeTileH * 0.5f * kHomeFocusScale - 36.0f,
+        nvgFillColor(vg, th.text_strong);
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM);
+        nvgText(vg, w * 0.5f,
+                cy - kHomeTileH * 0.5f * kHomeFocusScale - 18.0f,
                 label.c_str(), nullptr);
     }
 
@@ -1037,16 +1077,26 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
 
         nvgSave(vg);
 
-        // Tile background: accent-tinted fill if the splash is missing,
-        // otherwise the splash itself clipped to the rounded rect.
+        // Tile content. Resolution order:
+        //   1. Theme pack square art at <pack_dir>/systems/<folder>/tile.png
+        //   2. Colored panel + system short_name as big text (HOS Switch-
+        //      Online-classics style — clean, consistent, scales well).
+        //
+        // The 454x1080 portrait splashes that ship in romfs were designed
+        // for the original parallelogram tile and never look right in a
+        // square. Users who want photographic system art install a
+        // theme pack at /foyer/themes/<name>/ that provides per-system
+        // tile.png in the right aspect — foyer auto-picks them up via
+        // system_splash_path's pack-first lookup.
         const int strip_h = system_splash_cache().get_or_load(vg,
             system_splash_path(sys.def->folder_name));
-        if (strip_h > 0) {
+        const bool has_pack_art = strip_h > 0 && !th.pack_dir.empty();
+
+        if (has_pack_art) {
+            // Theme-pack art: trust the asset's aspect, aspect-fill so
+            // the user's intentional tile fills the whole square.
             int iw = 0, ih = 0;
             nvgImageSize(vg, strip_h, &iw, &ih);
-            // Aspect-fill: scale up so the SHORTER side covers the tile,
-            // then center the longer side. Keeps the splash from
-            // letterboxing in the rounded square.
             float pat_w = tw, pat_h = thh;
             if (iw > 0 && ih > 0) {
                 const float ar_img = (float)iw / (float)ih;
@@ -1063,20 +1113,47 @@ void draw_home(NVGcontext* vg, float w, float h, const State& s, const Library& 
             nvgFillPaint(vg, pat);
             nvgFill(vg);
         } else {
-            const NVGcolor fill = focused ? th.accent : th.bg_panel_hi;
-            rrect(vg, x, y, tw, thh, radius, fill);
-            // The Switch virtual tile has no splash PNG — render a
-            // wordmark + "N" glyph centered in the panel so the slot
-            // still reads as a real system instead of a blank box.
-            if (sys.def->folder_name == "__switch") {
-                nvgFontSize(vg, 64.0f);
-                nvgFillColor(vg, focused ? th.bg : th.text_strong);
-                nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-                nvgText(vg, x + tw * 0.5f, y + thh * 0.42f, "N", nullptr);
-                nvgFontSize(vg, 24.0f);
-                nvgText(vg, x + tw * 0.5f, y + thh * 0.66f,
-                        "SWITCH", nullptr);
+            // Solid colored panel + system short_name centered. The
+            // panel color is hashed off the folder name so the same
+            // system always lands on the same color across boots.
+            std::uint32_t hash = 5381;
+            for (char c : sys.def->folder_name) {
+                hash = ((hash << 5) + hash) + (unsigned char)c;
             }
+            // 12 distinct panel hues taken from the HOS classic-online
+            // palette so adjacent tiles read as distinct without
+            // clashing.
+            static const NVGcolor kPalette[] = {
+                nvgRGB(0xC8, 0x2A, 0x2A), nvgRGB(0x1E, 0x6E, 0xC8),
+                nvgRGB(0x2E, 0x9F, 0x4F), nvgRGB(0xE0, 0x7E, 0x1B),
+                nvgRGB(0x7C, 0x3A, 0xCC), nvgRGB(0x0E, 0x8C, 0x9C),
+                nvgRGB(0xCC, 0x40, 0x80), nvgRGB(0x5C, 0x6F, 0x80),
+                nvgRGB(0xB7, 0x4A, 0x18), nvgRGB(0x2F, 0x6F, 0x4F),
+                nvgRGB(0x42, 0x3F, 0x9C), nvgRGB(0x8E, 0x35, 0x4A),
+            };
+            constexpr int kPaletteN = (int)(sizeof(kPalette) / sizeof(kPalette[0]));
+            const NVGcolor base = kPalette[hash % kPaletteN];
+            // Apply the focus-dim alpha by blending toward the panel
+            // background.
+            NVGcolor fill = base;
+            if (!focused) {
+                fill.r = base.r * alpha + th.bg_panel_hi.r * (1 - alpha);
+                fill.g = base.g * alpha + th.bg_panel_hi.g * (1 - alpha);
+                fill.b = base.b * alpha + th.bg_panel_hi.b * (1 - alpha);
+            }
+            rrect(vg, x, y, tw, thh, radius, fill);
+
+            // Big short_name centred. Switch-Online-style.
+            const std::string label{sys.def->short_name.empty()
+                ? sys.def->folder_name
+                : sys.def->short_name};
+            // Font size scales with tile width so neighbouring tiles
+            // (smaller) still read clearly.
+            nvgFontSize(vg, std::min(72.0f, tw * 0.32f));
+            nvgFillColor(vg, nvgRGBA(0xFF, 0xFF, 0xFF, 0xF0));
+            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+            nvgText(vg, x + tw * 0.5f, y + thh * 0.5f,
+                    label.c_str(), nullptr);
         }
 
         // Focused-tile accent ring + drop shadow on the corners. Same
@@ -3194,26 +3271,15 @@ OptionList build_option_list(int op, const std::string& data) {
             break;
         }
         case OpTheme: {
+            // 0.5.10: foyer ships a single theme (alekfull-nx) with
+            // multiple color schemes. The "Theme" Settings entry now
+            // picks the COLOR SCHEME — Light / Dark — instead of the
+            // theme name. Theme name only changes when the user
+            // installs a third-party pack into /foyer/themes/.
             o.title   = _(SId::SettingsTheme);
-            o.options = list_themes();
-            o.image_paths.reserve(o.options.size());
-            for (auto& name : o.options) {
-                // SD wallpaper override wins; fall back to bundled
-                // romfs:/themes/<name>.jpg. Both the picker draw and
-                // load_image_via_path() handle missing paths cleanly
-                // (image_handle <= 0 → text-only row).
-                struct stat st{};
-                std::string p_sd = "/foyer/config/themes/" + name + ".jpg";
-                std::string p_rf = "romfs:/themes/" + name + ".jpg";
-                if (::stat(p_sd.c_str(), &st) == 0 && st.st_size > 0)
-                    o.image_paths.push_back(std::move(p_sd));
-                else
-                    o.image_paths.push_back(std::move(p_rf));
-            }
-            const auto& cur = library::config().theme_name;
-            for (std::size_t i = 0; i < o.options.size(); i++) {
-                if (o.options[i] == cur) { o.current_index = (int)i; break; }
-            }
+            o.options = { "Light", "Dark" };
+            const auto& cur = library::config().theme_color;
+            o.current_index = (cur == "dark") ? 1 : 0;
             break;
         }
         case OpEmuSysCore: {
@@ -3527,8 +3593,12 @@ std::string apply_option(int op, const std::string& data,
             break;
         }
         case OpTheme: {
-            library::set_theme_name(chosen);
-            load_theme(chosen);
+            // OpTheme now writes the color scheme rather than the
+            // theme name; reload re-reads the active theme's
+            // theme[-<color>].jsonc to swap palettes in place.
+            const std::string color = (chosen_index == 1) ? "dark" : "light";
+            library::set_theme_color(color);
+            load_theme(library::config().theme_name);
             s.request_invalidate_covers = true;
             break;
         }
@@ -4896,6 +4966,39 @@ void update(State& s, const Library& lib,
             s.system_index = (std::size_t)idx;
         };
 
+        // Touch on a top-bar avatar: tap switches to that user
+        // immediately (HOS's interaction). Active disc is a no-op.
+        if (touch.tap_started && touch.count > 0) {
+            const int hit = avatar_hit_test(
+                touch.points[0].x, touch.points[0].y);
+            if (hit > 0) {
+                s.pending_profile_switch = hit - 1;
+            }
+        }
+
+        // Avatar-row focus (controller): Up from the carousel jumps
+        // into the avatar cluster; Left/Right walks the discs; A on
+        // a secondary switches to that user. Down/B returns.
+        if (s.avatar_row_focus) {
+            const int max_idx = 1 + hos_status::other_avatar_count();
+            if (down & HidNpadButton_AnyDown) {
+                s.avatar_row_focus = false;
+            } else if (down & HidNpadButton_AnyRight) {
+                if (s.avatar_index + 1 < max_idx) s.avatar_index++;
+            } else if (down & HidNpadButton_AnyLeft) {
+                if (s.avatar_index > 0) s.avatar_index--;
+            } else if (down & HidNpadButton_B) {
+                s.avatar_row_focus = false;
+            } else if (down & HidNpadButton_A) {
+                if (s.avatar_index > 0) {
+                    s.pending_profile_switch = s.avatar_index - 1;
+                    s.avatar_index = 0;
+                }
+                s.avatar_row_focus = false;
+            }
+            return;
+        }
+
         // Action-row focus toggle: Down from the carousel jumps to the
         // round buttons; Up returns to the carousel. Left/Right walks
         // the row while focused. A fires the focused button.
@@ -4979,6 +5082,10 @@ void update(State& s, const Library& lib,
         if (down & HidNpadButton_AnyDown) {
             s.action_row_focus = true;
         }
+        if (down & HidNpadButton_AnyUp) {
+            s.avatar_row_focus = true;
+            s.avatar_index     = 0;
+        }
 
         // D-pad still steps the carousel one tile at a time without repeat.
         if (down & HidNpadButton_AnyRight)     step(+1);
@@ -5052,17 +5159,27 @@ void update(State& s, const Library& lib,
             s.game_index = 0;
         }
         if (down & HidNpadButton_Y) {
-            // Y on Home opens the profile switcher unconditionally —
-            // the modal has its own empty state ("No other profiles
-            // on this console") so the user gets clear visual
-            // feedback whether or not switching is actually possible.
-            // The previous silent-banner fallback made it look like
-            // Y did nothing.
-            s.profile_switcher_open   = true;
-            s.profile_switcher_cursor = 0;
-            foyer::log::write(
-                "[profile] switcher opened (others=%d)\n",
-                hos_status::other_avatar_count());
+            // Y is back to quick-resume — profile switching now happens
+            // by tapping the avatar circle (HOS's actual interaction)
+            // or by Up→arrows→A on a controller.
+            std::size_t best_sys = 0, best_game = 0;
+            std::uint64_t best_t = 0;
+            for (std::size_t si = 0; si < lib.systems.size(); si++) {
+                const auto& sysr = lib.systems[si];
+                for (std::size_t gi = 0; gi < sysr.games.size(); gi++) {
+                    const auto t = sysr.games[gi].last_played;
+                    if (t > best_t) { best_t = t; best_sys = si; best_game = gi; }
+                }
+            }
+            if (best_t == 0) {
+                s.banner_text = _(SId::BannerNoRecentlyPlayed);
+                s.banner_ttl  = 180;
+            } else {
+                s.system_index = best_sys;
+                s.game_index   = best_game;
+                s.request_resume_slot = -1;
+                s.request_launch = true;
+            }
         }
         if (down & HidNpadButton_B) {
             s.quit_confirm_open  = true;
@@ -5475,24 +5592,20 @@ void update(State& s, const Library& lib,
                                                       sys->cores[next].name);
                     }
                 } else if (it.payload == settings::OpTheme) {
-                    const auto themes = list_themes();
-                    if (!themes.empty()) {
-                        std::size_t cur = 0;
-                        const auto& current = library::config().theme_name;
-                        for (std::size_t i = 0; i < themes.size(); i++) {
-                            if (themes[i] == current) { cur = i; break; }
-                        }
-                        cur = (delta > 0) ? (cur + 1) % themes.size()
-                                          : (cur == 0 ? themes.size() - 1 : cur - 1);
-                        library::set_theme_name(themes[cur]);
-                        load_theme(themes[cur]);
-                        s.request_invalidate_covers = true; // refresh theme_bg
-                        char bb[120];
-                        std::snprintf(bb, sizeof(bb),
-                            _(SId::BannerThemeChanged), themes[cur].c_str());
-                        s.banner_text = bb;
-                        s.banner_ttl  = 120;
-                    }
+                    // L/R cycle the theme COLOR scheme (Light↔Dark) on
+                    // the active theme. The picker (A) shows the same
+                    // two options.
+                    const std::string cur = library::config().theme_color;
+                    const std::string next =
+                        (cur == "dark") ? "light" : "dark";
+                    library::set_theme_color(next);
+                    load_theme(library::config().theme_name);
+                    s.request_invalidate_covers = true;
+                    char bb[120];
+                    std::snprintf(bb, sizeof(bb),
+                        _(SId::BannerThemeChanged), next.c_str());
+                    s.banner_text = bb;
+                    s.banner_ttl  = 120;
                 } else if (it.payload == settings::OpSortMode) {
                     constexpr int kSortCount = 4;
                     int n = ((int)library::config().sort_mode + delta + kSortCount)

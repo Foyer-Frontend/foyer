@@ -1,0 +1,16 @@
+// Alekfull NX — Dark color scheme.
+// Active when Settings → Display → Theme color = Dark.
+{
+    "bg":          "#1A1A1F",
+    "bg_panel":    "#22232A",
+    "bg_panel_hi": "#2C2D36",
+
+    "accent":      "#0094FF",
+    "accent_dim":  "#0073C8",
+
+    "text_strong": "#F5F5F7",
+    "text":        "#D0D0D5",
+    "text_dim":    "#7E8390",
+
+    "border":      "#3A3D49"
+}

@@ -101,15 +101,30 @@ void load_theme(std::string_view name) {
     }
 
     // Resolution order:
-    //   1. /foyer/themes/<name>/theme.jsonc      — full theme pack with
-    //      per-system art under systems/<folder>/
-    //   2. /foyer/config/themes/<name>.jsonc     — single-file SD theme
-    //   3. romfs:/themes/<name>.jsonc            — built-in (dark/light/...)
+    //   1. /foyer/themes/<name>/theme.jsonc      — SD-installed theme pack
+    //   2. romfs:/themes/<name>/theme.jsonc      — bundled theme pack
+    //   3. /foyer/config/themes/<name>.jsonc     — single-file SD theme
+    //   4. romfs:/themes/<name>.jsonc            — built-in (dark/light/...)
+    // Theme color variant — when theme_color is "light" (or empty)
+    // we load the canonical theme.jsonc; any other value loads
+    // theme-<color>.jsonc, allowing one theme to ship multiple
+    // palettes without duplicating the entire pack.
+    const auto& color = library::config().theme_color;
+    char fname[64];
+    if (color.empty() || color == "light") {
+        std::snprintf(fname, sizeof(fname), "theme.jsonc");
+    } else {
+        std::snprintf(fname, sizeof(fname), "theme-%s.jsonc",
+            color.c_str());
+    }
     char pack_path[256];
+    char rf_pack_path[256];
     char sd_path[256];
     char rf_path[256];
-    std::snprintf(pack_path, sizeof(pack_path), "%s/%.*s/theme.jsonc",
-        kThemePacksDir, (int)name.size(), name.data());
+    std::snprintf(pack_path, sizeof(pack_path), "%s/%.*s/%s",
+        kThemePacksDir, (int)name.size(), name.data(), fname);
+    std::snprintf(rf_pack_path, sizeof(rf_pack_path), "%s/%.*s/%s",
+        kBundledThemesDir, (int)name.size(), name.data(), fname);
     std::snprintf(sd_path, sizeof(sd_path), "%s/%.*s.jsonc",
         kThemesDir, (int)name.size(), name.data());
     std::snprintf(rf_path, sizeof(rf_path), "%s/%.*s.jsonc",
@@ -123,6 +138,17 @@ void load_theme(std::string_view name) {
             kThemePacksDir, (int)name.size(), name.data());
         th.pack_dir = dir;
     } else {
+        in.clear();
+        in.open(rf_pack_path);
+        if (in) {
+            char dir[256];
+            std::snprintf(dir, sizeof(dir), "%s/%.*s",
+                kBundledThemesDir, (int)name.size(), name.data());
+            th.pack_dir = dir;
+            path = rf_pack_path;
+        }
+    }
+    if (!in) {
         in.clear();
         in.open(sd_path);
         path = sd_path;
@@ -229,8 +255,11 @@ std::vector<std::string> list_themes() {
     // 3. Bundled romfs themes — opendir() on libnx's romfs device is
     // unreliable, so probe a hardcoded list with fopen instead. Names must
     // stay in lockstep with assets/romfs/themes/*.jsonc.
+    // Single bundled theme. Color variants are picked via
+    // theme_color rather than as separate themes — keeps the picker
+    // honest about what it actually offers.
     static constexpr const char* kBundledNames[] = {
-        "hos", "dark", "light", "midnight", "forest", "snow",
+        "alekfull-nx",
     };
     for (const char* n : kBundledNames) {
         char probe[128];

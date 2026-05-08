@@ -110,6 +110,7 @@ void write_locked() {
         << scraper_to_str(g_config.preferred_scraper) << "\",\n";
     out << "    \"rom_root\":          \"" << g_config.rom_root << "\",\n";
     out << "    \"theme\":             \"" << g_config.theme_name << "\",\n";
+    out << "    \"theme_color\":       \"" << g_config.theme_color << "\",\n";
     out << "    \"sort_mode\":         \"" << sort_to_str(g_config.sort_mode) << "\",\n";
     out << "    \"system_sort_mode\":  \""
         << sys_sort_to_str(g_config.system_sort_mode) << "\",\n";
@@ -192,6 +193,10 @@ void load_locked() {
     if (auto* v = yyjson_obj_get(root, "theme");
         v && yyjson_is_str(v)) {
         g_config.theme_name = yyjson_get_str(v);
+    }
+    if (auto* v = yyjson_obj_get(root, "theme_color");
+        v && yyjson_is_str(v)) {
+        g_config.theme_color = yyjson_get_str(v);
     }
     if (auto* v = yyjson_obj_get(root, "sort_mode");
         v && yyjson_is_str(v)) {
@@ -342,6 +347,12 @@ void set_preferred_scraper(Config::Scraper s) {
 void set_theme_name(std::string_view name) {
     std::scoped_lock lk{g_mutex};
     g_config.theme_name = std::string{name};
+    write_locked();
+}
+
+void set_theme_color(std::string_view color) {
+    std::scoped_lock lk{g_mutex};
+    g_config.theme_color = std::string{color};
     write_locked();
 }
 

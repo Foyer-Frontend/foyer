@@ -180,6 +180,12 @@ struct State {
     // (News / eShop / Album / Controllers / Settings / Sleep / Power).
     bool        action_row_focus         = false;
     int         action_button_index      = 4;  // Settings — sane default
+    // Top-bar avatar focus. Up from the carousel jumps focus into the
+    // avatar row; Left/Right walks the active + secondary discs;
+    // A on a secondary instantly switches the active user (no modal).
+    // Down/B returns focus to the carousel.
+    bool        avatar_row_focus         = false;
+    int         avatar_index             = 0;  // 0 = active, 1..N = secondaries
     // Action-row dispatch flags. main.cpp drains these and calls the
     // matching libnx service so the input handler stays free of
     // service-call surface.

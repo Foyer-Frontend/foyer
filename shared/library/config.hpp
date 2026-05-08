@@ -23,11 +23,18 @@ struct Config {
 
     Scraper      preferred_scraper = Scraper::Libretro;
     std::string  rom_root          = "/foyer/roms";
-    // Default to the HOS-matching theme so first-boot users see the
-    // home menu look the project is targeting. Older configs that
-    // already saved a theme_name keep their preference; only fresh
-    // installs / reset configs pick this up.
-    std::string  theme_name        = "hos";
+    // Default to the bundled Alekfull NX theme pack — square HOS-style
+    // tile art per system, sourced from
+    // https://github.com/anthonycaccese/alekfull-nx-es-de (a port of
+    // fagnerpc's Alekfull NX EmulationStation theme). Older configs
+    // that saved their own theme_name keep their preference. The
+    // theme has multiple color schemes (light / dark) selected via
+    // theme_color below.
+    std::string  theme_name        = "alekfull-nx";
+    // Color scheme variant of theme_name. "light" loads
+    // <theme>/theme.jsonc; any other value loads
+    // <theme>/theme-<color>.jsonc, e.g. theme-dark.jsonc.
+    std::string  theme_color       = "light";
     SortMode     sort_mode         = SortMode::Name;
 
     // Order of the Home carousel system tiles. ScannerOrder is the
@@ -182,6 +189,7 @@ void          set_preferred_scraper(Config::Scraper s);
 void          set_default_core_for(std::string_view folder,
                                    std::string_view core_name);
 void          set_theme_name(std::string_view name);
+void          set_theme_color(std::string_view color);
 
 // UI language override. Empty string = follow Switch system language.
 // Other values: ISO-style code parsed by foyer::i18n::map_switch_language()
