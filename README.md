@@ -1,31 +1,41 @@
 # foyer
 
-Native libretro frontend for Nintendo Switch (CFW only). Inspired by
-EmulationStation-DE and Tico. Runs libretro cores in-process via per-system
-player nros, with a browser nro for picking systems and games.
+Native libretro frontend for Nintendo Switch (CFW only). Browser NRO
+for picking systems and games; per-system player NROs that boot the
+ROM directly via libretro cores.
 
-Features delivered so far:
+**Current line:** 0.6.0 alphas (the brls / borealis cutover). The
+last shipped stable is **v0.5.26**. See [`ROADMAP.md`](ROADMAP.md) for
+the phase-by-phase 0.6.0 plan.
 
-- ES-DE-style browser: home carousel + per-system game list + metadata sidebar,
-  faded game backdrops, console logo tiles, persistent topbar/bottombar with
-  button glyph hints, modal `+ Menu` popup (Rescan / Settings / Exit)
-- Per-system player binaries that boot the rom directly (`foyer-<core>.nro`)
-- Pause overlay (`− +` together): 10 timestamped save-state slots, load-state
-  picker, aspect ratio (4:3, 16:9, Core, Stretch, Integer 1×/2×/Auto), per-core
-  libretro options menu (persists to `/foyer/config/cores/<core>.jsonc`), Quit
-- Audio (audrv stream at the core's sample rate)
-- "Continue" row on Game Detail auto-resumes the most recent save state
+## Features
+
+- HOS-style launcher chrome (profile cluster, status cluster, action
+  buttons, tile carousel) — built on
+  [borealis](https://github.com/XITRIX/borealis) since 0.6.0.
+- Per-system game list (`SystemActivity`) + game detail
+  (`GameActivity`) + cross-system search.
+- Per-system player binaries (`foyer-<core>.nro`) — chain-launched
+  by `launch.cpp` via `envSetNextLoad`.
+- Pause overlay (player-side, **not yet on borealis** — see
+  ROADMAP Phase H): 10 timestamped save-state slots, aspect ratio
+  picker, per-core libretro options, Quit. `− +` shoulder combo.
+- Audio via `audrv` at the core's sample rate.
 - Box-art scrapers: libretro-thumbnails (free), ScreenScraper (auth),
-  SteamGridDB (auth) — picked by the value in `general.jsonc`
+  SteamGridDB (auth) — picked by `general.jsonc`.
 - RetroAchievements via [rcheevos](https://github.com/RetroAchievements/rcheevos)
-  — login from `accounts.jsonc`, unlock toasts, server-side reporting
-- Tico-style two-column Settings (sidebar + content) with eight categories:
-  General, Display, Audio, Library, Emulator, Accounts, Updates, Experimental
-- Pluggable themes loaded from `/foyer/config/themes/<name>.jsonc`
-- libhaze MTP server scoped to `/foyer/roms` only — drop roms over USB without
-  exposing the rest of the SD card. Auto-start toggle in Experimental.
-- Multi-core architecture: per-game override + per-system default + system_db
-  ordering, all editable from the in-app Game Detail and Settings views
+  — login from `accounts.jsonc`, unlock toasts, server-side reporting.
+- First-run wizard: pick initial cores / bezel packs / shader packs,
+  enter ScreenScraper + SteamGridDB credentials. Downloads run in the
+  background while the user lands on the home screen.
+- libhaze MTP server scoped to `/foyer/roms` only (drop ROMs over USB
+  without exposing the rest of the SD card). Settings toggle.
+- Self-update: boot-time check fetches `foyer-manifest.json`, yes/no
+  modal, atomic rename of `foyer.nro.new` after the next boot.
+- i18n catalogue (en-US / es / pt-BR) — both brls's UI strings and
+  foyer's own (`romfs:/i18n/<locale>/foyer.json`).
+- Profile avatar + nickname pulled from the active libnx account.
+- HOS power slide-in (Sleep / Restart / Power off / Reboot to Hekate).
 
 ## Layout on SD
 
@@ -33,85 +43,59 @@ Features delivered so far:
 /switch/foyer/foyer.nro              # browser (install here)
 /foyer/
 ├── cores/
-│   └── foyer-<core>.nro             # downloaded via Settings → Install Cores
-├── themes/<name>/                   # theme packs (ES-DE-style — full art + palette)
-│   ├── theme.jsonc                  # palette + metrics
-│   ├── wallpaper.jpg                # global background
-│   └── systems/<folder>/
-│       ├── splash.jpg               # per-system fullscreen splash
-│       └── logo.png                 # console logo
+│   └── foyer-<core>.nro             # downloaded via the wizard / Settings
 ├── config/
-│   ├── general.jsonc                # rom_root, preferred_scraper, theme, …
+│   ├── general.jsonc                # rom_root, preferred_scraper, language, …
 │   ├── accounts.jsonc               # ScreenScraper / SteamGridDB / RA creds
 │   ├── per_game.jsonc               # per-rom core overrides
-│   ├── themes/<name>.jsonc          # single-file palette overrides
 │   └── cores/<core>.jsonc           # per-core libretro variables
 ├── data/
-│   └── log.txt
+│   ├── first_run_complete           # marker — written by wizard's Finish
+│   ├── library.cache.json           # scanner cache (delta-rescan fast path)
+│   ├── switch_titles.cache          # NACP icon cache (legacy, not yet on brls)
+│   └── logs/<YYYY-MM-DD_HH-MM-SS>.log   # per-run log files
 ├── assets/
-│   ├── covers/<system>/<stem>.png      # box art shown in System view sidebar / Game Detail
-│   ├── backgrounds/<system>/<stem>.jpg # full-screen backdrop behind System + Game Detail
-│   └── systems/<system>.png            # console logo on the Home carousel tiles
+│   ├── covers/<system>/<stem>.png       # box art on Game Detail
+│   └── backgrounds/<system>/<stem>.jpg  # backdrop behind Game Detail
+├── bezels/<system>.png              # libretro-overlay PNGs
+├── shaders/<preset>/                # libretro shader presets
 ├── roms/<system>/<file.ext>         # rom root (configurable)
 ├── saves/<system>/                  # libretro SRAM
 ├── states/<system>/<stem>.<slot>.state
 └── system/<system>/                 # BIOS / firmware
 ```
 
-## Supported systems / cores
+Bundled inside the NRO (`romfs:/`):
 
-| Folder         | Display                       | Cores (default first)            |
-|----------------|-------------------------------|----------------------------------|
-| `nes`          | Nintendo Entertainment System | `fceumm` / `nestopia` / `mesen`  |
-| `snes`         | Super Nintendo                | `snes9x`                         |
-| `gb`           | Game Boy                      | `gambatte` / `sameboy`           |
-| `gbc`          | Game Boy Color                | `gambatte` / `sameboy`           |
-| `gba`          | Game Boy Advance              | `mgba` / `vba_next`              |
-| `n64`          | Nintendo 64                   | `mupen64plus`                    |
-| `nds`          | Nintendo DS                   | `melonds`                        |
-| `gc`           | GameCube                      | `dolphin` (recipe TBD)           |
-| `genesis`      | Sega Genesis                  | `genesisplusgx` / `genesis_plus_gx_wide` / `picodrive` |
-| `megadrive`    | Sega Mega Drive               | `genesisplusgx` / `genesis_plus_gx_wide` / `picodrive` |
-| `mastersystem` | Sega Master System            | `genesisplusgx` / `genesis_plus_gx_wide` / `picodrive` |
-| `gamegear`     | Sega Game Gear                | `genesisplusgx` / `genesis_plus_gx_wide` / `picodrive` |
-| `32x`          | Sega 32X                      | `picodrive`                      |
-| `segacd`       | Sega CD                       | `picodrive`                      |
-| `saturn`       | Sega Saturn                   | `yabasanshiro`                   |
-| `dc`           | Dreamcast                     | `flycast`                        |
-| `psx`          | PlayStation                   | `pcsx_rearmed` / `swanstation`   |
-| `psp`          | PlayStation Portable          | `ppsspp` (recipe TBD)            |
-| `ngp`          | Neo Geo Pocket                | `race` / `mednafen_ngp`          |
-| `ngpc`         | Neo Geo Pocket Color          | `race` / `mednafen_ngp`          |
-| `atari2600`    | Atari 2600                    | `stella`                         |
-| `atari7800`    | Atari 7800                    | `prosystem`                      |
-| `atarilynx`    | Atari Lynx                    | `handy`                          |
+```
+romfs:/themes/foyer/
+├── systems/<folder>/
+│   ├── splash.png                   # alekfull-NX tile art
+│   └── background.jpg               # retrofix-revisited app backdrop
+├── shaders/{fill_vsh,fill_aa_fsh,fill_fsh}.dksh   # brls renderer shaders
+├── i18n/<locale>/{foyer,...}.json   # foyer + brls catalogues
+├── img/actions/{news,eshop,gallery,search,settings,power}.png
+├── xml/activity/{home,foyer_settings}.xml
+├── xml/tabs/foyer_settings.xml
+└── material/MaterialIcons-Regular.ttf
+```
 
-## Themes
+## Theme
 
-Three flavors, in resolution priority order:
+0.6.0 ships a single bundled theme tree (`romfs:/themes/foyer/`)
+combining alekfull-NX tile splashes with retrofix-revisited
+per-system app backdrops. brls owns the rest of the chrome (Light
+or Dark, picked from the Switch system theme automatically via
+`setsysGetColorSetId`).
 
-1. **Theme pack** — drop a directory at `/foyer/themes/<name>/` with at least
-   `theme.jsonc` (palette) and optionally `wallpaper.jpg`,
-   `systems/<folder>/splash.jpg` (per-console fullscreen art) and
-   `systems/<folder>/logo.png`. Settings → Display → Theme lists every pack
-   alongside the single-file themes. Build one yourself or repackage an
-   ES-DE theme by flattening it into this layout — only theme.jsonc is
-   strictly required, every art asset is optional and falls back through
-   the next layers.
-2. **Single-file SD theme** — `/foyer/config/themes/<name>.jsonc`, palette
-   only. Useful for tweaking colors without bundling art.
-3. **Bundled themes** — `dark`, `light`, `midnight`, `forest`, `snow`. Ship
-   inside the nro at `romfs:/themes/<name>.{jsonc,jpg}`. Per-system splash
-   placeholders (`romfs:/systems/<folder>.jpg`) cover every declared
-   system out of the box, so the carousel never sits on a flat colour.
-
-Settings → Display → Theme cycles through them all and persists the choice
-in `general.jsonc`.
+The 0.5.x JSONC theme system + the multi-palette picker are gone;
+brls's HOS-faithful theme is the source of truth.
 
 ## Cores
 
-A system can declare multiple cores in `shared/library/system_db.cpp`; the
-first entry is the default. Resolution at launch:
+A system can declare multiple cores in
+`shared/library/system_db.cpp`; the first entry is the default.
+Resolution at launch:
 
 1. Per-game override in `/foyer/config/per_game.jsonc`
    (`{ "<rom path>": { "core": "<name>" } }`)
@@ -119,60 +103,30 @@ first entry is the default. Resolution at launch:
    (`default_core_per_system: { "<folder>": "<name>" }`)
 3. The system's first declared core
 
-Each core has a `cores/<name>.cmake` recipe. Build a single core or every
-recipe'd core in one configure:
+Player NROs are downloaded from
+[`foyer-cores`](https://github.com/foyer-frontend/foyer-cores)'s
+release manifest. The first-run wizard offers checkboxes for the
+manifest's cores; Settings → Updates also exposes the install/update
+flow for users who skipped the wizard.
 
 ```sh
-# Single core
+# Build a single player binary:
 cmake --preset Player-fceumm
 cmake --build --preset Player-fceumm
-
-# All recipe'd cores in one go (currently 13)
-cmake --preset Players-All
-cmake --build --preset Players-All
+# → build/Player-fceumm/foyer-fceumm.nro
 ```
 
-Cores currently recipe'd: `fceumm`, `nestopia`, `gambatte`, `snes9x`,
-`genesisplusgx`, `mgba`, `melonds`, `pcsx_rearmed`, `swanstation`,
-`yabasanshiro`, `race`, `mupen64plus`, `flycast`.
-
-### External standalone emulators (PSP, GameCube)
-
-PPSSPP and Dolphin don't have working libretro cores on Switch upstream,
-but their **standalone** Switch nros do exist and run well. Foyer
-chain-launches whichever standalone you have installed — its launcher
-recognises a per-system entry in `general.jsonc`'s `external_cores`
-map, looks for the configured nro on disk, and `envSetNextLoad`s it
-with the rom path as `argv[1]`. Defaults match the canonical install
-paths:
-
-```jsonc
-"external_cores": {
-    "psp": "/switch/PPSSPP/PPSSPP.nro",
-    "gc":  "/switch/dolphin-emu/dolphin-emu.nro"
-}
-```
-
-To enable PSP support: install [PPSSPP for Switch](https://www.ppsspp.org/downloads/)
-to `/switch/PPSSPP/PPSSPP.nro` and drop PSP roms into `/foyer/roms/psp/`.
-For GameCube, install Dolphin's Switch build to
-`/switch/dolphin-emu/dolphin-emu.nro` and put roms under `/foyer/roms/gc/`.
-
-Foyer's pause overlay, save-state slots, run-ahead, and bezel pipeline
-don't apply to externally-launched standalones — those emulators ship
-their own UIs. The standalone owns the experience once foyer hands off.
-
-Settings → Emulator shows the install status of every configured
-external-launcher entry so it's obvious whether the chain-launch will
-succeed.
+The current live core list is in
+[`foyer-cores/manifest.json`](https://github.com/foyer-frontend/foyer-cores/releases/latest)
+(~28 cores at the latest tag). Foyer's `system_db.cpp` knows about
+every system regardless of which cores happen to be installed.
 
 ## Build
 
 Requires devkitPro with `switch-dev`, `switch-curl`, `switch-glm`,
-`switch-zlib`, `switch-mbedtls`, `deko3d`, `switch-mesa`,
-`switch-libdrm_nouveau`, `switch-glad`, `switch-ffmpeg` (the last four are
-needed by the heavier cores — `mupen64plus`, `flycast`, eventually `ppsspp`
-and `dolphin`).
+`switch-glfw`, `switch-zlib`, `switch-mbedtls`, `deko3d`,
+`switch-mesa`, `switch-libdrm_nouveau`, `switch-glad`,
+`switch-ffmpeg`. CMake ≥ 3.21 (FetchContent's `SOURCE_SUBDIR`).
 
 ```sh
 export DEVKITPRO=/opt/devkitpro
@@ -181,13 +135,26 @@ export PATH=$DEVKITPRO/tools/bin:$DEVKITA64/bin:$PATH
 
 # Browser
 cmake --preset Release
-cmake --build --preset Release           # → build/Release/foyer.nro
+cmake --build build/Release -j$(nproc)
+# → build/Release/foyer.nro
 
 # Player (one core per build)
 cmake --preset Player-fceumm
-cmake --build --preset Player-fceumm     # → build/Player-fceumm/foyer-fceumm.nro
+cmake --build --preset Player-fceumm
+# → build/Player-fceumm/foyer-fceumm.nro
 ```
+
+First configure clones [`XITRIX/borealis`](https://github.com/XITRIX/borealis)
+on the `moonlight_wiliwili` branch (~50 MB) plus brls's vendored
+fmt / yoga / tweeny / tinyxml2 / libretro-common subset. Subsequent
+configures are fast.
 
 ## License
 
 GPLv3. See [`LICENSE`](LICENSE).
+
+Theme art:
+[`alekfull-nx`](https://github.com/anthonycaccese/alekfull-nx-es-de)
+splashes and
+[`retrofix-revisited`](https://github.com/anthonycaccese/retrofix-revisited-es-de)
+backgrounds, both **CC BY-NC-SA 4.0**.
