@@ -27,6 +27,8 @@ add_executable(foyer
     src/system_activity.cpp
     src/game_activity.cpp
     src/search_activity.cpp
+    src/power_activity.cpp
+    src/power_actions.cpp
     src/library_state.cpp
     src/launch.cpp
     src/self_update.cpp

@@ -1,4 +1,5 @@
 #include "activity/home_activity.hpp"
+#include "activity/power_activity.hpp"
 #include "activity/search_activity.hpp"
 #include "activity/settings_activity.hpp"
 #include "activity/system_activity.hpp"
@@ -134,16 +135,28 @@ void HomeActivity::buildProfiles() {
     if (!profiles) return;
 
     // Active-user placeholder. Phase F wires libnx accountsService
-    // and pulls real avatar JPEGs (the legacy hos_status path), but
-    // for now a single accent-coloured circle marks the slot so the
-    // HOS-style top-left "profile" affordance reads correctly.
+    // and pulls real avatar JPEGs (the legacy hos_status path); for
+    // now a focusable accent-coloured circle marks the slot so the
+    // HOS-style top-left "profile" affordance is at least visible
+    // and tappable.
     auto* avatar = new brls::Box();
     constexpr float kAvatarSize = 44.0f;
     avatar->setWidth(kAvatarSize);
     avatar->setHeight(kAvatarSize);
     avatar->setCornerRadius(kAvatarSize * 0.5f);
-    avatar->setBackgroundColor(nvgRGB(0x4C, 0xA9, 0xE7));  // brls accent-ish
+    avatar->setHighlightCornerRadius(kAvatarSize * 0.5f);
+    avatar->setBackgroundColor(nvgRGB(0x4C, 0xA9, 0xE7));
     avatar->setMargins(0.0f, 12.0f, 0.0f, 0.0f);
+    avatar->setFocusable(true);
+    avatar->registerClickAction([](brls::View*) {
+        auto* dlg = new brls::Dialog(
+            "Profile switching arrives in a later alpha (waiting on "
+            "the libnx accountsService bridge).");
+        dlg->addButton("hints/ok"_i18n, []() {});
+        dlg->open();
+        return true;
+    });
+    avatar->addGestureRecognizer(new brls::TapGestureRecognizer(avatar));
     profiles->addView(avatar);
 }
 
@@ -191,21 +204,21 @@ void HomeActivity::buildActionRow() {
     // the parent Box's justifyContent). Settings is the only one
     // wired up so far; the others log a "coming soon" debug line
     // and fire no action — handlers land in alpha.E.
+    auto coming_soon = [](const std::string& msg) {
+        return [msg](brls::View*) {
+            auto* dlg = new brls::Dialog(msg);
+            dlg->addButton("hints/ok"_i18n, []() {});
+            dlg->open();
+            return true;
+        };
+    };
+
     actionRow->addView(make_action_button("img/actions/news.png",
-        [](brls::View*) {
-            brls::Logger::info("foyer: News action — coming soon");
-            return true;
-        }));
+        coming_soon("News feed coming in a later alpha.")));
     actionRow->addView(make_action_button("img/actions/eshop.png",
-        [](brls::View*) {
-            brls::Logger::info("foyer: eShop action — coming soon");
-            return true;
-        }));
+        coming_soon("eShop chain-launch coming in a later alpha.")));
     actionRow->addView(make_action_button("img/actions/gallery.png",
-        [](brls::View*) {
-            brls::Logger::info("foyer: Gallery action — coming soon");
-            return true;
-        }));
+        coming_soon("Album viewer coming in a later alpha.")));
     actionRow->addView(make_action_button("img/actions/search.png",
         [](brls::View*) {
             brls::Application::pushActivity(new SearchActivity());
@@ -218,7 +231,7 @@ void HomeActivity::buildActionRow() {
         }));
     actionRow->addView(make_action_button("img/actions/power.png",
         [](brls::View*) {
-            brls::Logger::info("foyer: Power action — coming soon");
+            brls::Application::pushActivity(new PowerActivity());
             return true;
         }));
 }
