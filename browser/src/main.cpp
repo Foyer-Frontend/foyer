@@ -25,6 +25,7 @@
 #include "i18n/i18n.hpp"
 #include "library/config.hpp"
 #include "net/http.hpp"
+#include "platform/log.hpp"
 
 using namespace brls::literals;
 
@@ -44,6 +45,13 @@ void apply_saved_language() {
 
 int main(int argc, char* argv[])
 {
+    // Open the log file FIRST so every subsequent foyer::log::write
+    // lands on disk. The legacy App::App() did this; we lost it
+    // when ripping App out for the brls cutover, so logs went to
+    // a never-opened FILE* and crashes printed nothing diagnostic.
+    foyer::log::init_file();
+    foyer::log::write("foyer %s starting\n", FOYER_DISPLAY_VERSION);
+
     // Read libnx argv[0] BEFORE brls touches anything — needed to compute
     // where to write self-update payloads. Stripping the ".new" suffix
     // here means apply_staged_if_present() (called below, after brls
@@ -63,26 +71,32 @@ int main(int argc, char* argv[])
 
     brls::Platform::APP_LOCALE_DEFAULT = brls::LOCALE_AUTO;
 
+    foyer::log::write("[boot] brls::Application::init…\n");
     if (!brls::Application::init()) {
+        foyer::log::write("[boot] brls::Application::init FAILED\n");
         brls::Logger::error("foyer: brls::Application::init failed");
         return EXIT_FAILURE;
     }
+    foyer::log::write("[boot] brls init ok\n");
 
     // brls now owns the romfs fd. Safe to swap the staged-update file in.
     foyer::browser::self_update::apply_staged_if_present();
     foyer::browser::self_update::scrub_legacy_default_bezel();
+    foyer::log::write("[boot] self_update applied\n");
 
     // curl one-shot init must run on the main thread before any
     // worker spawns one (curl_global_init isn't reentrant on
     // libnx's socket layer). Wizard's manifest prefetch + future
     // download workers all rely on this.
     foyer::net::init();
+    foyer::log::write("[boot] net::init done\n");
 
     // Pull foyer's language overrides + i18n catalogues. Independent of
     // brls's own i18n (which serves brls strings). Both live side-by-
     // side on romfs:/i18n.
     foyer::i18n::init();
     apply_saved_language();
+    foyer::log::write("[boot] i18n init done\n");
 
     // Walk /foyer/roms and cache the result for activities to read
     // via library_state::find_system(). Synchronous on the main
@@ -90,6 +104,7 @@ int main(int argc, char* argv[])
     // ROMs; we'll move to a worker + progress splash in a later
     // alpha if scan latency becomes a problem.
     foyer::browser::library_state::rescan();
+    foyer::log::write("[boot] library scan done\n");
 
     // Pull the active user's avatar + nickname from libnx
     // accountsService so the profile circle on Home shows real
@@ -98,6 +113,7 @@ int main(int argc, char* argv[])
     // are also retained so brls::Image::setImageFromMem can paint
     // the same avatar inside the circle.
     foyer::browser::hos_status::init(brls::Application::getNVGContext());
+    foyer::log::write("[boot] hos_status init done\n");
 
     brls::Application::createWindow("foyer/title"_i18n);
     brls::Application::setGlobalQuit(false);
@@ -107,18 +123,25 @@ int main(int argc, char* argv[])
     brls::Application::registerXMLView(
         "FoyerSettingsTab", ::foyer::browser::SettingsTab::create);
 
+    foyer::log::write("[boot] pushing HomeActivity\n");
     brls::Application::pushActivity(new ::foyer::browser::HomeActivity());
 
     // First-run wizard sits on top of Home until the user completes
     // it (or skips through). Pushing Home first means popping the
     // wizard at Finish lands them on the real launcher with no
-    // empty-stack flicker. Prefetch the cores manifest synchronously
-    // so the wizard's Cores step has data ready when the user gets
-    // to it (~7 KB JSON, ~1 s on a healthy connection).
+    // empty-stack flicker. Prefetch the manifests synchronously so
+    // the wizard's selection steps have data ready (~7 KB JSON each,
+    // ~1 s on a healthy connection).
     if (!::foyer::browser::first_run::is_complete()) {
+        foyer::log::write("[boot] first-run marker missing — wizard\n");
         ::foyer::browser::manifest_cache::prefetch();
+        foyer::log::write("[boot] manifest prefetch done\n");
         brls::Application::pushActivity(new ::foyer::browser::WizardActivity());
+        foyer::log::write("[boot] WizardActivity pushed\n");
+    } else {
+        foyer::log::write("[boot] first-run marker present — skip wizard\n");
     }
+    foyer::log::write("[boot] entering main loop\n");
 
     while (brls::Application::mainLoop())
         ;

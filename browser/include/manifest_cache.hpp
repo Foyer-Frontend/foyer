@@ -1,21 +1,19 @@
 #pragma once
 
+#include "library/bezel_installer.hpp"
 #include "library/core_installer.hpp"
+#include "library/shader_installer.hpp"
 
 namespace foyer::browser::manifest_cache {
 
-// One-shot synchronous fetch of the foyer-cores release manifest.
-// Called at boot from main(), before pushing the wizard so the
-// Cores step can render the list immediately. ~7 KB JSON, finishes
-// in roughly a second on a healthy network; the wizard's UI just
-// blocks until it's done (we don't paint a progress splash for it
-// at this scale).
+// One-shot synchronous fetch of all three manifests the wizard
+// needs (cores / bezels / shaders). Each is small JSON so the
+// total cost is a few seconds on a healthy connection. Called
+// from main() right before pushing the wizard.
 void prefetch();
 
-// Cached result. Empty .cores when the prefetch failed (network
-// down, parse error, etc.) — the wizard's Cores step then renders
-// a "couldn't reach the manifest, install cores from Settings
-// later" message instead of the list.
-const ::foyer::library::CoreManifest& cores();
+const ::foyer::library::CoreManifest&   cores();
+const ::foyer::library::BezelManifest&  bezels();
+const ::foyer::library::ShaderManifest& shaders();
 
 }  // namespace foyer::browser::manifest_cache
