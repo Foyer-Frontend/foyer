@@ -11,6 +11,7 @@ namespace foyer::browser::hos_status {
 namespace {
 
 int                            g_avatar_handle = 0;
+std::vector<std::uint8_t>      g_avatar_jpeg;
 std::string                    g_nickname;
 AccountUid                     g_active_uid{};
 int                            g_battery_pct   = -1;
@@ -38,8 +39,11 @@ constexpr std::size_t kAvatarBufBytes = 128 * 1024;
 
 // Load the user identified by `uid` into the supplied output slots.
 // Returns true on success. Logs and returns false on any libnx error.
+// `out_bytes` is optional — pass nullptr when the caller doesn't need
+// the JPEG payload retained (secondary users only need the handle).
 bool load_user_into(NVGcontext* vg, AccountUid uid,
-                    int& out_handle, std::string& out_nick) {
+                    int& out_handle, std::string& out_nick,
+                    std::vector<std::uint8_t>* out_bytes = nullptr) {
     AccountProfile profile{};
     Result rc = accountGetProfile(&profile, uid);
     if (R_FAILED(rc)) {
@@ -58,7 +62,10 @@ bool load_user_into(NVGcontext* vg, AccountUid uid,
     if (R_SUCCEEDED(accountProfileLoadImage(
             &profile, buf.data(), buf.size(), &actual))
         && actual > 0) {
-        out_handle = nvgCreateImageMem(vg, 0, buf.data(), (int)actual);
+        if (vg) out_handle = nvgCreateImageMem(vg, 0, buf.data(), (int)actual);
+        if (out_bytes) {
+            out_bytes->assign(buf.begin(), buf.begin() + actual);
+        }
     }
     accountProfileClose(&profile);
     return true;
@@ -87,7 +94,9 @@ void sync_users(NVGcontext* vg, AccountUid active) {
         const bool is_active = (u.uid[0] == active.uid[0]
                               && u.uid[1] == active.uid[1]);
         if (is_active) {
-            load_user_into(vg, u, g_avatar_handle, g_nickname);
+            g_avatar_jpeg.clear();
+            load_user_into(vg, u, g_avatar_handle, g_nickname,
+                           &g_avatar_jpeg);
         } else {
             SecondaryUser su{};
             su.uid = u;
@@ -180,6 +189,7 @@ void shutdown(NVGcontext* vg) {
 }
 
 int                avatar_handle()    { return g_avatar_handle; }
+const std::vector<std::uint8_t>& avatar_jpeg() { return g_avatar_jpeg; }
 const std::string& nickname()         { return g_nickname; }
 int                battery_pct()      { return g_battery_pct; }
 bool               charging()         { return g_charging; }

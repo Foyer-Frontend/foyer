@@ -4,6 +4,7 @@
 #include "activity/settings_activity.hpp"
 #include "activity/system_activity.hpp"
 
+#include "hos_status.hpp"
 #include "library/system_db.hpp"
 
 #include <chrono>
@@ -134,13 +135,12 @@ void HomeActivity::onSystemFocused(std::string_view folder,
 void HomeActivity::buildProfiles() {
     if (!profiles) return;
 
-    // Active-user placeholder. Phase F wires libnx accountsService
-    // and pulls real avatar JPEGs (the legacy hos_status path); for
-    // now a focusable accent-coloured circle marks the slot so the
-    // HOS-style top-left "profile" affordance is at least visible
-    // and tappable.
-    auto* avatar = new brls::Box();
     constexpr float kAvatarSize = 44.0f;
+
+    // Outer focusable circle. When hos_status loaded a JPEG, an
+    // inner brls::Image fills it with the actual avatar; otherwise
+    // the bg colour shows through as the placeholder.
+    auto* avatar = new brls::Box();
     avatar->setWidth(kAvatarSize);
     avatar->setHeight(kAvatarSize);
     avatar->setCornerRadius(kAvatarSize * 0.5f);
@@ -148,10 +148,33 @@ void HomeActivity::buildProfiles() {
     avatar->setBackgroundColor(nvgRGB(0x4C, 0xA9, 0xE7));
     avatar->setMargins(0.0f, 12.0f, 0.0f, 0.0f);
     avatar->setFocusable(true);
+    avatar->setClipsToBounds(true);  // round-clip the inner Image
+
+    const auto& jpeg = ::foyer::browser::hos_status::avatar_jpeg();
+    if (!jpeg.empty()) {
+        auto* img = new brls::Image();
+        img->setPositionType(brls::PositionType::ABSOLUTE);
+        img->setPositionTop(0.0f);
+        img->setPositionLeft(0.0f);
+        img->setWidth(kAvatarSize);
+        img->setHeight(kAvatarSize);
+        img->setScalingType(brls::ImageScalingType::FILL);
+        avatar->addView(img);
+        // setImageFromMem decodes the JPEG once into brls's
+        // texture cache. Cast away const because the brls API
+        // takes a non-const pointer (it doesn't actually mutate).
+        img->setImageFromMem(
+            const_cast<unsigned char*>(jpeg.data()),
+            static_cast<int>(jpeg.size()));
+    }
+
     avatar->registerClickAction([](brls::View*) {
-        auto* dlg = new brls::Dialog(
-            "Profile switching arrives in a later alpha (waiting on "
-            "the libnx accountsService bridge).");
+        const auto& nick = ::foyer::browser::hos_status::nickname();
+        const std::string body = nick.empty()
+            ? std::string("Profile switching arrives in a later alpha.")
+            : "Active user: " + nick + "\n\n"
+              "Profile switching arrives in a later alpha.";
+        auto* dlg = new brls::Dialog(body);
         dlg->addButton("hints/ok"_i18n, []() {});
         dlg->open();
         return true;

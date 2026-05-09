@@ -15,6 +15,7 @@
 
 #include "activity/home_activity.hpp"
 #include "tab/settings_tab.hpp"
+#include "hos_status.hpp"
 #include "self_update.hpp"
 #include "library_state.hpp"
 
@@ -79,6 +80,14 @@ int main(int argc, char* argv[])
     // ROMs; we'll move to a worker + progress splash in a later
     // alpha if scan latency becomes a problem.
     foyer::browser::library_state::rescan();
+
+    // Pull the active user's avatar + nickname from libnx
+    // accountsService so the profile circle on Home shows real
+    // data. Uses brls's NVG context (same backend as the legacy
+    // path expected) for the cached image handle; the JPEG bytes
+    // are also retained so brls::Image::setImageFromMem can paint
+    // the same avatar inside the circle.
+    foyer::browser::hos_status::init(brls::Application::getNVGContext());
 
     brls::Application::createWindow("foyer/title"_i18n);
     brls::Application::setGlobalQuit(false);

@@ -29,6 +29,7 @@ add_executable(foyer
     src/search_activity.cpp
     src/power_activity.cpp
     src/power_actions.cpp
+    src/hos_status.cpp
     src/library_state.cpp
     src/launch.cpp
     src/self_update.cpp

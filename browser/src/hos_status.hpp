@@ -10,7 +10,9 @@
 // run; after that it just refreshes the scalar fields.
 
 #include <nanovg.h>
+#include <cstdint>
 #include <string>
+#include <vector>
 
 namespace foyer::browser::hos_status {
 
@@ -32,6 +34,13 @@ void shutdown(NVGcontext* vg);
 // nvg image handle for the user's 256x256 avatar JPEG. <=0 when no
 // profile picture loaded — drawer falls back to a flat circle.
 int                avatar_handle();
+
+// Raw JPEG bytes for the active user's avatar. Empty when no
+// profile picture loaded. Used by the brls path to feed
+// Image::setImageFromMem (brls's Image view can't wrap an
+// existing nvg handle, so we hand it the bytes and let it
+// decode once into brls's texture cache).
+const std::vector<std::uint8_t>& avatar_jpeg();
 
 // Active user's display nickname. Empty when no profile available.
 const std::string& nickname();
