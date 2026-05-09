@@ -18,11 +18,13 @@
 #include "tab/settings_tab.hpp"
 #include "hos_status.hpp"
 #include "first_run.hpp"
+#include "manifest_cache.hpp"
 #include "self_update.hpp"
 #include "library_state.hpp"
 
 #include "i18n/i18n.hpp"
 #include "library/config.hpp"
+#include "net/http.hpp"
 
 using namespace brls::literals;
 
@@ -70,6 +72,12 @@ int main(int argc, char* argv[])
     foyer::browser::self_update::apply_staged_if_present();
     foyer::browser::self_update::scrub_legacy_default_bezel();
 
+    // curl one-shot init must run on the main thread before any
+    // worker spawns one (curl_global_init isn't reentrant on
+    // libnx's socket layer). Wizard's manifest prefetch + future
+    // download workers all rely on this.
+    foyer::net::init();
+
     // Pull foyer's language overrides + i18n catalogues. Independent of
     // brls's own i18n (which serves brls strings). Both live side-by-
     // side on romfs:/i18n.
@@ -104,8 +112,11 @@ int main(int argc, char* argv[])
     // First-run wizard sits on top of Home until the user completes
     // it (or skips through). Pushing Home first means popping the
     // wizard at Finish lands them on the real launcher with no
-    // empty-stack flicker.
+    // empty-stack flicker. Prefetch the cores manifest synchronously
+    // so the wizard's Cores step has data ready when the user gets
+    // to it (~7 KB JSON, ~1 s on a healthy connection).
     if (!::foyer::browser::first_run::is_complete()) {
+        ::foyer::browser::manifest_cache::prefetch();
         brls::Application::pushActivity(new ::foyer::browser::WizardActivity());
     }
 

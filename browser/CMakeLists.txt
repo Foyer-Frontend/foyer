@@ -31,6 +31,7 @@ add_executable(foyer
     src/power_actions.cpp
     src/wizard_activity.cpp
     src/first_run.cpp
+    src/manifest_cache.cpp
     src/hos_status.cpp
     src/library_state.cpp
     src/launch.cpp
