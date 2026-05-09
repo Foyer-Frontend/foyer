@@ -14,8 +14,10 @@
 #include <string_view>
 
 #include "activity/home_activity.hpp"
+#include "activity/wizard_activity.hpp"
 #include "tab/settings_tab.hpp"
 #include "hos_status.hpp"
+#include "first_run.hpp"
 #include "self_update.hpp"
 #include "library_state.hpp"
 
@@ -98,6 +100,14 @@ int main(int argc, char* argv[])
         "FoyerSettingsTab", ::foyer::browser::SettingsTab::create);
 
     brls::Application::pushActivity(new ::foyer::browser::HomeActivity());
+
+    // First-run wizard sits on top of Home until the user completes
+    // it (or skips through). Pushing Home first means popping the
+    // wizard at Finish lands them on the real launcher with no
+    // empty-stack flicker.
+    if (!::foyer::browser::first_run::is_complete()) {
+        brls::Application::pushActivity(new ::foyer::browser::WizardActivity());
+    }
 
     while (brls::Application::mainLoop())
         ;
