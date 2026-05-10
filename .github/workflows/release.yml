@@ -1,7 +1,11 @@
 name: Release
 
-# Builds foyer.nro for the Switch and attaches it to a GitHub release.
-# Triggers on tag push v*.*.*; can also be run manually for dry-runs.
+# Builds foyer.nro (browser) for the Switch and attaches it to a
+# GitHub release. The browser preset has BUILD_PLAYER=OFF, so this
+# workflow never needs the foyer-cores recipes repo.
+#
+# Triggers on tag push v*.*.*; can also be run manually for dry-runs
+# (no release published in that case).
 
 on:
   push:
@@ -17,13 +21,18 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      # Pre-baked builder image — same one foyer-cores' matrix uses
-      # (built by foyer-cores/.github/workflows/build-image.yml).
+      # Pre-baked devkitPro builder image, shared with foyer-cores'
+      # matrix (built by foyer-cores/.github/workflows/build-image.yml).
       # Bakes switch-portlibs + switch-sdl2 + switch-sdl2-libs at
       # image-build time so this workflow never depends on
       # pkg.devkitpro.org's CDN at runtime — that CDN sustained a
       # 403 outage during the v0.3.0 release attempts and burnt
       # through every retry.
+      #
+      # 0.6.x browser additionally pulls borealis
+      # (XITRIX/borealis@moonlight_wiliwili) and a handful of
+      # vendored deps via FetchContent at configure time. Image
+      # only needs git + network for that — no extra apt packages.
       #
       # Cross-repo pull works because the foyer-cores-builder
       # package has the foyer repo linked with read access (org
@@ -48,7 +57,10 @@ jobs:
         run: cmake --preset Release
 
       - name: Build
-        run: cmake --build --preset Release -j
+        # Cap parallelism to runner cores. Borealis + vendored fmt
+        # parallel-compile aggressively; unbounded -j on a 2-core
+        # ubuntu-latest container has OOM'd before.
+        run: cmake --build --preset Release -j $(nproc)
 
       - name: Stage release artefacts
         run: |
@@ -56,8 +68,9 @@ jobs:
           cp build/Release/foyer.nro out/foyer.nro
           ( cd out && sha256sum foyer.nro > foyer.nro.sha256 )
 
-          # foyer-manifest.json is what foyer's self-update flow polls.
-          # Tag-only — workflow_dispatch runs leave it absent.
+          # foyer-manifest.json is what foyer's in-app update flow
+          # polls. Tag-only — workflow_dispatch runs leave it
+          # absent so a dry-run never publishes a stale manifest.
           if [ -n "${GITHUB_REF_NAME:-}" ] && [ "${GITHUB_REF_NAME#v}" != "$GITHUB_REF_NAME" ]; then
             version="${GITHUB_REF_NAME#v}"
             size=$(stat -c%s out/foyer.nro)
