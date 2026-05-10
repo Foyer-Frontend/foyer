@@ -131,7 +131,7 @@ void apply_baked_defaults(const std::string& core,
 
 std::string CoreOptions::per_core_path() const {
     char buf[256];
-    std::snprintf(buf, sizeof(buf), "/foyer/config/cores/%s.jsonc",
+    std::snprintf(buf, sizeof(buf), "/foyer/data/config/cores/%s.jsonc",
         m_core_name.empty() ? "unknown" : m_core_name.c_str());
     return std::string{buf};
 }
@@ -141,7 +141,7 @@ std::string CoreOptions::per_game_path() const {
     char buf[512];
     const auto stem = sanitize_for_filename(basename_no_ext(m_rom_path));
     std::snprintf(buf, sizeof(buf),
-        "/foyer/config/cores/per_game/%s__%s.jsonc",
+        "/foyer/data/config/cores/per_game/%s__%s.jsonc",
         stem.c_str(), m_core_name.c_str());
     return std::string{buf};
 }
@@ -295,8 +295,8 @@ void CoreOptions::save_to_disk() const {
 
     // Make sure the parent dir exists for first-time per_game writes.
     if (per_game) {
-        ::mkdir("/foyer/config/cores", 0755);
-        ::mkdir("/foyer/config/cores/per_game", 0755);
+        ::mkdir("/foyer/data/config/cores", 0755);
+        ::mkdir("/foyer/data/config/cores/per_game", 0755);
     }
 
     std::ofstream out{path, std::ios::trunc};

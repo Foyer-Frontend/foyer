@@ -1,26 +1,63 @@
 #include "tab/settings_tab.hpp"
 
+#include "activity/wizard_activity.hpp"
+#include "library_state.hpp"
 #include "i18n/i18n.hpp"
 #include "library/config.hpp"
+#include "library/core_install_job.hpp"
+#include "manifest_cache.hpp"
+#include "scrapers/accounts.hpp"
+#include "update_check.hpp"
+#include "widgets/masked_input_cell.hpp"
+
+#include <borealis/views/cells/cell_bool.hpp>
+#include <borealis/views/cells/cell_detail.hpp>
+#include <borealis/views/cells/cell_input.hpp>
+#include <borealis/views/cells/cell_selector.hpp>
+#include <borealis/views/dialog.hpp>
+#include <borealis/views/header.hpp>
+#include <borealis/views/scrolling_frame.hpp>
 
 #include <array>
+#include <memory>
 #include <string>
 #include <string_view>
+#include <vector>
 
-using namespace brls::literals;  // for _i18n on user-visible strings
+using namespace brls::literals;
 
 namespace foyer::browser {
 
 namespace {
 
-// Language picker. Order matches the legacy 0.5.x picker (System /
-// English / Spanish / pt-BR). Empty config language = follow system;
-// explicit code pins the override.
-struct LanguageOption {
-    const char* i18n_key;   // resolved at draw time so live language
-                            // switches reflow correctly.
-    const char* code;
-};
+// Mirror brls's bundled settings.xml: outer tab Box keeps its
+// default axis/alignment, ScrollingFrame fills the right pane
+// with column+stretch+grow, and the inner host uses width=10000
+// so cells stretch to the visible width without yoga measuring
+// each row at intrinsic size (which is what causes the right
+// pane to overflow off-screen).
+brls::Box* tab_root_box() {
+    auto* root = new brls::Box();
+    root->setAxis(brls::Axis::COLUMN);
+    root->setAlignItems(brls::AlignItems::STRETCH);
+    root->setWidth(10000.0f);
+    root->setPadding(20.0f, 32.0f, 32.0f, 32.0f);
+    return root;
+}
+
+void wrap_with_scroll(brls::Box* host, brls::Box* parent) {
+    auto* scroll = new brls::ScrollingFrame();
+    scroll->setAxis(brls::Axis::COLUMN);
+    scroll->setAlignItems(brls::AlignItems::STRETCH);
+    scroll->setScrollingBehavior(brls::ScrollingBehavior::CENTERED);
+    scroll->setGrow(1.0f);
+    scroll->setContentView(host);
+    parent->addView(scroll);
+}
+
+// ---- General tab ---------------------------------------------------------
+
+struct LanguageOption { const char* i18n_key; const char* code; };
 constexpr std::array<LanguageOption, 4> kLanguages = {{
     {"foyer/settings/language_follow_system", ""},
     {"English",                               "en"},
@@ -32,7 +69,7 @@ int index_for_language(std::string_view current) {
     for (std::size_t i = 0; i < kLanguages.size(); i++) {
         if (kLanguages[i].code == current) return static_cast<int>(i);
     }
-    return 0;  // Follow system
+    return 0;
 }
 
 void apply_language(int idx) {
@@ -40,7 +77,7 @@ void apply_language(int idx) {
     const std::string code = kLanguages[idx].code;
     foyer::library::set_language(code);
     using L = foyer::i18n::Language;
-    if      (code.empty())   foyer::i18n::init();  // re-detect from system
+    if      (code.empty())   foyer::i18n::init();
     else if (code == "en")    foyer::i18n::set_language(L::English);
     else if (code == "es")    foyer::i18n::set_language(L::Spanish);
     else if (code == "pt-BR") foyer::i18n::set_language(L::PortugueseBrazil);
@@ -48,33 +85,301 @@ void apply_language(int idx) {
 
 }  // namespace
 
-SettingsTab::SettingsTab() {
-    inflateFromXMLRes("xml/tabs/foyer_settings.xml");
+// ============ FoyerGeneralTab ============================================
+
+FoyerGeneralTab::FoyerGeneralTab() {
+    this->setAxis(brls::Axis::COLUMN);
+    this->setAlignItems(brls::AlignItems::STRETCH);
+
+    auto* host = tab_root_box();
+
+    host->addView([]() { auto* h = new brls::Header(); h->setTitle("foyer/settings/general"_i18n); return h; }());
 
     const auto& cfg = foyer::library::config();
-
     std::vector<std::string> lang_labels;
     lang_labels.reserve(kLanguages.size());
     for (const auto& l : kLanguages) {
-        // i18n key for the system option, raw label for the explicit
-        // codes (English / Español / Português stay self-named
-        // regardless of the active locale).
         const std::string key = l.i18n_key;
-        if (key.find('/') != std::string::npos) {
+        if (key.find('/') != std::string::npos)
             lang_labels.emplace_back(brls::getStr(key));
-        } else {
+        else
             lang_labels.emplace_back(key);
-        }
     }
-    language->init("foyer/settings/language"_i18n,
-                   lang_labels,
-                   index_for_language(cfg.language),
-                   [](int) {},
-                   [](int selected) { apply_language(selected); });
-}
+    auto* lang = new brls::SelectorCell();
+    lang->init("foyer/settings/language"_i18n,
+               lang_labels,
+               index_for_language(cfg.language),
+               [](int) {},
+               [](int selected) { apply_language(selected); });
+    host->addView(lang);
 
-brls::View* SettingsTab::create() {
-    return new SettingsTab();
+    wrap_with_scroll(host, this);
 }
+brls::View* FoyerGeneralTab::create() { return new FoyerGeneralTab(); }
+
+// ============ FoyerAccountsTab ===========================================
+
+FoyerAccountsTab::FoyerAccountsTab() {
+    this->setAxis(brls::Axis::COLUMN);
+    this->setAlignItems(brls::AlignItems::STRETCH);
+
+    auto* host = tab_root_box();
+
+    const auto& acc = ::foyer::scrapers::accounts();
+
+    host->addView([]() { auto* h = new brls::Header(); h->setTitle("Scraper source"); return h; }());
+
+    auto* source = new brls::SelectorCell();
+    std::vector<std::string> source_labels = {
+        "libretro-thumbnails", "ScreenScraper", "SteamGridDB",
+    };
+    using S = ::foyer::library::Config::Scraper;
+    int initial = 0;
+    switch (::foyer::library::config().preferred_scraper) {
+        case S::Libretro:      initial = 0; break;
+        case S::ScreenScraper: initial = 1; break;
+        case S::SteamGridDB:   initial = 2; break;
+    }
+    source->init("Scraper source", source_labels, initial,
+                 [](int) {},
+                 [](int selected) {
+                     using SS = ::foyer::library::Config::Scraper;
+                     SS pick = SS::Libretro;
+                     if      (selected == 1) pick = SS::ScreenScraper;
+                     else if (selected == 2) pick = SS::SteamGridDB;
+                     ::foyer::library::set_preferred_scraper(pick);
+                 });
+    host->addView(source);
+
+    host->addView([]() { auto* h = new brls::Header(); h->setTitle("ScreenScraper"); return h; }());
+
+    auto* ss_devid = new brls::InputCell();
+    ss_devid->init("Devid", acc.screenscraper.devid,
+        [](std::string v) {
+            ::foyer::scrapers::set_account_field("screenscraper.devid", v);
+        }, "Developer ID", "", 64);
+    host->addView(ss_devid);
+
+    auto* ss_devpass = new MaskedInputCell();
+    ss_devpass->init("Devpassword", acc.screenscraper.devpassword,
+        [](std::string v) {
+            ::foyer::scrapers::set_account_field("screenscraper.devpassword", v);
+        }, "Tap to set", "Developer password", 64);
+    host->addView(ss_devpass);
+
+    auto* ss_user = new brls::InputCell();
+    ss_user->init("Username", acc.screenscraper.ssid,
+        [](std::string v) {
+            ::foyer::scrapers::set_account_field("screenscraper.ssid", v);
+        }, "Account username", "", 64);
+    host->addView(ss_user);
+
+    auto* ss_pass = new MaskedInputCell();
+    ss_pass->init("Password", acc.screenscraper.sspassword,
+        [](std::string v) {
+            ::foyer::scrapers::set_account_field("screenscraper.sspassword", v);
+        }, "Tap to set", "Account password", 64);
+    host->addView(ss_pass);
+
+    host->addView([]() { auto* h = new brls::Header(); h->setTitle("SteamGridDB"); return h; }());
+
+    auto* sgdb = new MaskedInputCell();
+    sgdb->init("API key", acc.steamgriddb.api_key,
+        [](std::string v) {
+            ::foyer::scrapers::set_account_field("steamgriddb.api_key", v);
+        }, "Tap to set", "steamgriddb.com", 64);
+    host->addView(sgdb);
+
+    host->addView([]() { auto* h = new brls::Header(); h->setTitle("RetroAchievements"); return h; }());
+
+    auto* ra_user = new brls::InputCell();
+    ra_user->init("Username", acc.retroachievements.user,
+        [](std::string v) {
+            ::foyer::scrapers::set_account_field("retroachievements.user", v);
+        }, "Account username", "", 64);
+    host->addView(ra_user);
+
+    auto* ra_token = new MaskedInputCell();
+    ra_token->init("Token", acc.retroachievements.token,
+        [](std::string v) {
+            ::foyer::scrapers::set_account_field("retroachievements.token", v);
+        }, "Tap to set", "Web API token", 64);
+    host->addView(ra_token);
+
+    wrap_with_scroll(host, this);
+}
+brls::View* FoyerAccountsTab::create() { return new FoyerAccountsTab(); }
+
+// ============ FoyerLibraryTab ============================================
+
+FoyerLibraryTab::FoyerLibraryTab() {
+    this->setAxis(brls::Axis::COLUMN);
+    this->setAlignItems(brls::AlignItems::STRETCH);
+
+    auto* host = tab_root_box();
+
+    host->addView([]() { auto* h = new brls::Header(); h->setTitle("Library"); return h; }());
+
+    auto* rescan = new brls::DetailCell();
+    rescan->title->setText("Rescan");
+    rescan->detail->setText("/foyer/roms");
+    rescan->registerClickAction([](brls::View*) {
+        library_state::rescan();
+        brls::Application::notify("Library rescanned");
+        return true;
+    });
+    host->addView(rescan);
+
+    auto* rerun_wizard = new brls::DetailCell();
+    rerun_wizard->title->setText("Re-run wizard");
+    rerun_wizard->detail->setText("Open now");
+    rerun_wizard->registerClickAction([](brls::View*) {
+        // Push the wizard directly. It re-marks first-run complete
+        // on finish, so existing settings stay intact and no
+        // restart is needed.
+        brls::Application::pushActivity(new ::foyer::browser::WizardActivity());
+        return true;
+    });
+    host->addView(rerun_wizard);
+
+    wrap_with_scroll(host, this);
+}
+brls::View* FoyerLibraryTab::create() { return new FoyerLibraryTab(); }
+
+// ============ FoyerCoresTab ==============================================
+
+FoyerCoresTab::FoyerCoresTab() {
+    this->setAxis(brls::Axis::COLUMN);
+    this->setAlignItems(brls::AlignItems::STRETCH);
+
+    auto* host = tab_root_box();
+
+    host->addView([]() { auto* h = new brls::Header(); h->setTitle("Cores"); return h; }());
+
+    const auto& mf = manifest_cache::cores();
+    if (mf.cores.empty()) {
+        auto* hint = new brls::DetailCell();
+        hint->title->setText("Manifest unavailable");
+        hint->detail->setText("No network / not fetched");
+        host->addView(hint);
+    } else {
+        // Each row is a BooleanCell tracking the install intent
+        // for one core. Hitting "Install selected" below kicks a
+        // CoreInstallJob with the chosen subset, mirroring the
+        // wizard's Cores step.
+        static std::unique_ptr<::foyer::library::CoreInstallJob> g_core_job;
+        static std::vector<bool> g_picks;
+        if (g_picks.size() != mf.cores.size()) {
+            g_picks.assign(mf.cores.size(), false);
+        }
+        for (std::size_t i = 0; i < mf.cores.size(); i++) {
+            const auto& entry = mf.cores[i];
+            auto* cell = new brls::BooleanCell();
+            cell->title->setText(entry.name);
+            cell->init(entry.name, g_picks[i],
+                       [i](bool value) {
+                           if (i < g_picks.size()) g_picks[i] = value;
+                       });
+            host->addView(cell);
+        }
+
+        auto* install = new brls::DetailCell();
+        install->title->setText("Install selected");
+        install->detail->setText("Download picked");
+        install->registerClickAction([&mf](brls::View*) {
+            ::foyer::library::CoreManifest filtered{};
+            filtered.version = mf.version;
+            for (std::size_t i = 0; i < mf.cores.size() && i < g_picks.size(); i++) {
+                if (g_picks[i]) filtered.cores.push_back(mf.cores[i]);
+            }
+            if (filtered.cores.empty()) {
+                brls::Application::notify("No cores selected");
+                return true;
+            }
+            if (g_core_job && g_core_job->active()) {
+                brls::Application::notify("Core install already running");
+                return true;
+            }
+            g_core_job = std::make_unique<::foyer::library::CoreInstallJob>();
+            if (g_core_job->start(filtered, std::string(), false)) {
+                brls::Application::notify(
+                    "Installing " + std::to_string(filtered.cores.size())
+                    + " cores in background");
+            } else {
+                brls::Application::notify("Core install failed to start");
+                g_core_job.reset();
+            }
+            return true;
+        });
+        host->addView(install);
+    }
+
+    wrap_with_scroll(host, this);
+}
+brls::View* FoyerCoresTab::create() { return new FoyerCoresTab(); }
+
+// ============ FoyerUpdatesTab ============================================
+
+FoyerUpdatesTab::FoyerUpdatesTab() {
+    this->setAxis(brls::Axis::COLUMN);
+    this->setAlignItems(brls::AlignItems::STRETCH);
+
+    auto* host = tab_root_box();
+
+    host->addView([]() { auto* h = new brls::Header(); h->setTitle("Updates"); return h; }());
+
+    auto* current = new brls::DetailCell();
+    current->title->setText("Current version");
+    current->detail->setText(FOYER_DISPLAY_VERSION);
+    host->addView(current);
+
+    auto* check = new brls::DetailCell();
+    check->title->setText("Check for updates");
+    check->detail->setText("Prompt if newer");
+    check->registerClickAction([](brls::View*) {
+        if (!::foyer::browser::update_check::kick(/*verbose=*/true)) {
+            brls::Application::notify("Update check already running");
+        }
+        return true;
+    });
+    host->addView(check);
+
+    wrap_with_scroll(host, this);
+}
+brls::View* FoyerUpdatesTab::create() { return new FoyerUpdatesTab(); }
+
+// ============ FoyerAboutTab ==============================================
+
+FoyerAboutTab::FoyerAboutTab() {
+    this->setAxis(brls::Axis::COLUMN);
+    this->setAlignItems(brls::AlignItems::STRETCH);
+
+    auto* host = tab_root_box();
+
+    host->addView([]() { auto* h = new brls::Header(); h->setTitle("About"); return h; }());
+
+    auto* version = new brls::DetailCell();
+    version->title->setText("foyer version");
+    version->detail->setText(FOYER_DISPLAY_VERSION);
+    host->addView(version);
+
+    auto* logs = new brls::DetailCell();
+    logs->title->setText("Logs");
+    logs->detail->setText("/foyer/data/logs/");
+    host->addView(logs);
+
+    auto* config_path = new brls::DetailCell();
+    config_path->title->setText("Config");
+    config_path->detail->setText("/foyer/data/config/");
+    host->addView(config_path);
+
+    auto* assets_path = new brls::DetailCell();
+    assets_path->title->setText("Assets");
+    assets_path->detail->setText("/foyer/assets/");
+    host->addView(assets_path);
+
+    wrap_with_scroll(host, this);
+}
+brls::View* FoyerAboutTab::create() { return new FoyerAboutTab(); }
 
 }  // namespace foyer::browser

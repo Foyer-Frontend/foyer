@@ -150,12 +150,20 @@ Response get(const std::string& url, const std::vector<std::string>& headers,
 
     foyer::log::write("[http] GET %s start\n", url.c_str());
     const auto rc = curl_easy_perform(curl);
-    foyer::log::write("[http] GET %s rc=%d body=%zu\n",
-        url.c_str(), (int)rc, r.body.size());
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &r.code);
+    foyer::log::write("[http] GET %s rc=%d code=%ld body=%zu\n",
+        url.c_str(), (int)rc, r.code, r.body.size());
+    // For small responses (auth errors, empty results), echo the
+    // body so the per-run log captures the failure reason without
+    // a network repro.
+    if (r.body.size() > 0 && r.body.size() <= 256) {
+        std::string preview(r.body.begin(), r.body.end());
+        for (auto& c : preview) if (c == '\n' || c == '\r') c = ' ';
+        foyer::log::write("[http] body: %s\n", preview.c_str());
+    }
     if (rc != CURLE_OK && rc != CURLE_ABORTED_BY_CALLBACK) {
         foyer::log::write("[http] GET %s failed: %s\n", url.c_str(), curl_easy_strerror(rc));
     }
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &r.code);
     curl_easy_cleanup(curl);
     if (hdrs) curl_slist_free_all(hdrs);
     if (rc == CURLE_ABORTED_BY_CALLBACK) { r.body.clear(); r.code = 0; }

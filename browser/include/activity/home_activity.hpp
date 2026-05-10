@@ -13,6 +13,7 @@ class HomeActivity : public brls::Activity
 public:
     CONTENT_FROM_XML_RES("activity/home.xml");
 
+    ~HomeActivity() override;
     void onContentAvailable() override;
 
     // Reflow chrome for the just-focused system: swap the
@@ -27,7 +28,6 @@ public:
     BRLS_BIND(brls::Box,   actionRow,    "foyer/action_row");
     BRLS_BIND(brls::Box,   profiles,     "foyer/profiles");
     BRLS_BIND(brls::Image, backdrop,     "foyer/backdrop");
-    BRLS_BIND(brls::Label, systemTitle,  "foyer/system_title");
 
 private:
     brls::RepeatingTask* clockTask = nullptr;
@@ -35,6 +35,7 @@ private:
     void populateCarousel();
     void buildActionRow();
     void buildProfiles();
+    void openProfilePicker();
 };
 
 }  // namespace foyer::browser

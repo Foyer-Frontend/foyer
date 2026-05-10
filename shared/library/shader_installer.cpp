@@ -18,7 +18,7 @@
 namespace foyer::library {
 namespace {
 
-constexpr const char* kShadersDir = "/foyer/shaders";
+constexpr const char* kShadersDir = "/foyer/content/shaders";
 
 void set_field(std::string& dst, yyjson_val* obj, const char* key) {
     auto* v = yyjson_obj_get(obj, key);

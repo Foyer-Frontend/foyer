@@ -32,10 +32,18 @@ private:
     brls::Button*               m_btn_next   = nullptr;
     std::vector<std::string>    m_titles;
 
-    // Per-core selection mask, indexed alongside the cores
-    // manifest the wizard prefetched. Size matches the manifest;
-    // true = install on Finish.
+    // Per-pack selection masks, one slot per manifest entry. Sized
+    // lazily on first render so the manifest_cache prefetches don't
+    // need to be done before the constructor runs.
     std::vector<bool>           m_core_selected;
+    std::vector<bool>           m_bezel_selected;
+    std::vector<bool>           m_shader_selected;
+
+    // Scraper credential drafts. Pre-loaded from the on-disk
+    // accounts.jsonc so re-running the wizard is non-destructive.
+    std::string                 m_ss_user;
+    std::string                 m_ss_pass;
+    std::string                 m_sgdb_key;
 
     void renderStep();
     void onNext();
@@ -44,6 +52,10 @@ private:
 
     brls::View* buildWelcomeStep();
     brls::View* buildCoresStep();
+    brls::View* buildBezelsStep();
+    brls::View* buildShadersStep();
+    brls::View* buildScreenScraperStep();
+    brls::View* buildSteamGridDBStep();
     brls::View* buildPlaceholderStep(const std::string& body);
     brls::View* buildDoneStep();
 };

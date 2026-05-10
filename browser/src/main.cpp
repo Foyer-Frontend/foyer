@@ -14,13 +14,16 @@
 #include <string_view>
 
 #include "activity/home_activity.hpp"
+#include "activity/splash_activity.hpp"
 #include "activity/wizard_activity.hpp"
 #include "tab/settings_tab.hpp"
-#include "hos_status.hpp"
 #include "first_run.hpp"
+#include "hos_status.hpp"
+#include "library_state.hpp"
 #include "manifest_cache.hpp"
 #include "self_update.hpp"
-#include "library_state.hpp"
+#include "theme_watcher.hpp"
+#include "update_check.hpp"
 
 #include "i18n/i18n.hpp"
 #include "library/config.hpp"
@@ -98,48 +101,67 @@ int main(int argc, char* argv[])
     apply_saved_language();
     foyer::log::write("[boot] i18n init done\n");
 
-    // Walk /foyer/roms and cache the result for activities to read
-    // via library_state::find_system(). Synchronous on the main
-    // thread — fast on a clean library, slower with hundreds of
-    // ROMs; we'll move to a worker + progress splash in a later
-    // alpha if scan latency becomes a problem.
-    foyer::browser::library_state::rescan();
-    foyer::log::write("[boot] library scan done\n");
-
-    // Pull the active user's avatar + nickname from libnx
-    // accountsService so the profile circle on Home shows real
-    // data. Uses brls's NVG context (same backend as the legacy
-    // path expected) for the cached image handle; the JPEG bytes
-    // are also retained so brls::Image::setImageFromMem can paint
-    // the same avatar inside the circle.
-    foyer::browser::hos_status::init(brls::Application::getNVGContext());
-    foyer::log::write("[boot] hos_status init done\n");
-
+    // Window must exist before getNVGContext() returns a usable
+    // pointer — hos_status::init below caches an NVG image handle for
+    // the avatar and would otherwise allocate against a null context.
     brls::Application::createWindow("foyer/title"_i18n);
     brls::Application::setGlobalQuit(false);
 
-    // Custom XML views referenced from XML layouts must register before
-    // the first activity push so the inflater finds them.
-    brls::Application::registerXMLView(
-        "FoyerSettingsTab", ::foyer::browser::SettingsTab::create);
+    // Pull the active user's avatar + nickname from libnx
+    // accountsService so the profile circle on Home shows real
+    // data. Cheap (libnx call + JPEG decode) so we keep it on the
+    // boot path rather than hand it to the splash worker.
+    foyer::browser::hos_status::init(brls::Application::getNVGContext());
+    foyer::log::write("[boot] hos_status init done\n");
 
+    // Custom XML views referenced from XML layouts must register
+    // before the first activity push so the inflater finds them.
+    using namespace ::foyer::browser;
+    brls::Application::registerXMLView("FoyerGeneralTab",  FoyerGeneralTab::create);
+    brls::Application::registerXMLView("FoyerAccountsTab", FoyerAccountsTab::create);
+    brls::Application::registerXMLView("FoyerLibraryTab",  FoyerLibraryTab::create);
+    brls::Application::registerXMLView("FoyerCoresTab",    FoyerCoresTab::create);
+    brls::Application::registerXMLView("FoyerUpdatesTab",  FoyerUpdatesTab::create);
+    brls::Application::registerXMLView("FoyerAboutTab",    FoyerAboutTab::create);
+
+    // SplashActivity owns the rest of the boot work: kicks a Worker
+    // for the library scan + (first-run only) manifest prefetch,
+    // polls it from a RepeatingTask, then transitions to Home (and
+    // optionally the wizard) when the worker reports done. Replaces
+    // the prior blank-window-during-boot UX.
+    // Live HOS Light/Dark tracking — polls setsysGetColorSetId once
+    // per second so flipping the system theme takes effect without
+    // relaunching foyer.
+    foyer::browser::theme_watcher::start();
+
+    // Library scan synchronous — fast on the cache fast-path. Done
+    // before pushing Home so the tile game-count banners have real
+    // values to display. The splash overlay below covers any visible
+    // hitch.
+    foyer::browser::library_state::rescan();
+    foyer::log::write("[boot] library scan done\n");
+
+    // Push Home first, then Splash on top. When the splash worker
+    // finishes its background work (manifest prefetch on first-run,
+    // otherwise a no-op short delay), it pops itself off the stack
+    // and Home is revealed. This avoids the pop-and-push race that
+    // crashed earlier alphas — only one transition fires.
     foyer::log::write("[boot] pushing HomeActivity\n");
     brls::Application::pushActivity(new ::foyer::browser::HomeActivity());
 
-    // First-run wizard sits on top of Home until the user completes
-    // it (or skips through). Pushing Home first means popping the
-    // wizard at Finish lands them on the real launcher with no
-    // empty-stack flicker. Prefetch the manifests synchronously so
-    // the wizard's selection steps have data ready (~7 KB JSON each,
-    // ~1 s on a healthy connection).
     if (!::foyer::browser::first_run::is_complete()) {
         foyer::log::write("[boot] first-run marker missing — wizard\n");
         ::foyer::browser::manifest_cache::prefetch();
-        foyer::log::write("[boot] manifest prefetch done\n");
         brls::Application::pushActivity(new ::foyer::browser::WizardActivity());
-        foyer::log::write("[boot] WizardActivity pushed\n");
     } else {
-        foyer::log::write("[boot] first-run marker present — skip wizard\n");
+        foyer::log::write("[boot] pushing SplashActivity\n");
+        brls::Application::pushActivity(new ::foyer::browser::SplashActivity());
+
+        // Boot-time update check — silent unless a newer manifest
+        // version is published, in which case the user gets a
+        // Yes/No prompt over the home screen. Skip when first-run
+        // wizard is still on top to avoid stacking dialogs.
+        ::foyer::browser::update_check::kick(/*verbose=*/false);
     }
     foyer::log::write("[boot] entering main loop\n");
 

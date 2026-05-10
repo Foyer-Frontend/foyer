@@ -1,0 +1,46 @@
+<!--
+    foyer Splash — shown at boot while the heavy work (library scan,
+    optional manifest prefetch) runs on a background Worker. The
+    SplashActivity polls the Worker once per tick, updates the status
+    label, and transitions to HomeActivity (+ Wizard if first-run)
+    when the Worker reports done.
+-->
+<brls:Box
+    width="auto"
+    height="auto"
+    grow="1.0"
+    axis="column"
+    alignItems="center"
+    justifyContent="center">
+
+    <brls:Image
+        positionType="absolute"
+        positionTop="0"
+        positionLeft="0"
+        width="1280"
+        height="720"
+        scalingType="fill"
+        image="@res/splash.jpg" />
+
+    <brls:Label
+        text="foyer"
+        width="auto"
+        height="auto"
+        fontSize="64"
+        marginBottom="24"
+        textColor="@theme/brls/text" />
+
+    <brls:ProgressSpinner
+        width="80"
+        height="80"
+        marginBottom="24" />
+
+    <brls:Label
+        id="foyer/splash_status"
+        text="Loading…"
+        width="auto"
+        height="auto"
+        fontSize="22"
+        textColor="@theme/brls/text" />
+
+</brls:Box>

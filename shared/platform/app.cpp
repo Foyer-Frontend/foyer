@@ -95,23 +95,25 @@ void App::init_fs() {
 
     static const char* const kDirs[] = {
         "/foyer",
-        "/foyer/cores",
-        "/foyer/config",
-        "/foyer/config/cores",
+        "/foyer/content",
+        "/foyer/content/cores",
+        "/foyer/content/bezels",
+        "/foyer/content/cheats",
+        "/foyer/content/shaders",
         "/foyer/data",
         "/foyer/data/cache",
+        "/foyer/data/config",
+        "/foyer/data/config/cores",
+        "/foyer/data/config/cores/per_game",
+        "/foyer/data/config/themes",
+        "/foyer/data/logs",
         "/foyer/assets",
         "/foyer/assets/covers",
         "/foyer/assets/backgrounds",
         "/foyer/assets/systems",
-        "/foyer/system",
+        "/foyer/assets/system",
         "/foyer/saves",
         "/foyer/states",
-        // Bundled-asset destinations. Browser extracts romfs:/bezels/
-        // and romfs:/cheats/ here on first boot; user replacements drop
-        // straight in.
-        "/foyer/bezels",
-        "/foyer/cheats",
         // Default rom root. Lives under /foyer/ so the whole foyer state
         // tree is self-contained on the SD root.
         "/foyer/roms",
@@ -362,67 +364,7 @@ bool App::tick() {
 
 } // namespace foyer::platform
 
-// libnx service init/teardown — referenced by both browser and player nros.
-extern "C" {
-
-void userAppInit(void) {
-    Result rc;
-    if (R_FAILED(rc = appletLockExit()))                 diagAbortWithResult(rc);
-    if (R_FAILED(rc = plInitialize(PlServiceType_User))) diagAbortWithResult(rc);
-    if (R_FAILED(rc = nifmInitialize(NifmServiceType_User))) diagAbortWithResult(rc);
-    if (R_FAILED(rc = setInitialize()))                  diagAbortWithResult(rc);
-    // 0.5.0 chrome reads battery + the active user's avatar/nickname.
-    // Both services are application-tier under hbloader so init can't
-    // fail short of a system at fault — diag-abort matches the rest of
-    // userAppInit's contract.
-    if (R_FAILED(rc = psmInitialize()))                  diagAbortWithResult(rc);
-    if (R_FAILED(rc = accountInitialize(AccountServiceType_Application)))
-        diagAbortWithResult(rc);
-    // 0.5.5 Switch-title launcher: nsListApplicationRecord +
-    // nsGetApplicationControlData read installed-title metadata. ns
-    // Application-tier is gated tighter than account; if init fails
-    // we tolerate it and the Switch tile silently lists zero titles.
-    if (R_FAILED(rc = nsInitialize())) {
-        foyer::log::write(
-            "[platform] nsInitialize rc=0x%x — Switch tile disabled\n", rc);
-    }
-
-    // BSD sockets — needed by libcurl for the scrapers + RetroAchievements.
-    // Use the applet-friendly profile so foyer plays nicely under hbloader.
-    // num_bsd_sessions bumped to 8 from 3: with the v0.2.11 background
-    // workers, two transfers can be in flight simultaneously (boot-time
-    // foyer manifest check + a user-triggered core install/scrape).
-    // Each transfer needs ~2 sessions (DNS + connection), so 3 was tight
-    // enough to cause the second worker's curl_easy_perform to hang
-    // waiting for a session to free.
-    static const SocketInitConfig kSockets = {
-        .tcp_tx_buf_size      = 1024 * 32,
-        .tcp_rx_buf_size      = 1024 * 64,
-        .tcp_tx_buf_max_size  = 1024 * 256,
-        .tcp_rx_buf_max_size  = 1024 * 256,
-        .udp_tx_buf_size      = 0x2400,
-        .udp_rx_buf_size      = 0xA500,
-        .sb_efficiency        = 4,
-        .num_bsd_sessions     = 8,
-        .bsd_service_type     = BsdServiceType_Auto,
-    };
-    if (R_FAILED(rc = socketInitialize(&kSockets)))      diagAbortWithResult(rc);
-
-    appletSetScreenShotPermission(AppletScreenShotPermission_Enable);
-}
-
-void userAppExit(void) {
-    socketExit();
-    nsExit();
-    accountExit();
-    psmExit();
-    setExit();
-    nifmExit();
-    plExit();
-    if (auto* fs = fsdevGetDeviceFileSystem("sdmc:")) {
-        fsFsCommit(fs);
-    }
-    appletUnlockExit();
-}
-
-} // extern "C"
+// userAppInit / userAppExit moved to platform/services.cpp (foyer_shared)
+// so the browser nro picks them up too — without that, accountsService /
+// nifm / psm are never initialized and hos_status::init faults on first
+// accountGetPreselectedUser call.

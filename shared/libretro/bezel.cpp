@@ -38,7 +38,7 @@ std::string resolve_path() {
     char buf[512];
     if (!g_folder.empty() && !g_stem.empty()) {
         std::snprintf(buf, sizeof(buf),
-            "/foyer/bezels/%s/%s.png", g_folder.c_str(), g_stem.c_str());
+            "/foyer/content/bezels/%s/%s.png", g_folder.c_str(), g_stem.c_str());
         const bool found = exists(buf);
         foyer::log::write("[bezel]   try per-rom %s -> %s\n",
             buf, found ? "FOUND" : "miss");
@@ -46,7 +46,7 @@ std::string resolve_path() {
     }
     if (!g_folder.empty()) {
         std::snprintf(buf, sizeof(buf),
-            "/foyer/bezels/%s.png", g_folder.c_str());
+            "/foyer/content/bezels/%s.png", g_folder.c_str());
         const bool found = exists(buf);
         foyer::log::write("[bezel]   try per-system %s -> %s\n",
             buf, found ? "FOUND" : "miss");

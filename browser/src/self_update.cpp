@@ -80,9 +80,9 @@ void apply_staged_if_present() {
 }
 
 void scrub_legacy_default_bezel() {
-    if (::unlink("/foyer/bezels/default.png") == 0) {
+    if (::unlink("/foyer/content/bezels/default.png") == 0) {
         foyer::log::write(
-            "[bezel] scrubbed legacy /foyer/bezels/default.png\n");
+            "[bezel] scrubbed legacy /foyer/content/bezels/default.png\n");
     }
 }
 

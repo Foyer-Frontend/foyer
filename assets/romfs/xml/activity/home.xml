@@ -21,23 +21,29 @@
     grow="1.0"
     axis="column">
 
-    <!-- Per-system app backdrop — absolute-positioned behind every
-         other view; updated by HomeActivity on tile focus change. -->
+    <!-- Per-system app backdrop — absolute-positioned in the
+         middle band between the top status bar (80 px) and the
+         bottom hint bar (footer_height = 73 px) so the bars never
+         draw on top of it. Updated by HomeActivity on tile focus
+         change. -->
     <brls:Image
         id="foyer/backdrop"
         positionType="absolute"
-        positionTop="0"
+        positionTop="80"
         positionLeft="0"
         width="1280"
-        height="720"
+        height="567"
         scalingType="fill" />
 
-    <!-- Top bar -->
+    <!-- Top bar — backdrop already provides visual separation, so
+         no divider line. -->
     <brls:Box
         width="auto"
         height="80"
         axis="row"
         alignItems="center"
+        marginLeft="@style/brls/hints/footer_margin_sides"
+        marginRight="@style/brls/hints/footer_margin_sides"
         paddingLeft="@style/brls/hints/footer_padding_sides"
         paddingRight="@style/brls/hints/footer_padding_sides">
 
@@ -78,59 +84,17 @@
         </brls:Box>
     </brls:Box>
 
-    <!-- Vertical layout below the top bar:
-            grow=1 wrapper anchors the system title + carousel to
-            the bottom edge of its area; grow=1 wrapper below
-            centres the action row.
-         Equal grow weights ⇒ the action row sits at the midpoint
-         between the bottom of the tile row and the separator
-         (top of the bottom hint bar). -->
+    <!-- HOS-style round action buttons — pinned just below the top
+         bar's separator. Populated by HomeActivity. -->
     <brls:Box
         width="auto"
         height="auto"
-        grow="1.0"
-        axis="column"
+        axis="row"
         alignItems="center"
-        justifyContent="flexEnd">
-
-        <!-- Display name of the focused system. HomeActivity
-             updates the text on tile focus changes. -->
-        <brls:Label
-            id="foyer/system_title"
-            text=""
-            width="auto"
-            height="auto"
-            fontSize="32"
-            marginBottom="12"
-            textColor="@theme/brls/text" />
-
-        <brls:HScrollingFrame
-            id="foyer/carousel_scroll"
-            width="auto"
-            height="320"
-            scrollingBehavior="centered">
-
-            <brls:Box
-                id="foyer/carousel"
-                width="auto"
-                height="auto"
-                axis="row"
-                paddingLeft="48"
-                paddingRight="48" />
-
-        </brls:HScrollingFrame>
-
-    </brls:Box>
-
-    <brls:Box
-        width="auto"
-        height="auto"
-        grow="1.0"
-        axis="column"
         justifyContent="center"
-        alignItems="center">
+        marginTop="16"
+        marginBottom="16">
 
-        <!-- Round action buttons — populated by HomeActivity. -->
         <brls:Box
             id="foyer/action_row"
             width="auto"
@@ -140,11 +104,34 @@
 
     </brls:Box>
 
-    <!-- Bottom hint bar — separator line on top + brls Hints (the
-         controller button hints, e.g. A: OK, B: Back). Mirrors the
-         AppletFrame's BottomBar but without its built-in
-         clock/wifi/battery cluster (foyer puts those in the top bar
-         per HOS launcher convention). -->
+    <!-- Empty middle band — backdrop shows through. -->
+    <brls:Box
+        width="auto"
+        height="auto"
+        grow="1.0" />
+
+    <!-- System carousel — pinned just above the bottom hint bar. -->
+    <brls:HScrollingFrame
+        id="foyer/carousel_scroll"
+        width="100%"
+        height="264"
+        marginBottom="8"
+        scrollingBehavior="centered">
+
+        <brls:Box
+            id="foyer/carousel"
+            width="auto"
+            height="auto"
+            axis="row"
+            alignItems="flexEnd"
+            paddingLeft="48"
+            paddingRight="48" />
+
+    </brls:HScrollingFrame>
+
+    <!-- Bottom hint bar — brls Hints (the controller button hints,
+         e.g. A: OK, B: Back). No top divider; the backdrop bands
+         provide the visual separation. -->
     <brls:Box
         width="auto"
         height="@style/brls/applet_frame/footer_height"
@@ -156,9 +143,7 @@
         paddingLeft="@style/brls/hints/footer_padding_sides"
         paddingRight="@style/brls/hints/footer_padding_sides"
         paddingTop="@style/brls/hints/footer_padding_top_bottom"
-        paddingBottom="@style/brls/hints/footer_padding_top_bottom"
-        lineColor="@theme/brls/applet_frame/separator"
-        lineTop="1px">
+        paddingBottom="@style/brls/hints/footer_padding_top_bottom">
 
         <brls:Hints
             width="auto"

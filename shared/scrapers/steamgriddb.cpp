@@ -22,6 +22,48 @@ std::vector<std::string> auth_headers(const std::string& key) {
 }
 
 // Look up the SteamGridDB game id matching `query`. Returns 0 on miss.
+// SteamGridDB autocomplete is whole-word matching against clean
+// game titles. Rom dump filenames carry region tags ("(USA,
+// Europe, Korea)"), translation markers ("[T Eng1.0_*]"),
+// dump-quality flags ("[!]") and worse — none of which appear in
+// SGDB's index, so the query 404s. Strip parenthetical and bracket
+// content + collapse whitespace before sending.
+std::string sanitize_query(std::string_view raw) {
+    std::string s;
+    s.reserve(raw.size());
+    int paren_depth = 0;
+    int brack_depth = 0;
+    for (char c : raw) {
+        if      (c == '(') ++paren_depth;
+        else if (c == ')') { if (paren_depth > 0) --paren_depth; }
+        else if (c == '[') ++brack_depth;
+        else if (c == ']') { if (brack_depth > 0) --brack_depth; }
+        else if (paren_depth == 0 && brack_depth == 0) {
+            // Replace underscores with spaces — common in dump names
+            // that swap colons for underscores (FAT32 filename
+            // sanitisation).
+            s += (c == '_') ? ' ' : c;
+        }
+    }
+    // Collapse runs of whitespace + trim.
+    std::string out;
+    out.reserve(s.size());
+    bool last_space = true;  // suppress leading
+    for (char c : s) {
+        const bool is_space = (c == ' ' || c == '\t');
+        if (is_space) {
+            if (!last_space) out += ' ';
+            last_space = true;
+        } else {
+            out += c;
+            last_space = false;
+        }
+    }
+    while (!out.empty() && (out.back() == ' ' || out.back() == '-')) out.pop_back();
+    while (!out.empty() && (out.front() == ' ' || out.front() == '-')) out.erase(out.begin());
+    return out;
+}
+
 long long search_game_id(const std::string& query, const std::string& key) {
     const auto url = "https://www.steamgriddb.com/api/v2/search/autocomplete/"
                    + foyer::net::url_encode(query);
@@ -106,10 +148,16 @@ bool fetch_cover(std::string_view system_folder,
         return false;
     }
 
-    const std::string query{rom_stem};
-    const auto id = search_game_id(query, a.api_key);
+    const std::string query = sanitize_query(rom_stem);
+    long long id = search_game_id(query, a.api_key);
+    if (id == 0 && query != std::string{rom_stem}) {
+        // Sanitised query missed — fall back to the raw stem in
+        // case the rom does carry a tag SGDB happens to know about.
+        id = search_game_id(std::string{rom_stem}, a.api_key);
+    }
     if (id == 0) {
-        foyer::log::write("[sgdb] no game match for '%s'\n", query.c_str());
+        foyer::log::write("[sgdb] no game match for '%s' (raw '%.*s')\n",
+            query.c_str(), (int)rom_stem.size(), rom_stem.data());
         return false;
     }
     const auto img = first_grid_url(id, a.api_key);
@@ -136,10 +184,14 @@ std::vector<std::string> fetch_cover_candidates(
         return out;
     }
 
-    const auto id = search_game_id(std::string{rom_stem}, a.api_key);
+    const auto query = sanitize_query(rom_stem);
+    long long id = search_game_id(query, a.api_key);
+    if (id == 0 && query != std::string{rom_stem}) {
+        id = search_game_id(std::string{rom_stem}, a.api_key);
+    }
     if (id == 0) {
-        foyer::log::write("[sgdb] no game match for '%.*s'\n",
-            (int)rom_stem.size(), rom_stem.data());
+        foyer::log::write("[sgdb] no game match for '%s' (raw '%.*s')\n",
+            query.c_str(), (int)rom_stem.size(), rom_stem.data());
         return out;
     }
 

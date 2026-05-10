@@ -1,0 +1,158 @@
+<!--
+    foyer System view — borealis edition.
+
+    Mirrors home.xml's chrome so the user keeps the same mental
+    model when navigating into a system: status cluster top-right,
+    matching dividers, action row up top, cover-flow carousel along
+    the bottom edge. The only system-specific content is the logo
+    in the middle band and the per-game cover tiles in the
+    carousel.
+
+    SystemActivity populates foyer/logo, foyer/action_row and
+    foyer/carousel from the focused system's data; the backdrop
+    Image is set from `themes/foyer/systems/<folder>/background.jpg`
+    in onContentAvailable().
+-->
+<brls:Box
+    width="auto"
+    height="auto"
+    grow="1.0"
+    axis="column">
+
+    <!-- Per-system app backdrop — same crop as Home. -->
+    <brls:Image
+        id="foyer/backdrop"
+        positionType="absolute"
+        positionTop="80"
+        positionLeft="0"
+        width="1280"
+        height="567"
+        scalingType="fill" />
+
+    <!-- Top bar — system logo on the left, clock / wifi / battery
+         on the right (mirrors home.xml's chrome placement). No
+         divider line; the backdrop's middle band provides the
+         visual separation. -->
+    <brls:Box
+        width="auto"
+        height="80"
+        axis="row"
+        alignItems="center"
+        marginLeft="@style/brls/hints/footer_margin_sides"
+        marginRight="@style/brls/hints/footer_margin_sides"
+        paddingLeft="@style/brls/hints/footer_padding_sides"
+        paddingRight="@style/brls/hints/footer_padding_sides">
+
+        <brls:Box
+            id="foyer/logo_holder"
+            width="auto"
+            height="auto"
+            axis="row"
+            alignItems="center" />
+
+        <brls:Box width="auto" height="auto" grow="1.0" />
+
+        <brls:Box
+            width="auto"
+            height="auto"
+            axis="row"
+            alignItems="center"
+            direction="leftToRight">
+
+            <brls:Label
+                id="foyer/clock"
+                text="--:--"
+                width="auto"
+                height="auto"
+                fontSize="22"
+                marginRight="20" />
+
+            <brls:Wireless
+                id="foyer/wireless"
+                marginRight="20"
+                marginBottom="2" />
+
+            <brls:Battery
+                id="foyer/battery"
+                marginBottom="2" />
+        </brls:Box>
+    </brls:Box>
+
+    <!-- Action row — system-specific buttons (Scrape, Scan,
+         Per-system settings). Populated by SystemActivity. -->
+    <brls:Box
+        width="auto"
+        height="auto"
+        axis="row"
+        alignItems="center"
+        justifyContent="center"
+        marginTop="16"
+        marginBottom="16">
+
+        <brls:Box
+            id="foyer/action_row"
+            width="auto"
+            height="auto"
+            axis="row"
+            alignItems="center" />
+
+    </brls:Box>
+
+    <!-- Empty middle band — backdrop shows through. -->
+    <brls:Box
+        width="auto"
+        height="auto"
+        grow="1.0" />
+
+    <!-- Game cover-flow carousel — pinned right above the bottom
+         hint bar. Frame height matches the tallest tile (280px
+         portrait) + 7px top margin; the bottom margin is small so
+         the cover-flow baseline sits flush with the hint-bar top. -->
+    <brls:HScrollingFrame
+        id="foyer/carousel_scroll"
+        width="100%"
+        height="288"
+        marginBottom="8"
+        scrollingBehavior="centered">
+
+        <brls:Box
+            id="foyer/carousel"
+            width="auto"
+            height="auto"
+            axis="row"
+            alignItems="flexEnd"
+            paddingLeft="48"
+            paddingRight="48" />
+
+    </brls:HScrollingFrame>
+
+    <!-- Bottom bar — scrape progress label on the left, brls
+         button hints on the right. No divider, matches home.xml. -->
+    <brls:Box
+        width="auto"
+        height="@style/brls/applet_frame/footer_height"
+        axis="row"
+        alignItems="center"
+        marginLeft="@style/brls/hints/footer_margin_sides"
+        marginRight="@style/brls/hints/footer_margin_sides"
+        paddingLeft="@style/brls/hints/footer_padding_sides"
+        paddingRight="@style/brls/hints/footer_padding_sides"
+        paddingTop="@style/brls/hints/footer_padding_top_bottom"
+        paddingBottom="@style/brls/hints/footer_padding_top_bottom">
+
+        <brls:Label
+            id="foyer/scrape_status"
+            text=""
+            width="auto"
+            height="auto"
+            fontSize="18" />
+
+        <brls:Box width="auto" height="auto" grow="1.0" />
+
+        <brls:Hints
+            width="auto"
+            height="auto" />
+
+    </brls:Box>
+
+</brls:Box>

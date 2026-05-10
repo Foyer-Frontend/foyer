@@ -13,7 +13,7 @@
 namespace foyer::library {
 namespace {
 
-constexpr const char* kPath = "/foyer/config/general.jsonc";
+constexpr const char* kPath = "/foyer/data/config/general.jsonc";
 
 std::mutex          g_mutex;
 Config              g_config{};

@@ -41,6 +41,12 @@ bool ScrapeJob::start(const System& sys, Source src) {
     m_done_ct = 0;
     m_hits    = 0;
 
+    // 1 MB stack — the SS jeuInfos response is multi-KB JSON
+    // walked recursively by yyjson + we hold libcurl's TLS state
+    // simultaneously. The default 256 KB worker stack overflows
+    // mid-scrape on bigger systems (50+ games), and a stack-fault
+    // looks identical to a generic crash with no last-line log.
+    constexpr std::size_t kScrapeStack = 0x100000;
     return m_worker.start(
         [this, games = std::move(games),
                folder, short_name, thumbs_db, src](Worker& w) {
@@ -58,14 +64,35 @@ bool ScrapeJob::start(const System& sys, Source src) {
                 w.set_status(banner);
 
                 const auto dest = scrapers::cover_path(folder, g.stem);
+                // Cache marker is the per-game metadata.json now,
+                // not the legacy cover. Old foyer versions only
+                // wrote box-2D into /foyer/assets/covers; users
+                // upgrading would have those files but no bundle
+                // companions (bezel/fanart/sstitle/ss/video/meta),
+                // so we re-fetch until the bundle's metadata.json
+                // shows up — that's only written once a successful
+                // SS lookup completes.
+                const auto bundle_meta =
+                    scrapers::game_asset_dir(folder, g.stem) + "metadata.json";
                 struct stat st{};
-                if (::stat(dest.c_str(), &st) == 0) continue; // cached
+                if (::stat(bundle_meta.c_str(), &st) == 0) continue; // cached
 
                 bool ok = false;
                 switch (src) {
                     case Source::Libretro:
+                        // Box art is the primary; title + snap are
+                        // best-effort secondary downloads. Only the
+                        // box art counts toward the hit total since
+                        // it's what the System view tile renders;
+                        // the others land alongside for future use.
                         ok = scrapers::libretro_thumb::fetch_cover(
                             thumbs_db, g.stem, dest);
+                        scrapers::libretro_thumb::fetch_title(
+                            thumbs_db, g.stem,
+                            scrapers::title_path(folder, g.stem));
+                        scrapers::libretro_thumb::fetch_screenshot(
+                            thumbs_db, g.stem,
+                            scrapers::snap_path(folder, g.stem));
                         break;
                     case Source::ScreenScraper:
                         ok = scrapers::screenscraper::fetch_cover(
@@ -77,13 +104,20 @@ bool ScrapeJob::start(const System& sys, Source src) {
                         break;
                 }
                 if (ok) m_hits++;
+                // Brief yield between games — gives the deko3d /
+                // sdmc fs threads a chance to drain queued ops
+                // before the next jeuInfos + media-stream burst.
+                // 50 ms is enough on hardware to clear the watchdog
+                // pressure without slowing the scrape meaningfully
+                // (a single jeuInfos round-trip dwarfs it).
+                svcSleepThread(50'000'000ULL);
             }
             char done[160];
             std::snprintf(done, sizeof(done),
                 "Scrape %s done: %d hits / %d games",
                 short_name.c_str(), m_hits, m_done_ct);
             w.set_status(done);
-        });
+        }, kScrapeStack);
 }
 
 } // namespace foyer::library

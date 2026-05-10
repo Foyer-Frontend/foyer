@@ -3,6 +3,7 @@
 #include "platform/log.hpp"
 
 #include <cstdio>
+#include <unistd.h>
 #include <sys/stat.h>
 
 namespace foyer::browser::first_run {
@@ -28,6 +29,14 @@ void mark_complete() {
         foyer::log::write(
             "[first_run] failed to write marker %s\n", kMarkerPath);
     }
+}
+
+void reset() {
+    if (::unlink(kMarkerPath) == 0) {
+        foyer::log::write("[first_run] marker cleared: %s\n", kMarkerPath);
+    }
+    // Silent on ENOENT — already absent is the same end state as the
+    // call requested.
 }
 
 }  // namespace foyer::browser::first_run

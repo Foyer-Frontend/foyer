@@ -16,7 +16,7 @@ extern "C" void retro_cheat_set(unsigned index, bool enabled, const char* code);
 namespace foyer::libretro {
 namespace {
 
-constexpr const char* kCheatsRoot = "/foyer/cheats";
+constexpr const char* kCheatsRoot = "/foyer/content/cheats";
 
 std::string cht_path(std::string_view system_folder, std::string_view rom_stem) {
     char buf[512];

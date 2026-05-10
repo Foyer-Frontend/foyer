@@ -133,7 +133,7 @@ void load_theme_palette() {
     // in place.
     std::string theme_name = "dark";
     {
-        std::ifstream gf{"/foyer/config/general.jsonc"};
+        std::ifstream gf{"/foyer/data/config/general.jsonc"};
         if (gf) {
             std::stringstream ss; ss << gf.rdbuf();
             const auto txt = strip_jsonc_comments(ss.str());
@@ -185,7 +185,7 @@ void load_theme_palette() {
         return ok;
     };
 
-    const std::string sd  = "/foyer/config/themes/" + theme_name + ".jsonc";
+    const std::string sd  = "/foyer/data/config/themes/" + theme_name + ".jsonc";
     const std::string rom = "romfs:/themes/"        + theme_name + ".jsonc";
     if (!try_load(sd)) try_load(rom);
 }

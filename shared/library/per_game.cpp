@@ -16,7 +16,7 @@
 namespace foyer::library {
 namespace {
 
-constexpr const char* kPath = "/foyer/config/per_game.jsonc";
+constexpr const char* kPath = "/foyer/data/config/per_game.jsonc";
 
 struct Entry {
     std::string   core;

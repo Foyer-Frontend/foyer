@@ -128,7 +128,7 @@ bool launch_game(const library::System& sys, const library::Game& game,
 
     char nro_path[256];
     std::snprintf(nro_path, sizeof(nro_path),
-        "/foyer/cores/foyer-%.*s.nro",
+        "/foyer/content/cores/foyer-%.*s.nro",
         (int)core->name.size(), core->name.data());
 
     struct stat st{};

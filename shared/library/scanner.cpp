@@ -240,7 +240,7 @@ void apply_system_sort(std::vector<System>& systems) {
 } // namespace
 
 std::vector<System> scan_library(const ScanOptions& opts) {
-    constexpr const char* kCachePath = "/foyer/data/library.cache.json";
+    constexpr const char* kCachePath = "/foyer/data/cache/library.cache.json";
 
     // Cache fast-path. Only honoured when the caller didn't ask for
     // a forced rescan AND when the cache load validates against

@@ -4,18 +4,50 @@
 
 namespace foyer::browser {
 
-// Phase B: minimal Settings tab. Language only — the theme follows the
-// Switch system Light/Dark setting automatically (brls reads it via
-// setsysGetColorSetId), so no theme picker. The remaining ~50
-// settings (display tweaks, scrapers, retroachievements, system hide
-// list, etc.) get added cell-by-cell in subsequent alphas.
-class SettingsTab : public brls::Box
-{
+// Six tab content classes used by xml/tabs/foyer_settings.xml.
+// Each is a self-contained brls::Box subclass that builds its row
+// list in the constructor — the TabFrame inflates whichever tab
+// the user focuses, so dynamic content (cores manifest, update
+// status) stays live.
+//
+// Each class also exposes a static create() that brls's XML
+// inflater calls when it sees a `<FoyerXxxTab/>` element. They get
+// registered in main() via Application::registerXMLView before
+// the SettingsActivity is pushed.
+
+class FoyerGeneralTab : public brls::Box {
 public:
-    SettingsTab();
+    FoyerGeneralTab();
+    static brls::View* create();
+};
 
-    BRLS_BIND(brls::SelectorCell, language, "foyer/settings/language");
+class FoyerAccountsTab : public brls::Box {
+public:
+    FoyerAccountsTab();
+    static brls::View* create();
+};
 
+class FoyerLibraryTab : public brls::Box {
+public:
+    FoyerLibraryTab();
+    static brls::View* create();
+};
+
+class FoyerCoresTab : public brls::Box {
+public:
+    FoyerCoresTab();
+    static brls::View* create();
+};
+
+class FoyerUpdatesTab : public brls::Box {
+public:
+    FoyerUpdatesTab();
+    static brls::View* create();
+};
+
+class FoyerAboutTab : public brls::Box {
+public:
+    FoyerAboutTab();
     static brls::View* create();
 };
 

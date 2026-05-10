@@ -50,6 +50,7 @@ const std::string& nickname();
 int                other_avatar_count();
 int                other_avatar_handle(int i);
 const std::string& other_nickname(int i);
+const std::vector<std::uint8_t>& other_avatar_jpeg(int i);
 
 // Switch the active user to the given index (0..other_avatar_count-1
 // -> a secondary avatar; -1 keeps the currently-active one). Reloads

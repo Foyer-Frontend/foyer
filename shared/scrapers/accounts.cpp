@@ -14,7 +14,7 @@
 namespace foyer::scrapers {
 namespace {
 
-constexpr const char* kPath = "/foyer/config/accounts.jsonc";
+constexpr const char* kPath = "/foyer/data/config/accounts.jsonc";
 
 constexpr const char* kStub =
     "// foyer scraper credentials.\n"

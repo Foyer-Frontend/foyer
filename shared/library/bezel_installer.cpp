@@ -16,7 +16,7 @@
 namespace foyer::library {
 namespace {
 
-constexpr const char* kBezelsDir = "/foyer/bezels";
+constexpr const char* kBezelsDir = "/foyer/content/bezels";
 
 void set_field(std::string& dst, yyjson_val* obj, const char* key) {
     auto* v = yyjson_obj_get(obj, key);

@@ -70,13 +70,27 @@ std::uint32_t crc32_file(const std::string& path) {
     return crc;
 }
 
+// Hardcoded fallback dev credentials. ScreenScraper requires a
+// devid/devpassword on every API call; until foyer's own pair is
+// issued by Bigon (request thread on forum.screenscraper.fr) we
+// fall back to EmuDeck's plaintext-published pair so users can
+// scrape immediately. When foyer gets its own credentials, swap
+// the constants below — kFoyerDevid / kFoyerDevpassword — and
+// the fallback comment can be deleted.
+namespace {
+constexpr const char* kFallbackDevid       = "djrodtc";
+constexpr const char* kFallbackDevpassword = "diFay35WElL";
+}
+
 bool fetch_cover(std::string_view system_folder,
                  const std::string& rom_path,
                  std::string_view rom_stem,
                  const std::string& dest_png) {
     const auto& a = accounts().screenscraper;
-    if (!a.ready()) {
-        foyer::log::write("[ss] devid/devpassword not set in accounts.jsonc\n");
+    std::string devid       = a.devid.empty()       ? kFallbackDevid       : a.devid;
+    std::string devpassword = a.devpassword.empty() ? kFallbackDevpassword : a.devpassword;
+    if (devid.empty() || devpassword.empty()) {
+        foyer::log::write("[ss] devid/devpassword unavailable\n");
         return false;
     }
 
@@ -95,8 +109,8 @@ bool fetch_cover(std::string_view system_folder,
     // give a higher API quota.
     std::string url =
         std::string{"https://api.screenscraper.fr/api2/jeuInfos.php?"}
-        + "devid="       + foyer::net::url_encode(a.devid)
-        + "&devpassword="+ foyer::net::url_encode(a.devpassword)
+        + "devid="       + foyer::net::url_encode(devid)
+        + "&devpassword="+ foyer::net::url_encode(devpassword)
         + "&softname="   + foyer::net::url_encode(kSoftname)
         + "&output=json"
         + "&systemeid="  + std::to_string(system_id)
@@ -125,26 +139,57 @@ bool fetch_cover(std::string_view system_folder,
     auto* jeu      = response ? yyjson_obj_get(response, "jeu") : nullptr;
     auto* medias   = jeu ? yyjson_obj_get(jeu, "medias") : nullptr;
 
-    std::string image_url;
-    if (medias && yyjson_is_arr(medias)) {
-        std::size_t i, max;
-        yyjson_val* item;
-        // Prefer "box-2D" → "box-3D" → "screenshot" for the cover slot.
-        const char* preferred[] = { "box-2D", "box-3D", "ss", "screenshot" };
-        for (auto* want : preferred) {
-            if (!image_url.empty()) break;
+    // For each media kind we want, walk the medias array and pick
+    // the best-region entry. Returns {url, region} or empty url.
+    struct MediaPick { std::string url; std::string region; };
+    auto pick_media = [&](const char* kind) -> MediaPick {
+        MediaPick out;
+        if (!medias || !yyjson_is_arr(medias)) return out;
+        // Region preference. SS tags media with "us", "eu", "wor",
+        // "jp", region-specific BR/FR, etc. Prefer worldwide → US
+        // → Europe → Japan → first-available.
+        const char* prefs[] = { "wor", "us", "eu", "jp" };
+        std::size_t i, max; yyjson_val* item;
+        for (auto* want_region : prefs) {
             yyjson_arr_foreach(medias, i, max, item) {
                 auto* type_val = yyjson_obj_get(item, "type");
                 auto* url_val  = yyjson_obj_get(item, "url");
+                auto* reg_val  = yyjson_obj_get(item, "region");
                 if (!type_val || !url_val) continue;
-                if (yyjson_is_str(type_val) && yyjson_is_str(url_val)
-                    && !std::strcmp(yyjson_get_str(type_val), want)) {
-                    image_url = yyjson_get_str(url_val);
-                    break;
+                if (!yyjson_is_str(type_val) || !yyjson_is_str(url_val)) continue;
+                if (std::strcmp(yyjson_get_str(type_val), kind) != 0) continue;
+                const char* reg = (reg_val && yyjson_is_str(reg_val))
+                    ? yyjson_get_str(reg_val) : "";
+                if (std::strcmp(reg, want_region) == 0) {
+                    out.url    = yyjson_get_str(url_val);
+                    out.region = reg;
+                    return out;
                 }
             }
         }
-    }
+        // Fallback: first item of this kind.
+        yyjson_arr_foreach(medias, i, max, item) {
+            auto* type_val = yyjson_obj_get(item, "type");
+            auto* url_val  = yyjson_obj_get(item, "url");
+            auto* reg_val  = yyjson_obj_get(item, "region");
+            if (type_val && url_val
+                && yyjson_is_str(type_val) && yyjson_is_str(url_val)
+                && !std::strcmp(yyjson_get_str(type_val), kind)) {
+                out.url    = yyjson_get_str(url_val);
+                out.region = (reg_val && yyjson_is_str(reg_val))
+                    ? yyjson_get_str(reg_val) : "";
+                return out;
+            }
+        }
+        return out;
+    };
+
+    // Box-2D goes to dest_png so the existing scrape_job hit
+    // counter still works. Other media are downloaded into the
+    // per-game asset dir alongside box-2D for the GameActivity
+    // detail panel + system tile to find.
+    const auto box     = pick_media("box-2D");
+    std::string image_url = box.url;
 
     // Extract sidecar metadata while we still hold the parsed doc. Each
     // localized field uses a region/language preference list — wor (world)
@@ -247,6 +292,97 @@ bool fetch_cover(std::string_view system_folder,
         return false;
     }
     foyer::log::write("[ss] saved %s (crc=%s)\n", dest_png.c_str(), crchex);
+
+    // Save the same box-2D into the per-game asset bundle dir
+    // alongside the other media we're about to fetch. The bundle
+    // is the source-of-truth GameActivity reads from for the
+    // detail panel; the dest_png copy stays for legacy callers.
+    const auto bundle_dir = foyer::scrapers::game_asset_dir(system_folder, rom_stem);
+    auto bundle_path = [&](const std::string& kind, const std::string& region,
+                           const char* ext) {
+        std::string nm = bundle_dir + kind;
+        if (!region.empty()) nm += "(" + region + ")";
+        nm += ext;
+        return nm;
+    };
+    foyer::scrapers::ensure_parent_dir(bundle_dir + ".placeholder");
+    if (!box.url.empty()) {
+        foyer::net::get_to_file(box.url,
+            bundle_path("box-2D", box.region, ".png"));
+    }
+
+    // Companion media — best-effort, individual failures don't
+    // count against the scrape hit total. Each lands at the
+    // canonical filename the user expects.
+    const auto title_pick = pick_media("sstitle");
+    if (!title_pick.url.empty()) {
+        foyer::net::get_to_file(title_pick.url,
+            bundle_path("sstitle", title_pick.region, ".png"));
+    }
+    const auto ss_pick = pick_media("ss");
+    if (!ss_pick.url.empty()) {
+        foyer::net::get_to_file(ss_pick.url,
+            bundle_path("ss", ss_pick.region, ".png"));
+    }
+    const auto fanart_pick = pick_media("fanart");
+    if (!fanart_pick.url.empty()) {
+        // fanart filename has no region tag in the user's reference
+        // layout — single fanart per game.
+        foyer::net::get_to_file(fanart_pick.url,
+            bundle_dir + "fanart.jpg");
+    }
+    const auto bezel_pick = pick_media("bezel-16-9");
+    if (!bezel_pick.url.empty()) {
+        foyer::net::get_to_file(bezel_pick.url,
+            bundle_path("bezel-16-9", bezel_pick.region, ".png"));
+    }
+    const auto video_pick = pick_media("video-normalized");
+    if (!video_pick.url.empty()) {
+        foyer::net::get_to_file(video_pick.url,
+            bundle_dir + "video-normalized.mp4");
+    }
+
+    // Drop a metadata.json next to the media so the detail panel
+    // can render name + publisher + developer + players + rating
+    // + genre + release_date + synopsis without re-parsing the
+    // legacy /foyer/assets/metadata sidecar. Hand-rolled writer
+    // to escape the synopsis correctly without pulling in yyjson
+    // builder boilerplate for a small fixed-shape doc.
+    auto json_escape = [](const std::string& s) {
+        std::string out; out.reserve(s.size() + 8);
+        for (char c : s) {
+            switch (c) {
+                case '"':  out += "\\\""; break;
+                case '\\': out += "\\\\"; break;
+                case '\n': out += "\\n";  break;
+                case '\r': out += "\\r";  break;
+                case '\t': out += "\\t";  break;
+                default:
+                    if ((unsigned char)c < 0x20) {
+                        char buf[8];
+                        std::snprintf(buf, sizeof(buf), "\\u%04x", (unsigned)c);
+                        out += buf;
+                    } else {
+                        out += c;
+                    }
+            }
+        }
+        return out;
+    };
+    if (auto* f = std::fopen((bundle_dir + "metadata.json").c_str(), "wb")) {
+        std::fprintf(f, "{\n");
+        std::fprintf(f, "  \"name\":         \"%s\",\n", json_escape(meta.title).c_str());
+        std::fprintf(f, "  \"publisher\":    \"%s\",\n", json_escape(meta.publisher).c_str());
+        std::fprintf(f, "  \"developer\":    \"%s\",\n", json_escape(meta.developer).c_str());
+        std::fprintf(f, "  \"players\":      \"%s\",\n", json_escape(meta.players).c_str());
+        std::fprintf(f, "  \"rating\":       \"%s\",\n", json_escape(meta.rating).c_str());
+        std::fprintf(f, "  \"genre\":        \"%s\",\n", json_escape(meta.genre).c_str());
+        std::fprintf(f, "  \"release_date\": \"%s\",\n", json_escape(meta.year).c_str());
+        std::fprintf(f, "  \"synopsis\":     \"%s\"\n",  json_escape(meta.description).c_str());
+        std::fprintf(f, "}\n");
+        std::fclose(f);
+    }
+
     return true;
 }
 

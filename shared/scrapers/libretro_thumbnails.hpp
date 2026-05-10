@@ -20,4 +20,9 @@ bool fetch_screenshot(std::string_view thumbnails_db,
                       std::string_view rom_stem,
                       const std::string& dest_png);
 
+// Same as cover_path() but for "Named_Titles" (title-screen capture).
+bool fetch_title(std::string_view thumbnails_db,
+                 std::string_view rom_stem,
+                 const std::string& dest_png);
+
 } // namespace foyer::scrapers::libretro_thumb

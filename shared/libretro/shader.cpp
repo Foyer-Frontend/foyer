@@ -237,7 +237,7 @@ std::string resolve_fragment_source(const std::string& spec) {
 
     if (file_exists(p)) return read_file(p);
 
-    const std::string base = "/foyer/shaders/" + p;
+    const std::string base = "/foyer/content/shaders/" + p;
     if (file_exists(base)) return read_file(base);
 
     // Maybe they passed a name without extension; try .glsl
@@ -491,7 +491,7 @@ bool ShaderPipeline::load_json_manifest(const std::string& path) {
             if (auto* x = yyjson_obj_get(item, "filter"); x && yyjson_is_str(x))
                 linear = std::strcmp(yyjson_get_str(x), "linear") == 0;
             if (lname.empty() || lpath.empty()) continue;
-            if (lpath[0] != '/') lpath = "/foyer/shaders/" + lpath;
+            if (lpath[0] != '/') lpath = "/foyer/content/shaders/" + lpath;
             load_lut(lname, lpath, linear);
         }
     }
@@ -568,7 +568,7 @@ bool ShaderPipeline::set_preset(std::string_view name) {
 
     // 2. JSON multi-pass manifest.
     char buf[512];
-    std::snprintf(buf, sizeof(buf), "/foyer/shaders/%.*s.json",
+    std::snprintf(buf, sizeof(buf), "/foyer/content/shaders/%.*s.json",
         (int)name.size(), name.data());
     if (file_exists(buf)) {
         if (load_json_manifest(buf)) {
@@ -582,7 +582,7 @@ bool ShaderPipeline::set_preset(std::string_view name) {
     }
 
     // 3. Single .glsl file.
-    std::snprintf(buf, sizeof(buf), "/foyer/shaders/%.*s.glsl",
+    std::snprintf(buf, sizeof(buf), "/foyer/content/shaders/%.*s.glsl",
         (int)name.size(), name.data());
     if (file_exists(buf)) {
         if (load_glsl_file(buf)) {
@@ -715,7 +715,7 @@ std::vector<ShaderPipeline::PresetInfo> ShaderPipeline::available_presets() {
     for (const auto& b : kBuiltIns) {
         out.push_back({b.name, b.label});
     }
-    if (auto* d = ::opendir("/foyer/shaders")) {
+    if (auto* d = ::opendir("/foyer/content/shaders")) {
         while (auto* e = ::readdir(d)) {
             const std::string n = e->d_name;
             if (n.size() < 6) continue;

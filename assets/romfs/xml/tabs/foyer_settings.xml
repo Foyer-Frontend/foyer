@@ -1,40 +1,47 @@
 <!--
-    foyer Settings tab. Phase B drop = Language only. The theme follows
-    the Switch system Light/Dark setting automatically (brls reads it
-    via setsysGetColorSetId on platform init), so there's no theme
-    picker. The other ~50 settings rows re-land cell-by-cell in
-    subsequent alphas.
+    foyer Settings — HOS-style sidebar layout.
+
+    brls::TabFrame renders a vertical sidebar of category labels on
+    the left and the focused category's content on the right.
+    Each <brls:Tab> maps to a registered C++ class — every tab
+    builds its own rows in its constructor (Cores tab populates
+    from the live manifest, Updates tab spawns an update job, etc.)
+    so the panels stay live with their data.
 -->
-<brls:Box
-    width="auto"
-    height="auto">
+<brls:AppletFrame
+    iconInterpolation="linear"
+    footerHidden="false"
+    title="Foyer settings">
 
-    <brls:ScrollingFrame
-        width="auto"
-        height="auto"
-        axis="column"
-        alignItems="stretch"
-        scrollingBehavior="centered"
-        grow="1.0">
+    <brls:TabFrame
+        title="Foyer settings">
 
-        <brls:Box
-            width="10000"
-            height="auto"
-            axis="column"
-            alignItems="stretch"
-            paddingTop="@style/brls/sidebar/padding_top"
-            paddingRight="@style/brls/sidebar/padding_right"
-            paddingBottom="@style/brls/sidebar/padding_bottom"
-            paddingLeft="@style/brls/sidebar/padding_left">
+        <brls:Tab label="General">
+            <FoyerGeneralTab />
+        </brls:Tab>
 
-            <brls:Header
-                title="@i18n/foyer/settings/general" />
+        <brls:Tab label="Online accounts">
+            <FoyerAccountsTab />
+        </brls:Tab>
 
-            <brls:SelectorCell
-                id="foyer/settings/language" />
+        <brls:Tab label="Library">
+            <FoyerLibraryTab />
+        </brls:Tab>
 
-        </brls:Box>
+        <brls:Tab label="Cores">
+            <FoyerCoresTab />
+        </brls:Tab>
 
-    </brls:ScrollingFrame>
+        <brls:Tab label="Updates">
+            <FoyerUpdatesTab />
+        </brls:Tab>
 
-</brls:Box>
+        <brls:Separator />
+
+        <brls:Tab label="About">
+            <FoyerAboutTab />
+        </brls:Tab>
+
+    </brls:TabFrame>
+
+</brls:AppletFrame>

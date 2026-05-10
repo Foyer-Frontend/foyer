@@ -1,0 +1,167 @@
+<!--
+    foyer Game detail view.
+
+    Top bar = clock/wifi/battery cluster (matches Home/System).
+    Backdrop = fanart.jpg from /foyer/assets/system/<sys>/<stem>/.
+    Body = two-column row:
+      Left  : sstitle screenshot above ss screenshot
+      Right : title + meta grid (publisher, developer, players,
+              rating, genre, release date) + scrollable synopsis
+
+    Detail values are populated by GameActivity at runtime. Layout
+    holders only here.
+-->
+<brls:Box
+    width="auto"
+    height="auto"
+    grow="1.0"
+    axis="column">
+
+    <!-- Fanart sits in the middle band only — top status bar
+         (80 px) and bottom hint bar (73 px) keep their plain
+         backgrounds, matching home.xml / system.xml. -->
+    <brls:Image
+        id="foyer/game_fanart"
+        positionType="absolute"
+        positionTop="80"
+        positionLeft="0"
+        width="1280"
+        height="567"
+        scalingType="fill" />
+
+    <!-- Top status cluster bar — same shape as system.xml. -->
+    <brls:Box
+        width="auto"
+        height="80"
+        axis="row"
+        alignItems="center"
+        marginLeft="@style/brls/hints/footer_margin_sides"
+        marginRight="@style/brls/hints/footer_margin_sides"
+        paddingLeft="@style/brls/hints/footer_padding_sides"
+        paddingRight="@style/brls/hints/footer_padding_sides">
+
+        <brls:Label
+            id="foyer/game_title"
+            text=""
+            width="auto"
+            height="auto"
+            fontSize="28" />
+
+        <brls:Box width="auto" height="auto" grow="1.0" />
+
+        <brls:Box
+            width="auto"
+            height="auto"
+            axis="row"
+            alignItems="center"
+            direction="leftToRight">
+
+            <brls:Label
+                id="foyer/clock"
+                text="--:--"
+                width="auto"
+                height="auto"
+                fontSize="22"
+                marginRight="20" />
+
+            <brls:Wireless
+                id="foyer/wireless"
+                marginRight="20"
+                marginBottom="2" />
+
+            <brls:Battery
+                id="foyer/battery"
+                marginBottom="2" />
+        </brls:Box>
+    </brls:Box>
+
+    <!-- Body: left = screenshots, right = metadata. Sits over a
+         translucent panel (theme-coloured + alpha) to keep the
+         text readable against any fanart. Padding inside the
+         panel; margins outside leave the fanart visible at the
+         edges. -->
+    <brls:Box
+        id="foyer/game_body"
+        width="auto"
+        height="auto"
+        grow="1.0"
+        axis="row"
+        alignItems="stretch"
+        marginLeft="32"
+        marginRight="32"
+        marginTop="16"
+        marginBottom="16"
+        paddingLeft="24"
+        paddingRight="24"
+        paddingTop="20"
+        paddingBottom="20"
+        cornerRadius="12">
+
+        <!-- Single-image gallery. The Box itself is focusable so
+             d-pad up/down can cycle the on-screen image without
+             leaving the panel; the Image inside is just the
+             current slide. -->
+        <brls:Box
+            id="foyer/game_gallery_holder"
+            width="500"
+            height="auto"
+            axis="column"
+            alignItems="center"
+            justifyContent="center"
+            focusable="true"
+            highlightCornerRadius="6">
+
+            <brls:Image
+                id="foyer/game_slide"
+                width="480"
+                height="320"
+                scalingType="fit" />
+
+            <brls:Label
+                id="foyer/game_slide_caption"
+                text=""
+                width="auto"
+                height="auto"
+                fontSize="14"
+                marginTop="6" />
+
+        </brls:Box>
+
+        <brls:Box width="32" height="auto" />
+
+        <brls:ScrollingFrame
+            width="auto"
+            height="auto"
+            grow="1.0">
+
+            <brls:Box
+                id="foyer/game_meta"
+                width="auto"
+                height="auto"
+                axis="column" />
+
+        </brls:ScrollingFrame>
+
+    </brls:Box>
+
+    <!-- Bottom hint bar — matches system.xml. -->
+    <brls:Box
+        width="auto"
+        height="@style/brls/applet_frame/footer_height"
+        axis="row"
+        alignItems="center"
+        justifyContent="flexEnd"
+        marginLeft="@style/brls/hints/footer_margin_sides"
+        marginRight="@style/brls/hints/footer_margin_sides"
+        paddingLeft="@style/brls/hints/footer_padding_sides"
+        paddingRight="@style/brls/hints/footer_padding_sides"
+        paddingTop="@style/brls/hints/footer_padding_top_bottom"
+        paddingBottom="@style/brls/hints/footer_padding_top_bottom">
+
+        <brls:Hints
+            width="auto"
+            height="auto" />
+
+    </brls:Box>
+
+</brls:Box>

@@ -24,9 +24,10 @@ bool                           g_wifi_connected = false;
 // switch_active() so the cluster reflects the new active user
 // immediately after a switch.
 struct SecondaryUser {
-    AccountUid  uid;
-    int         avatar  = 0;   // nvg handle (>0) or 0 if no image
-    std::string nickname;
+    AccountUid                uid;
+    int                       avatar  = 0;   // nvg handle (>0) or 0 if no image
+    std::string               nickname;
+    std::vector<std::uint8_t> avatar_jpeg;   // raw bytes for brls::Image
 };
 std::vector<SecondaryUser>     g_secondaries;
 
@@ -100,7 +101,7 @@ void sync_users(NVGcontext* vg, AccountUid active) {
         } else {
             SecondaryUser su{};
             su.uid = u;
-            load_user_into(vg, u, su.avatar, su.nickname);
+            load_user_into(vg, u, su.avatar, su.nickname, &su.avatar_jpeg);
             g_secondaries.push_back(std::move(su));
         }
     }
@@ -205,6 +206,11 @@ const std::string& other_nickname(int i) {
     static const std::string empty;
     if (i < 0 || i >= (int)g_secondaries.size()) return empty;
     return g_secondaries[i].nickname;
+}
+const std::vector<std::uint8_t>& other_avatar_jpeg(int i) {
+    static const std::vector<std::uint8_t> empty;
+    if (i < 0 || i >= (int)g_secondaries.size()) return empty;
+    return g_secondaries[i].avatar_jpeg;
 }
 
 void switch_active(int secondary_idx, NVGcontext* vg) {

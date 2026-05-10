@@ -10,6 +10,7 @@
 
 add_library(foyer_shared STATIC
     platform/log.cpp
+    platform/services.cpp
     i18n/i18n.cpp
     i18n/i18n_es.cpp
     i18n/i18n_pt_br.cpp
@@ -34,6 +35,7 @@ add_library(foyer_shared STATIC
     scrapers/cache.cpp
     scrapers/accounts.cpp
     scrapers/libretro_thumbnails.cpp
+    scrapers/libretro_index.cpp
     scrapers/screenscraper.cpp
     scrapers/steamgriddb.cpp
     util/archive.cpp

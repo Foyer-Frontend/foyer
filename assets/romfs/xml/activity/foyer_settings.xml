@@ -1,7 +1,44 @@
+<!--
+    foyer Settings — HOS-style sidebar layout via brls TabFrame.
+
+    Each <brls:Tab> resolves to a registered C++ view name, defined
+    in browser/src/settings_tab.cpp. Tabs build their rows in their
+    constructors so the panels stay live with their data (cores
+    manifest, update job state, etc.).
+-->
 <brls:AppletFrame
     title="@i18n/foyer/settings/title"
     iconInterpolation="linear">
 
-    <FoyerSettingsTab />
+    <brls:TabFrame
+        title="@i18n/foyer/settings/title">
+
+        <brls:Tab label="General">
+            <FoyerGeneralTab />
+        </brls:Tab>
+
+        <brls:Tab label="Online accounts">
+            <FoyerAccountsTab />
+        </brls:Tab>
+
+        <brls:Tab label="Library">
+            <FoyerLibraryTab />
+        </brls:Tab>
+
+        <brls:Tab label="Cores">
+            <FoyerCoresTab />
+        </brls:Tab>
+
+        <brls:Tab label="Updates">
+            <FoyerUpdatesTab />
+        </brls:Tab>
+
+        <brls:Separator />
+
+        <brls:Tab label="About">
+            <FoyerAboutTab />
+        </brls:Tab>
+
+    </brls:TabFrame>
 
 </brls:AppletFrame>

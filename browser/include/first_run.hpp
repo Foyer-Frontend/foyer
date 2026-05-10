@@ -11,4 +11,8 @@ bool is_complete();
 // Finish step.
 void mark_complete();
 
+// Removes the marker file so the wizard runs on the next launch.
+// Used by Settings → "Re-run first-run wizard". Idempotent.
+void reset();
+
 }  // namespace foyer::browser::first_run
