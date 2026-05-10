@@ -14,7 +14,6 @@
 #include "update_check.hpp"
 #include "widgets/masked_input_cell.hpp"
 
-#include <borealis/views/cells/cell_bool.hpp>
 #include <borealis/views/cells/cell_detail.hpp>
 #include <borealis/views/cells/cell_input.hpp>
 #include <borealis/views/cells/cell_selector.hpp>
@@ -278,55 +277,47 @@ FoyerCoresTab::FoyerCoresTab() {
         hint->detail->setText("No network / not fetched");
         host->addView(hint);
     } else {
-        // Each row is a BooleanCell tracking the install intent
-        // for one core. Hitting "Install selected" below kicks a
-        // CoreInstallJob with the chosen subset, mirroring the
-        // wizard's Cores step.
         static std::unique_ptr<::foyer::library::CoreInstallJob> g_core_job;
-        static std::vector<bool> g_picks;
-        if (g_picks.size() != mf.cores.size()) {
-            g_picks.assign(mf.cores.size(), false);
-        }
-        for (std::size_t i = 0; i < mf.cores.size(); i++) {
-            const auto& entry = mf.cores[i];
-            auto* cell = new brls::BooleanCell();
-            cell->title->setText(entry.name);
-            cell->init(entry.name, g_picks[i],
-                       [i](bool value) {
-                           if (i < g_picks.size()) g_picks[i] = value;
-                       });
-            host->addView(cell);
-        }
 
-        auto* install = new brls::DetailCell();
-        install->title->setText("Install selected");
-        install->detail->setText("Download picked");
-        install->registerClickAction([&mf](brls::View*) {
-            ::foyer::library::CoreManifest filtered{};
-            filtered.version = mf.version;
-            for (std::size_t i = 0; i < mf.cores.size() && i < g_picks.size(); i++) {
-                if (g_picks[i]) filtered.cores.push_back(mf.cores[i]);
-            }
-            if (filtered.cores.empty()) {
-                brls::Application::notify("No cores selected");
-                return true;
-            }
+        auto kick_install = [](::foyer::library::CoreManifest filt,
+                               const std::string& tag) {
             if (g_core_job && g_core_job->active()) {
-                brls::Application::notify("Core install already running");
-                return true;
+                brls::Application::notify("Install already running");
+                return;
             }
             g_core_job = std::make_unique<::foyer::library::CoreInstallJob>();
-            if (g_core_job->start(filtered, std::string(), false)) {
-                brls::Application::notify(
-                    "Installing " + std::to_string(filtered.cores.size())
-                    + " cores in background");
+            if (g_core_job->start(filt, std::string(), false)) {
+                brls::Application::notify("Installing " + tag);
             } else {
-                brls::Application::notify("Core install failed to start");
+                brls::Application::notify("Install failed to start");
                 g_core_job.reset();
             }
+        };
+
+        auto* install_all = new brls::DetailCell();
+        install_all->title->setText("Install all");
+        install_all->detail->setText(
+            std::to_string(mf.cores.size()) + " cores");
+        install_all->registerClickAction([&mf, kick_install](brls::View*) {
+            kick_install(mf, "all cores");
             return true;
         });
-        host->addView(install);
+        host->addView(install_all);
+
+        for (std::size_t i = 0; i < mf.cores.size(); i++) {
+            const auto& entry = mf.cores[i];
+            auto* cell = new brls::DetailCell();
+            cell->title->setText(entry.name);
+            cell->detail->setText("Tap to install");
+            cell->registerClickAction([entry, &mf, kick_install](brls::View*) {
+                ::foyer::library::CoreManifest filt{};
+                filt.version = mf.version;
+                filt.cores.push_back(entry);
+                kick_install(filt, entry.name);
+                return true;
+            });
+            host->addView(cell);
+        }
     }
 
     wrap_with_scroll(host, this);
@@ -350,28 +341,12 @@ FoyerBezelsTab::FoyerBezelsTab() {
         host->addView(hint);
     } else {
         static std::unique_ptr<::foyer::library::Worker> g_bezel_job;
-        static std::vector<bool> g_picks;
-        if (g_picks.size() != mf.packs.size()) g_picks.assign(mf.packs.size(), false);
-        for (std::size_t i = 0; i < mf.packs.size(); i++) {
-            const auto& entry = mf.packs[i];
-            auto* cell = new brls::BooleanCell();
-            cell->title->setText(entry.name);
-            cell->init(entry.name, g_picks[i],
-                       [i](bool value) { if (i < g_picks.size()) g_picks[i] = value; });
-            host->addView(cell);
-        }
-        auto* install = new brls::DetailCell();
-        install->title->setText("Install selected");
-        install->detail->setText("Download picked");
-        install->registerClickAction([&mf](brls::View*) {
-            ::foyer::library::BezelManifest filt{};
-            filt.version  = mf.version;
-            filt.upstream = mf.upstream;
-            for (std::size_t i = 0; i < mf.packs.size() && i < g_picks.size(); i++)
-                if (g_picks[i]) filt.packs.push_back(mf.packs[i]);
-            if (filt.packs.empty()) { brls::Application::notify("No packs selected"); return true; }
+
+        auto kick = [](::foyer::library::BezelManifest filt,
+                       const std::string& tag) {
             if (g_bezel_job && g_bezel_job->active() && !g_bezel_job->done()) {
-                brls::Application::notify("Bezel install already running"); return true;
+                brls::Application::notify("Install already running");
+                return;
             }
             g_bezel_job = std::make_unique<::foyer::library::Worker>();
             const auto copy = filt;
@@ -379,11 +354,34 @@ FoyerBezelsTab::FoyerBezelsTab() {
                 w.set_status("Installing bezels…");
                 ::foyer::library::install_bezels(copy, {}, {}, false, {});
             });
-            brls::Application::notify(
-                "Installing " + std::to_string(filt.packs.size()) + " packs");
+            brls::Application::notify("Installing " + tag);
+        };
+
+        auto* install_all = new brls::DetailCell();
+        install_all->title->setText("Install all");
+        install_all->detail->setText(
+            std::to_string(mf.packs.size()) + " packs");
+        install_all->registerClickAction([&mf, kick](brls::View*) {
+            kick(mf, "all bezels");
             return true;
         });
-        host->addView(install);
+        host->addView(install_all);
+
+        for (std::size_t i = 0; i < mf.packs.size(); i++) {
+            const auto& entry = mf.packs[i];
+            auto* cell = new brls::DetailCell();
+            cell->title->setText(entry.name);
+            cell->detail->setText("Tap to install");
+            cell->registerClickAction([entry, &mf, kick](brls::View*) {
+                ::foyer::library::BezelManifest filt{};
+                filt.version  = mf.version;
+                filt.upstream = mf.upstream;
+                filt.packs.push_back(entry);
+                kick(filt, entry.name);
+                return true;
+            });
+            host->addView(cell);
+        }
     }
     wrap_with_scroll(host, this);
 }
@@ -406,27 +404,12 @@ FoyerShadersTab::FoyerShadersTab() {
         host->addView(hint);
     } else {
         static std::unique_ptr<::foyer::library::Worker> g_shader_job;
-        static std::vector<bool> g_picks;
-        if (g_picks.size() != mf.presets.size()) g_picks.assign(mf.presets.size(), false);
-        for (std::size_t i = 0; i < mf.presets.size(); i++) {
-            const auto& entry = mf.presets[i];
-            auto* cell = new brls::BooleanCell();
-            cell->title->setText(entry.name);
-            cell->init(entry.name, g_picks[i],
-                       [i](bool value) { if (i < g_picks.size()) g_picks[i] = value; });
-            host->addView(cell);
-        }
-        auto* install = new brls::DetailCell();
-        install->title->setText("Install selected");
-        install->detail->setText("Download picked");
-        install->registerClickAction([&mf](brls::View*) {
-            ::foyer::library::ShaderManifest filt{};
-            filt.version = mf.version;
-            for (std::size_t i = 0; i < mf.presets.size() && i < g_picks.size(); i++)
-                if (g_picks[i]) filt.presets.push_back(mf.presets[i]);
-            if (filt.presets.empty()) { brls::Application::notify("No presets selected"); return true; }
+
+        auto kick = [](::foyer::library::ShaderManifest filt,
+                       const std::string& tag) {
             if (g_shader_job && g_shader_job->active() && !g_shader_job->done()) {
-                brls::Application::notify("Shader install already running"); return true;
+                brls::Application::notify("Install already running");
+                return;
             }
             g_shader_job = std::make_unique<::foyer::library::Worker>();
             const auto copy = filt;
@@ -434,11 +417,33 @@ FoyerShadersTab::FoyerShadersTab() {
                 w.set_status("Installing shaders…");
                 ::foyer::library::install_shaders(copy, {}, false, {});
             });
-            brls::Application::notify(
-                "Installing " + std::to_string(filt.presets.size()) + " presets");
+            brls::Application::notify("Installing " + tag);
+        };
+
+        auto* install_all = new brls::DetailCell();
+        install_all->title->setText("Install all");
+        install_all->detail->setText(
+            std::to_string(mf.presets.size()) + " presets");
+        install_all->registerClickAction([&mf, kick](brls::View*) {
+            kick(mf, "all shaders");
             return true;
         });
-        host->addView(install);
+        host->addView(install_all);
+
+        for (std::size_t i = 0; i < mf.presets.size(); i++) {
+            const auto& entry = mf.presets[i];
+            auto* cell = new brls::DetailCell();
+            cell->title->setText(entry.name);
+            cell->detail->setText("Tap to install");
+            cell->registerClickAction([entry, &mf, kick](brls::View*) {
+                ::foyer::library::ShaderManifest filt{};
+                filt.version = mf.version;
+                filt.presets.push_back(entry);
+                kick(filt, entry.name);
+                return true;
+            });
+            host->addView(cell);
+        }
     }
     wrap_with_scroll(host, this);
 }
@@ -461,27 +466,12 @@ FoyerCheatsTab::FoyerCheatsTab() {
         host->addView(hint);
     } else {
         static std::unique_ptr<::foyer::library::Worker> g_cheat_job;
-        static std::vector<bool> g_picks;
-        if (g_picks.size() != mf.packs.size()) g_picks.assign(mf.packs.size(), false);
-        for (std::size_t i = 0; i < mf.packs.size(); i++) {
-            const auto& entry = mf.packs[i];
-            auto* cell = new brls::BooleanCell();
-            cell->title->setText(entry.name);
-            cell->init(entry.name, g_picks[i],
-                       [i](bool value) { if (i < g_picks.size()) g_picks[i] = value; });
-            host->addView(cell);
-        }
-        auto* install = new brls::DetailCell();
-        install->title->setText("Install selected");
-        install->detail->setText("Download picked");
-        install->registerClickAction([&mf](brls::View*) {
-            ::foyer::library::CheatManifest filt{};
-            filt.version = mf.version;
-            for (std::size_t i = 0; i < mf.packs.size() && i < g_picks.size(); i++)
-                if (g_picks[i]) filt.packs.push_back(mf.packs[i]);
-            if (filt.packs.empty()) { brls::Application::notify("No packs selected"); return true; }
+
+        auto kick = [](::foyer::library::CheatManifest filt,
+                       const std::string& tag) {
             if (g_cheat_job && g_cheat_job->active() && !g_cheat_job->done()) {
-                brls::Application::notify("Cheat install already running"); return true;
+                brls::Application::notify("Install already running");
+                return;
             }
             g_cheat_job = std::make_unique<::foyer::library::Worker>();
             const auto copy = filt;
@@ -489,11 +479,33 @@ FoyerCheatsTab::FoyerCheatsTab() {
                 w.set_status("Installing cheats…");
                 ::foyer::library::install_cheats(copy, {}, {}, false, {});
             });
-            brls::Application::notify(
-                "Installing " + std::to_string(filt.packs.size()) + " packs");
+            brls::Application::notify("Installing " + tag);
+        };
+
+        auto* install_all = new brls::DetailCell();
+        install_all->title->setText("Install all");
+        install_all->detail->setText(
+            std::to_string(mf.packs.size()) + " packs");
+        install_all->registerClickAction([&mf, kick](brls::View*) {
+            kick(mf, "all cheats");
             return true;
         });
-        host->addView(install);
+        host->addView(install_all);
+
+        for (std::size_t i = 0; i < mf.packs.size(); i++) {
+            const auto& entry = mf.packs[i];
+            auto* cell = new brls::DetailCell();
+            cell->title->setText(entry.name);
+            cell->detail->setText("Tap to install");
+            cell->registerClickAction([entry, &mf, kick](brls::View*) {
+                ::foyer::library::CheatManifest filt{};
+                filt.version = mf.version;
+                filt.packs.push_back(entry);
+                kick(filt, entry.name);
+                return true;
+            });
+            host->addView(cell);
+        }
     }
     wrap_with_scroll(host, this);
 }
