@@ -29,6 +29,18 @@
             <FoyerCoresTab />
         </brls:Tab>
 
+        <brls:Tab label="Bezels">
+            <FoyerBezelsTab />
+        </brls:Tab>
+
+        <brls:Tab label="Shaders">
+            <FoyerShadersTab />
+        </brls:Tab>
+
+        <brls:Tab label="Cheats">
+            <FoyerCheatsTab />
+        </brls:Tab>
+
         <brls:Tab label="Updates">
             <FoyerUpdatesTab />
         </brls:Tab>

@@ -9,6 +9,7 @@ namespace {
 ::foyer::library::CoreManifest   g_cores;
 ::foyer::library::BezelManifest  g_bezels;
 ::foyer::library::ShaderManifest g_shaders;
+::foyer::library::CheatManifest  g_cheats;
 }  // namespace
 
 void prefetch() {
@@ -28,10 +29,16 @@ void prefetch() {
     foyer::log::write(
         "[manifest_cache] shaders: %zu presets (version=%s)\n",
         g_shaders.presets.size(), g_shaders.version.c_str());
+
+    g_cheats = ::foyer::library::fetch_cheat_manifest(cfg.cheats_manifest_url);
+    foyer::log::write(
+        "[manifest_cache] cheats: %zu packs (version=%s)\n",
+        g_cheats.packs.size(), g_cheats.version.c_str());
 }
 
 const ::foyer::library::CoreManifest&   cores()   { return g_cores; }
 const ::foyer::library::BezelManifest&  bezels()  { return g_bezels; }
 const ::foyer::library::ShaderManifest& shaders() { return g_shaders; }
+const ::foyer::library::CheatManifest&  cheats()  { return g_cheats; }
 
 }  // namespace foyer::browser::manifest_cache

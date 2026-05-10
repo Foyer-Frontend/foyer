@@ -1,21 +1,27 @@
 #include "update_check.hpp"
 
+#include "manifest_cache.hpp"
 #include "self_update.hpp"
 
 #include "library/config.hpp"
 #include "library/foyer_update_job.hpp"
 #include "library/foyer_updater.hpp"
+#include "library/updates.hpp"
+#include "library/worker.hpp"
 #include "platform/log.hpp"
 
 #include <borealis.hpp>
 #include <memory>
+#include <string>
 
 namespace foyer::browser::update_check {
 
 namespace {
 
 std::unique_ptr<::foyer::library::FoyerUpdateJob> g_job;
+std::unique_ptr<::foyer::library::Worker>         g_aux_job;
 brls::RepeatingTimer*                             g_poll = nullptr;
+brls::RepeatingTimer*                             g_aux_poll = nullptr;
 bool                                              g_verbose = false;
 
 void cleanup_poll() {
@@ -23,6 +29,14 @@ void cleanup_poll() {
         g_poll->stop();
         delete g_poll;
         g_poll = nullptr;
+    }
+}
+
+void cleanup_aux_poll() {
+    if (g_aux_poll) {
+        g_aux_poll->stop();
+        delete g_aux_poll;
+        g_aux_poll = nullptr;
     }
 }
 
@@ -36,8 +50,6 @@ void prompt_restart() {
     dlg->open();
 }
 
-// Second poll cycle — watch the download job, prompt restart on
-// success.
 void watch_download() {
     if (g_poll) cleanup_poll();
     g_poll = new brls::RepeatingTimer();
@@ -73,6 +85,56 @@ void prompt_download(const std::string& version) {
         watch_download();
     });
     dlg->open();
+}
+
+// Verbose-only second pass: refresh the cores/bezels/shaders/cheats
+// manifests in case they advanced since boot, then run the pending-
+// updates aggregator over installed sidecars. Toasts a summary —
+// boot path stays silent and never reaches this.
+void kick_aux_check() {
+    if (g_aux_job && g_aux_job->active() && !g_aux_job->done()) return;
+    if (g_aux_job) {
+        if (g_aux_job->done()) g_aux_job->finish();
+        g_aux_job.reset();
+    }
+
+    g_aux_job = std::make_unique<::foyer::library::Worker>();
+    g_aux_job->start([](::foyer::library::Worker& w) {
+        w.set_status("Refreshing manifests…");
+        ::foyer::browser::manifest_cache::prefetch();
+    });
+
+    if (g_aux_poll) cleanup_aux_poll();
+    g_aux_poll = new brls::RepeatingTimer();
+    g_aux_poll->setPeriod(500);
+    g_aux_poll->setCallback([]() {
+        if (!g_aux_job || !g_aux_job->done()) return;
+        g_aux_job->finish();
+        cleanup_aux_poll();
+
+        // Aggregate over freshly-fetched manifests + on-disk sidecars.
+        ::foyer::library::FoyerManifest empty_foyer{};
+        const auto buckets = ::foyer::library::compute_pending_updates(
+            empty_foyer,
+            FOYER_VERSION,
+            ::foyer::browser::manifest_cache::cores(),
+            ::foyer::browser::manifest_cache::bezels(),
+            ::foyer::browser::manifest_cache::cheats());
+        g_aux_job.reset();
+
+        const std::size_t c = buckets.cores.size();
+        const std::size_t b = buckets.bezels.size();
+        const std::size_t k = buckets.cheats.size();
+        if (c == 0 && b == 0 && k == 0) {
+            brls::Application::notify("Content up to date");
+        } else {
+            brls::Application::notify(
+                "Updates — cores " + std::to_string(c)
+                + ", bezels " + std::to_string(b)
+                + ", cheats " + std::to_string(k));
+        }
+    });
+    g_aux_poll->start();
 }
 
 }  // namespace
@@ -115,8 +177,13 @@ bool kick(bool verbose) {
             prompt_download(ver);
         } else if (g_verbose) {
             brls::Application::notify(
-                "Up to date (v" + std::string(FOYER_VERSION) + ")");
+                "Foyer up to date (v" + std::string(FOYER_VERSION) + ")");
         }
+        // Verbose path also surveys aux content (cores/bezels/cheats)
+        // so the user gets a full picture from one button. Boot path
+        // stays silent — content updates aren't urgent enough to
+        // warrant a launch-time prompt.
+        if (g_verbose) kick_aux_check();
     });
     g_poll->start();
     return true;
@@ -124,9 +191,9 @@ bool kick(bool verbose) {
 
 void stop() {
     cleanup_poll();
-    // Don't join the worker thread — see SystemActivity::cancel_pending_scrape
-    // for why blocking on shutdown looks like a HOS crash.
-    if (g_job) (void)g_job.release();
+    cleanup_aux_poll();
+    if (g_job)     (void)g_job.release();
+    if (g_aux_job) (void)g_aux_job.release();
 }
 
 }  // namespace foyer::browser::update_check

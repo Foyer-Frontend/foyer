@@ -135,6 +135,7 @@ void write_locked() {
     out << "    \"action_row_dock\":   " << bstr(g_config.action_row_dock) << ",\n";
     out << "    \"hide_empty_systems\":" << bstr(g_config.hide_empty_systems) << ",\n";
     out << "    \"language\":          \"" << g_config.language << "\",\n";
+    out << "    \"theme_override\":    \"" << g_config.theme_override << "\",\n";
     out << "    \"mtp_autostart\":     " << bstr(g_config.mtp_autostart) << ",\n";
     out << "    \"debug_log\":         " << bstr(g_config.debug_log) << ",\n";
     out << "    \"cores_manifest_url\": \"" << g_config.cores_manifest_url << "\",\n";
@@ -251,6 +252,11 @@ void load_locked() {
     load_bool("rounded_tiles",    g_config.rounded_tiles);
     load_bool("action_row_dock",  g_config.action_row_dock);
     load_bool("hide_empty_systems", g_config.hide_empty_systems);
+    if (auto* v = yyjson_obj_get(root, "theme_override");
+        v && yyjson_is_str(v)) {
+        g_config.theme_override = yyjson_get_str(v);
+    }
+
     if (auto* v = yyjson_obj_get(root, "language");
         v && yyjson_is_str(v)) {
         g_config.language = yyjson_get_str(v);
@@ -371,6 +377,12 @@ void set_theme_color(std::string_view color) {
 void set_language(std::string_view code) {
     std::scoped_lock lk{g_mutex};
     g_config.language = std::string{code};
+    write_locked();
+}
+
+void set_theme_override(std::string_view value) {
+    std::scoped_lock lk{g_mutex};
+    g_config.theme_override = std::string{value};
     write_locked();
 }
 

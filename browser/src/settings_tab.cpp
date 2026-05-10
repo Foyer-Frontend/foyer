@@ -4,7 +4,11 @@
 #include "library_state.hpp"
 #include "i18n/i18n.hpp"
 #include "library/config.hpp"
+#include "library/bezel_installer.hpp"
+#include "library/cheat_installer.hpp"
 #include "library/core_install_job.hpp"
+#include "library/shader_installer.hpp"
+#include "library/worker.hpp"
 #include "manifest_cache.hpp"
 #include "scrapers/accounts.hpp"
 #include "update_check.hpp"
@@ -113,6 +117,38 @@ FoyerGeneralTab::FoyerGeneralTab() {
                [](int selected) { apply_language(selected); });
     host->addView(lang);
 
+    static const std::array<std::string_view, 3> kThemeCodes = {
+        "", "light", "dark",
+    };
+    std::vector<std::string> theme_labels = {
+        "Auto (follow system)", "Light", "Dark",
+    };
+    int theme_initial = 0;
+    for (std::size_t i = 0; i < kThemeCodes.size(); i++) {
+        if (kThemeCodes[i] == cfg.theme_override) {
+            theme_initial = static_cast<int>(i);
+            break;
+        }
+    }
+    auto* theme = new brls::SelectorCell();
+    theme->init("Theme", theme_labels, theme_initial,
+                [](int) {},
+                [](int selected) {
+                    if (selected >= 0 && selected < (int)kThemeCodes.size()) {
+                        ::foyer::library::set_theme_override(kThemeCodes[selected]);
+                    }
+                });
+    host->addView(theme);
+
+    auto* rerun_wizard = new brls::DetailCell();
+    rerun_wizard->title->setText("Re-run wizard");
+    rerun_wizard->detail->setText("Open now");
+    rerun_wizard->registerClickAction([](brls::View*) {
+        brls::Application::pushActivity(new ::foyer::browser::WizardActivity());
+        return true;
+    });
+    host->addView(rerun_wizard);
+
     wrap_with_scroll(host, this);
 }
 brls::View* FoyerGeneralTab::create() { return new FoyerGeneralTab(); }
@@ -152,20 +188,6 @@ FoyerAccountsTab::FoyerAccountsTab() {
     host->addView(source);
 
     host->addView([]() { auto* h = new brls::Header(); h->setTitle("ScreenScraper"); return h; }());
-
-    auto* ss_devid = new brls::InputCell();
-    ss_devid->init("Devid", acc.screenscraper.devid,
-        [](std::string v) {
-            ::foyer::scrapers::set_account_field("screenscraper.devid", v);
-        }, "Developer ID", "", 64);
-    host->addView(ss_devid);
-
-    auto* ss_devpass = new MaskedInputCell();
-    ss_devpass->init("Devpassword", acc.screenscraper.devpassword,
-        [](std::string v) {
-            ::foyer::scrapers::set_account_field("screenscraper.devpassword", v);
-        }, "Tap to set", "Developer password", 64);
-    host->addView(ss_devpass);
 
     auto* ss_user = new brls::InputCell();
     ss_user->init("Username", acc.screenscraper.ssid,
@@ -220,27 +242,20 @@ FoyerLibraryTab::FoyerLibraryTab() {
 
     host->addView([]() { auto* h = new brls::Header(); h->setTitle("Library"); return h; }());
 
+    auto* folder = new brls::DetailCell();
+    folder->title->setText("Folder");
+    folder->detail->setText("/foyer/roms");
+    host->addView(folder);
+
     auto* rescan = new brls::DetailCell();
     rescan->title->setText("Rescan");
-    rescan->detail->setText("/foyer/roms");
+    rescan->detail->setText("Scan now");
     rescan->registerClickAction([](brls::View*) {
         library_state::rescan();
         brls::Application::notify("Library rescanned");
         return true;
     });
     host->addView(rescan);
-
-    auto* rerun_wizard = new brls::DetailCell();
-    rerun_wizard->title->setText("Re-run wizard");
-    rerun_wizard->detail->setText("Open now");
-    rerun_wizard->registerClickAction([](brls::View*) {
-        // Push the wizard directly. It re-marks first-run complete
-        // on finish, so existing settings stay intact and no
-        // restart is needed.
-        brls::Application::pushActivity(new ::foyer::browser::WizardActivity());
-        return true;
-    });
-    host->addView(rerun_wizard);
 
     wrap_with_scroll(host, this);
 }
@@ -318,6 +333,172 @@ FoyerCoresTab::FoyerCoresTab() {
 }
 brls::View* FoyerCoresTab::create() { return new FoyerCoresTab(); }
 
+// ============ FoyerBezelsTab =============================================
+
+FoyerBezelsTab::FoyerBezelsTab() {
+    this->setAxis(brls::Axis::COLUMN);
+    this->setAlignItems(brls::AlignItems::STRETCH);
+
+    auto* host = tab_root_box();
+    host->addView([]() { auto* h = new brls::Header(); h->setTitle("Bezels"); return h; }());
+
+    const auto& mf = manifest_cache::bezels();
+    if (mf.packs.empty()) {
+        auto* hint = new brls::DetailCell();
+        hint->title->setText("Manifest unavailable");
+        hint->detail->setText("No network / not fetched");
+        host->addView(hint);
+    } else {
+        static std::unique_ptr<::foyer::library::Worker> g_bezel_job;
+        static std::vector<bool> g_picks;
+        if (g_picks.size() != mf.packs.size()) g_picks.assign(mf.packs.size(), false);
+        for (std::size_t i = 0; i < mf.packs.size(); i++) {
+            const auto& entry = mf.packs[i];
+            auto* cell = new brls::BooleanCell();
+            cell->title->setText(entry.name);
+            cell->init(entry.name, g_picks[i],
+                       [i](bool value) { if (i < g_picks.size()) g_picks[i] = value; });
+            host->addView(cell);
+        }
+        auto* install = new brls::DetailCell();
+        install->title->setText("Install selected");
+        install->detail->setText("Download picked");
+        install->registerClickAction([&mf](brls::View*) {
+            ::foyer::library::BezelManifest filt{};
+            filt.version  = mf.version;
+            filt.upstream = mf.upstream;
+            for (std::size_t i = 0; i < mf.packs.size() && i < g_picks.size(); i++)
+                if (g_picks[i]) filt.packs.push_back(mf.packs[i]);
+            if (filt.packs.empty()) { brls::Application::notify("No packs selected"); return true; }
+            if (g_bezel_job && g_bezel_job->active() && !g_bezel_job->done()) {
+                brls::Application::notify("Bezel install already running"); return true;
+            }
+            g_bezel_job = std::make_unique<::foyer::library::Worker>();
+            const auto copy = filt;
+            g_bezel_job->start([copy](::foyer::library::Worker& w) {
+                w.set_status("Installing bezels…");
+                ::foyer::library::install_bezels(copy, {}, {}, false, {});
+            });
+            brls::Application::notify(
+                "Installing " + std::to_string(filt.packs.size()) + " packs");
+            return true;
+        });
+        host->addView(install);
+    }
+    wrap_with_scroll(host, this);
+}
+brls::View* FoyerBezelsTab::create() { return new FoyerBezelsTab(); }
+
+// ============ FoyerShadersTab ============================================
+
+FoyerShadersTab::FoyerShadersTab() {
+    this->setAxis(brls::Axis::COLUMN);
+    this->setAlignItems(brls::AlignItems::STRETCH);
+
+    auto* host = tab_root_box();
+    host->addView([]() { auto* h = new brls::Header(); h->setTitle("Shaders"); return h; }());
+
+    const auto& mf = manifest_cache::shaders();
+    if (mf.presets.empty()) {
+        auto* hint = new brls::DetailCell();
+        hint->title->setText("Manifest unavailable");
+        hint->detail->setText("No network / not fetched");
+        host->addView(hint);
+    } else {
+        static std::unique_ptr<::foyer::library::Worker> g_shader_job;
+        static std::vector<bool> g_picks;
+        if (g_picks.size() != mf.presets.size()) g_picks.assign(mf.presets.size(), false);
+        for (std::size_t i = 0; i < mf.presets.size(); i++) {
+            const auto& entry = mf.presets[i];
+            auto* cell = new brls::BooleanCell();
+            cell->title->setText(entry.name);
+            cell->init(entry.name, g_picks[i],
+                       [i](bool value) { if (i < g_picks.size()) g_picks[i] = value; });
+            host->addView(cell);
+        }
+        auto* install = new brls::DetailCell();
+        install->title->setText("Install selected");
+        install->detail->setText("Download picked");
+        install->registerClickAction([&mf](brls::View*) {
+            ::foyer::library::ShaderManifest filt{};
+            filt.version = mf.version;
+            for (std::size_t i = 0; i < mf.presets.size() && i < g_picks.size(); i++)
+                if (g_picks[i]) filt.presets.push_back(mf.presets[i]);
+            if (filt.presets.empty()) { brls::Application::notify("No presets selected"); return true; }
+            if (g_shader_job && g_shader_job->active() && !g_shader_job->done()) {
+                brls::Application::notify("Shader install already running"); return true;
+            }
+            g_shader_job = std::make_unique<::foyer::library::Worker>();
+            const auto copy = filt;
+            g_shader_job->start([copy](::foyer::library::Worker& w) {
+                w.set_status("Installing shaders…");
+                ::foyer::library::install_shaders(copy, {}, false, {});
+            });
+            brls::Application::notify(
+                "Installing " + std::to_string(filt.presets.size()) + " presets");
+            return true;
+        });
+        host->addView(install);
+    }
+    wrap_with_scroll(host, this);
+}
+brls::View* FoyerShadersTab::create() { return new FoyerShadersTab(); }
+
+// ============ FoyerCheatsTab =============================================
+
+FoyerCheatsTab::FoyerCheatsTab() {
+    this->setAxis(brls::Axis::COLUMN);
+    this->setAlignItems(brls::AlignItems::STRETCH);
+
+    auto* host = tab_root_box();
+    host->addView([]() { auto* h = new brls::Header(); h->setTitle("Cheats"); return h; }());
+
+    const auto& mf = manifest_cache::cheats();
+    if (mf.packs.empty()) {
+        auto* hint = new brls::DetailCell();
+        hint->title->setText("Manifest unavailable");
+        hint->detail->setText("No network / not fetched");
+        host->addView(hint);
+    } else {
+        static std::unique_ptr<::foyer::library::Worker> g_cheat_job;
+        static std::vector<bool> g_picks;
+        if (g_picks.size() != mf.packs.size()) g_picks.assign(mf.packs.size(), false);
+        for (std::size_t i = 0; i < mf.packs.size(); i++) {
+            const auto& entry = mf.packs[i];
+            auto* cell = new brls::BooleanCell();
+            cell->title->setText(entry.name);
+            cell->init(entry.name, g_picks[i],
+                       [i](bool value) { if (i < g_picks.size()) g_picks[i] = value; });
+            host->addView(cell);
+        }
+        auto* install = new brls::DetailCell();
+        install->title->setText("Install selected");
+        install->detail->setText("Download picked");
+        install->registerClickAction([&mf](brls::View*) {
+            ::foyer::library::CheatManifest filt{};
+            filt.version = mf.version;
+            for (std::size_t i = 0; i < mf.packs.size() && i < g_picks.size(); i++)
+                if (g_picks[i]) filt.packs.push_back(mf.packs[i]);
+            if (filt.packs.empty()) { brls::Application::notify("No packs selected"); return true; }
+            if (g_cheat_job && g_cheat_job->active() && !g_cheat_job->done()) {
+                brls::Application::notify("Cheat install already running"); return true;
+            }
+            g_cheat_job = std::make_unique<::foyer::library::Worker>();
+            const auto copy = filt;
+            g_cheat_job->start([copy](::foyer::library::Worker& w) {
+                w.set_status("Installing cheats…");
+                ::foyer::library::install_cheats(copy, {}, {}, false, {});
+            });
+            brls::Application::notify(
+                "Installing " + std::to_string(filt.packs.size()) + " packs");
+            return true;
+        });
+        host->addView(install);
+    }
+    wrap_with_scroll(host, this);
+}
+brls::View* FoyerCheatsTab::create() { return new FoyerCheatsTab(); }
+
 // ============ FoyerUpdatesTab ============================================
 
 FoyerUpdatesTab::FoyerUpdatesTab() {
@@ -327,11 +508,6 @@ FoyerUpdatesTab::FoyerUpdatesTab() {
     auto* host = tab_root_box();
 
     host->addView([]() { auto* h = new brls::Header(); h->setTitle("Updates"); return h; }());
-
-    auto* current = new brls::DetailCell();
-    current->title->setText("Current version");
-    current->detail->setText(FOYER_DISPLAY_VERSION);
-    host->addView(current);
 
     auto* check = new brls::DetailCell();
     check->title->setText("Check for updates");
@@ -359,7 +535,7 @@ FoyerAboutTab::FoyerAboutTab() {
     host->addView([]() { auto* h = new brls::Header(); h->setTitle("About"); return h; }());
 
     auto* version = new brls::DetailCell();
-    version->title->setText("foyer version");
+    version->title->setText("Version");
     version->detail->setText(FOYER_DISPLAY_VERSION);
     host->addView(version);
 

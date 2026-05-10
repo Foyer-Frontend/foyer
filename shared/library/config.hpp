@@ -88,6 +88,12 @@ struct Config {
     // since translation is stateless.
     std::string  language          = "";
 
+    // UI theme override. "" / "auto" = follow HOS ColorSetId via
+    // theme_watcher (default). "light" / "dark" = ignore HOS state
+    // and pin brls's ThemeVariant. theme_watcher honours this on
+    // every poll, so flipping HOS while pinned is a no-op.
+    std::string  theme_override     = "";
+
     // 0.5.2 Home action-row external app chain-launch targets. The
     // eShop / Album buttons walk this list in order until one resolves
     // to an existing .nro on the SD; we then envSetNextLoad it so
@@ -195,6 +201,10 @@ void          set_theme_color(std::string_view color);
 // Other values: ISO-style code parsed by foyer::i18n::map_switch_language()
 // — e.g. "es", "pt-BR".
 void          set_language(std::string_view code);
+
+// UI theme override. "" / "auto" = follow HOS ColorSetId.
+// "light" / "dark" = pinned variant. Persisted to /foyer/data/config/.
+void          set_theme_override(std::string_view value);
 void          set_sort_mode(Config::SortMode mode);
 void          set_system_sort_mode(Config::SystemSortMode mode);
 void          set_system_custom_order(std::vector<std::string> order);
