@@ -1,56 +1,108 @@
 <!--
     foyer Settings — HOS-style sidebar layout via brls TabFrame.
 
+    Top bar mirrors Home / System / Game (clock · wifi · battery)
+    so the chrome looks consistent across every screen. AppletFrame's
+    own header is hidden via headerHidden=true; we keep its footer
+    (BottomBar) so brls's hint pills still show under each tab.
+
     Each <brls:Tab> resolves to a registered C++ view name, defined
-    in browser/src/settings_tab.cpp. Tabs build their rows in their
-    constructors so the panels stay live with their data (cores
-    manifest, update job state, etc.).
+    in browser/src/settings_tab.cpp.
 -->
 <brls:AppletFrame
-    title="@i18n/foyer/settings/title"
+    headerHidden="true"
     iconInterpolation="linear">
 
-    <brls:TabFrame
-        title="@i18n/foyer/settings/title">
+    <brls:Box
+        width="auto"
+        height="auto"
+        grow="1.0"
+        axis="column">
 
-        <brls:Tab label="General">
-            <FoyerGeneralTab />
-        </brls:Tab>
+        <!-- Top bar — clock · wifi · battery cluster pushed right
+             by a flex-grow spacer. Same heights/margins as
+             home.xml so the chrome reads identical. -->
+        <brls:Box
+            width="auto"
+            height="80"
+            axis="row"
+            alignItems="center"
+            marginLeft="@style/brls/hints/footer_margin_sides"
+            marginRight="@style/brls/hints/footer_margin_sides"
+            paddingLeft="@style/brls/hints/footer_padding_sides"
+            paddingRight="@style/brls/hints/footer_padding_sides">
 
-        <brls:Tab label="Online accounts">
-            <FoyerAccountsTab />
-        </brls:Tab>
+            <brls:Box width="auto" height="auto" grow="1.0" />
 
-        <brls:Tab label="Library">
-            <FoyerLibraryTab />
-        </brls:Tab>
+            <brls:Box
+                width="auto"
+                height="auto"
+                axis="row"
+                alignItems="center"
+                direction="leftToRight">
 
-        <brls:Tab label="Cores">
-            <FoyerCoresTab />
-        </brls:Tab>
+                <brls:Label
+                    id="foyer/clock"
+                    text="--:--"
+                    width="auto"
+                    height="auto"
+                    fontSize="22"
+                    marginRight="20" />
 
-        <brls:Tab label="Bezels">
-            <FoyerBezelsTab />
-        </brls:Tab>
+                <brls:Wireless
+                    id="foyer/wireless"
+                    marginRight="20"
+                    marginBottom="2" />
 
-        <brls:Tab label="Shaders">
-            <FoyerShadersTab />
-        </brls:Tab>
+                <brls:Battery
+                    id="foyer/battery"
+                    marginBottom="2" />
+            </brls:Box>
+        </brls:Box>
 
-        <brls:Tab label="Cheats">
-            <FoyerCheatsTab />
-        </brls:Tab>
+        <brls:TabFrame
+            grow="1.0"
+            title="@i18n/foyer/settings/title">
 
-        <brls:Tab label="Updates">
-            <FoyerUpdatesTab />
-        </brls:Tab>
+            <brls:Tab label="General">
+                <FoyerGeneralTab />
+            </brls:Tab>
 
-        <brls:Separator />
+            <brls:Tab label="Online accounts">
+                <FoyerAccountsTab />
+            </brls:Tab>
 
-        <brls:Tab label="About">
-            <FoyerAboutTab />
-        </brls:Tab>
+            <brls:Tab label="Library">
+                <FoyerLibraryTab />
+            </brls:Tab>
 
-    </brls:TabFrame>
+            <brls:Tab label="Cores">
+                <FoyerCoresTab />
+            </brls:Tab>
+
+            <brls:Tab label="Bezels">
+                <FoyerBezelsTab />
+            </brls:Tab>
+
+            <brls:Tab label="Shaders">
+                <FoyerShadersTab />
+            </brls:Tab>
+
+            <brls:Tab label="Cheats">
+                <FoyerCheatsTab />
+            </brls:Tab>
+
+            <brls:Tab label="Updates">
+                <FoyerUpdatesTab />
+            </brls:Tab>
+
+            <brls:Separator />
+
+            <brls:Tab label="About">
+                <FoyerAboutTab />
+            </brls:Tab>
+
+        </brls:TabFrame>
+    </brls:Box>
 
 </brls:AppletFrame>

@@ -389,11 +389,11 @@ void HomeActivity::buildActionRow() {
     };
 
     actionRow->addView(new ActionButton("img/actions/news.png", "News",
-        coming_soon("News feed coming in a later alpha.")));
+        coming_soon("News feed — coming soon.")));
     actionRow->addView(new ActionButton("img/actions/eshop.png", "eShop",
-        coming_soon("eShop chain-launch coming in a later alpha.")));
+        coming_soon("eShop chain-launch — coming soon.")));
     actionRow->addView(new ActionButton("img/actions/gallery.png", "Album",
-        coming_soon("Album viewer coming in a later alpha.")));
+        coming_soon("Album viewer — coming soon.")));
     actionRow->addView(new ActionButton("img/actions/search.png", "Search",
         [](brls::View*) {
             brls::Application::pushActivity(new SearchActivity());

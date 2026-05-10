@@ -24,20 +24,25 @@ brls::RepeatingTimer*                             g_poll = nullptr;
 brls::RepeatingTimer*                             g_aux_poll = nullptr;
 bool                                              g_verbose = false;
 
+// brls::RepeatingTimer::onUpdate writes `this->progress = 0` AFTER
+// invoking the callback. Deleting the timer from inside its own
+// callback frees `this` mid-execution and that trailing write
+// faults. We defer the delete via brls::sync so onUpdate completes
+// on a still-live object.
 void cleanup_poll() {
-    if (g_poll) {
-        g_poll->stop();
-        delete g_poll;
-        g_poll = nullptr;
-    }
+    if (!g_poll) return;
+    auto* dead = g_poll;
+    g_poll = nullptr;
+    dead->stop();
+    brls::sync([dead]() { delete dead; });
 }
 
 void cleanup_aux_poll() {
-    if (g_aux_poll) {
-        g_aux_poll->stop();
-        delete g_aux_poll;
-        g_aux_poll = nullptr;
-    }
+    if (!g_aux_poll) return;
+    auto* dead = g_aux_poll;
+    g_aux_poll = nullptr;
+    dead->stop();
+    brls::sync([dead]() { delete dead; });
 }
 
 void prompt_restart() {
