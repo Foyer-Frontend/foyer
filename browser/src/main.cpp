@@ -163,7 +163,14 @@ int main(int argc, char* argv[])
         brls::Application::pushActivity(new ::foyer::browser::WizardActivity());
     } else {
         foyer::log::write("[boot] pushing SplashActivity\n");
-        brls::Application::pushActivity(new ::foyer::browser::SplashActivity());
+        // No fade animation — the fade marks the splash as
+        // translucent for its duration, and brls then draws
+        // every activity below (HomeActivity's action row,
+        // carousel etc) for those frames, bleeding through as
+        // an artifact during boot.
+        brls::Application::pushActivity(
+            new ::foyer::browser::SplashActivity(),
+            brls::TransitionAnimation::NONE);
 
         // Boot-time update check — silent unless a newer manifest
         // version is published, in which case the user gets a

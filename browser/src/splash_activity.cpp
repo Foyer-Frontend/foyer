@@ -93,7 +93,10 @@ void SplashActivity::handoff() {
 
     // Home is already underneath us — main pushed Home first, then
     // Splash on top. A single popActivity reveals it. No push race.
-    brls::Application::popActivity();
+    // No fade — the fade phase marks the popped splash as
+    // translucent and shows HomeActivity bleeding through
+    // around its edges for the duration.
+    brls::Application::popActivity(brls::TransitionAnimation::NONE);
 }
 
 }  // namespace foyer::browser
