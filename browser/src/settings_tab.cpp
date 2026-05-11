@@ -28,6 +28,7 @@
 #include <cstdio>
 #include <functional>
 #include <memory>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -371,73 +372,77 @@ FoyerCoresTab::FoyerCoresTab() {
         });
         host->addView(install_all);
 
-        // Group manifest entries by SystemDef so each system gets a
-        // Header above its cores. find_core() maps a manifest entry
-        // (by short name like "fceumm") back to its SystemDef and
-        // CoreDef. Cores with no system mapping land in "Other".
-        std::vector<bool> placed(mf.cores.size(), false);
+        // Walk every SystemDef and emit a Header + a cell for each
+        // of its cores that the manifest knows about. We iterate
+        // systems (not manifest entries) so consoles that share a
+        // core list — Genesis / Mega Drive / Master System / Game
+        // Gear all wire genesisplusgx etc — each get their own
+        // section. The same core appears under multiple headers
+        // intentionally; install resolves the same nro regardless
+        // of which section it was tapped from.
+        auto find_manifest = [&mf](std::string_view name)
+            -> const ::foyer::library::CoreManifestEntry* {
+            for (const auto& e : mf.cores) if (e.name == name) return &e;
+            return nullptr;
+        };
+        std::set<std::string> shown;
         for (const auto& sys : ::foyer::library::all_systems()) {
             if (::foyer::library::is_virtual_system(sys)) continue;
 
-            std::vector<std::size_t> picks;
-            for (std::size_t i = 0; i < mf.cores.size(); i++) {
-                if (placed[i]) continue;
-                const auto look =
-                    ::foyer::library::find_core(mf.cores[i].name);
-                if (look.sys && look.sys->folder_name == sys.folder_name) {
-                    picks.push_back(i);
-                }
+            std::vector<const ::foyer::library::CoreDef*> defs;
+            for (const auto& cd : sys.cores) {
+                if (find_manifest(cd.name)) defs.push_back(&cd);
             }
-            if (picks.empty()) continue;
+            if (defs.empty()) continue;
             host->addView([&sys]() {
                 auto* h = new brls::Header();
                 h->setTitle(std::string(sys.display_name));
                 return h;
             }());
-            for (std::size_t i : picks) {
-                placed[i] = true;
-                const auto& entry = mf.cores[i];
-                const auto look = ::foyer::library::find_core(entry.name);
-                const std::string label = look.core
-                    ? std::string(look.core->display_name)
-                    : entry.name;
+            for (const auto* cd : defs) {
+                shown.insert(std::string(cd->name));
+                const auto* entry = find_manifest(cd->name);
+                ::foyer::library::CoreManifestEntry copy = *entry;
+                const std::string label{cd->display_name};
                 auto* cell = new brls::DetailCell();
                 cell->title->setText(label);
                 cell->detail->setText("Tap to install");
                 cell->registerClickAction(
-                    [entry, &mf, kick_install](brls::View*) {
+                    [copy, mf_version = mf.version, kick_install]
+                    (brls::View*) {
                         ::foyer::library::CoreManifest filt{};
-                        filt.version = mf.version;
-                        filt.cores.push_back(entry);
-                        kick_install(filt, entry.name);
+                        filt.version = mf_version;
+                        filt.cores.push_back(copy);
+                        kick_install(filt, copy.name);
                         return true;
                     });
                 host->addView(cell);
             }
         }
-        // Trailing "Other" — manifest entries whose name doesn't
-        // match any SystemDef's cores span. Keeps unmapped cores
-        // visible instead of silently dropping them.
-        std::vector<std::size_t> rest;
-        for (std::size_t i = 0; i < mf.cores.size(); i++)
-            if (!placed[i]) rest.push_back(i);
-        if (!rest.empty()) {
+        // Manifest entries that aren't referenced by any SystemDef
+        // (e.g. an experimental core we haven't wired into
+        // system_db yet) — keep them reachable under "Other".
+        std::vector<const ::foyer::library::CoreManifestEntry*> orphans;
+        for (const auto& e : mf.cores)
+            if (!shown.count(e.name)) orphans.push_back(&e);
+        if (!orphans.empty()) {
             host->addView([]() {
                 auto* h = new brls::Header();
                 h->setTitle("Other");
                 return h;
             }());
-            for (std::size_t i : rest) {
-                const auto& entry = mf.cores[i];
+            for (const auto* e : orphans) {
+                ::foyer::library::CoreManifestEntry copy = *e;
                 auto* cell = new brls::DetailCell();
-                cell->title->setText(entry.name);
+                cell->title->setText(copy.name);
                 cell->detail->setText("Tap to install");
                 cell->registerClickAction(
-                    [entry, &mf, kick_install](brls::View*) {
+                    [copy, mf_version = mf.version, kick_install]
+                    (brls::View*) {
                         ::foyer::library::CoreManifest filt{};
-                        filt.version = mf.version;
-                        filt.cores.push_back(entry);
-                        kick_install(filt, entry.name);
+                        filt.version = mf_version;
+                        filt.cores.push_back(copy);
+                        kick_install(filt, copy.name);
                         return true;
                     });
                 host->addView(cell);
