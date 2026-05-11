@@ -166,13 +166,17 @@ void GameActivity::onContentAvailable() {
         m_clockTask->run();
     }
 
-    // No body background — the title + screenshots now float on
-    // the fanart underneath. The previous translucent theme
-    // backdrop read as a hard black/white surround on both
-    // themes; letting fanart show through keeps the layout
-    // cleaner and matches the rest of the views.
+    // Translucent body panel — theme background at ~78% alpha
+    // so the metadata stays legible over arbitrary fanart.
+    // The "black/white border around the screenshots" the user
+    // reported is actually the FIT scaling letterbox; that's
+    // handled in show_slide() by resizing the Image widget to
+    // the source's native aspect so no padding pixels remain.
     if (body) {
-        body->setBackgroundColor(nvgRGBA(0, 0, 0, 0));
+        auto th = brls::Application::getTheme();
+        NVGcolor bg = th.getColor("brls/background");
+        bg.a = 0.78f;
+        body->setBackgroundColor(bg);
     }
 
     buildMetaPanel();
@@ -350,10 +354,28 @@ void GameActivity::show_slide(int idx) {
     if (idx >= (int)m_slides.size()) idx = (int)m_slides.size() - 1;
     m_slide_idx = idx;
     slide->setImageFromFile(m_slides[idx]);
-    // Aspect-fit instead of stretching — ScreenScraper screenshots
-    // come in at the source console's resolution and the gallery
-    // slot is 16:9, so a stretch chops/stretches the frame.
-    slide->setScalingType(brls::ImageScalingType::FIT);
+    // Resize the slide widget itself to match the source's
+    // native aspect so the FIT scaler has no padding to draw —
+    // gets rid of the black/white letterbox bands the user
+    // hit. The Image slot in game.xml is 480x320; we cap to
+    // those bounds, scale by the limiting dimension, and let
+    // the parent Box's alignItems=center handle horizontal
+    // centring.
+    slide->setScalingType(brls::ImageScalingType::STRETCH);
+    constexpr float kSlotW = 480.0f;
+    constexpr float kSlotH = 320.0f;
+    const float ow = slide->getOriginalImageWidth();
+    const float oh = slide->getOriginalImageHeight();
+    if (ow > 0.0f && oh > 0.0f) {
+        float w = kSlotW;
+        float h = w * (oh / ow);
+        if (h > kSlotH) {
+            h = kSlotH;
+            w = h * (ow / oh);
+        }
+        slide->setWidth(w);
+        slide->setHeight(h);
+    }
     if (slideCaption) {
         const auto& p = m_slides[idx];
         const auto slash = p.find_last_of('/');

@@ -200,13 +200,16 @@ public:
         m_cover_path = std::move(cover);
 
         // A — launch the rom directly (chain-launch into the
-        // player nro). B / Y / X / + are wired below as
-        // tile-scoped actions so they fire only when this tile
-        // has focus.
-        this->registerClickAction([this](brls::View*) {
-            launch_focused_game();
-            return true;
-        });
+        // player nro). registerAction (not registerClickAction)
+        // so brls's hint bar shows "Launch" instead of the
+        // default "OK" label. B / Y / X / + below are tile-
+        // scoped so they fire only when this tile has focus.
+        this->registerAction(
+            "Launch", brls::BUTTON_A,
+            [this](brls::View*) {
+                launch_focused_game();
+                return true;
+            }, false, false, brls::SOUND_CLICK);
         this->addGestureRecognizer(new brls::TapGestureRecognizer(this));
 
         // Y — open the Game details view (cover, screenshots,
