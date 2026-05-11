@@ -8,9 +8,9 @@
 #include "platform/log.hpp"
 #include "util/archive.hpp"
 
-#include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <utime.h>
 
 using namespace brls::literals;
 
@@ -114,7 +114,7 @@ void EmulatorActivity::onContentAvailable() {
                 foyer::log::write(
                     "[player-brls] reusing cached extract %s\n",
                     out.c_str());
-                ::utimensat(AT_FDCWD, out.c_str(), nullptr, 0);
+                ::utime(out.c_str(), nullptr);
                 m_rom_path = out;
             } else if (foyer::util::archive_extract_inner_rom(
                            m_rom_path, valid, out)) {
