@@ -2,12 +2,14 @@
 
 #include <switch.h>
 #include <cerrno>
+#include <cstdio>
 #include <cstring>
 #include <ctime>
 #include <dirent.h>
 #include <string>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <vector>
 
 #include "platform/log.hpp"
 
@@ -63,20 +65,70 @@ void apply_staged_if_present() {
         return;
     }
 
-    // FAT/exFAT rename doesn't honour POSIX "atomic replace": when the
-    // destination exists it returns EEXIST. Try direct rename first,
-    // then unlink-then-rename on failure. The window where dest is
-    // missing is brief and the staged file is fully on disk by now,
-    // so a power-cut here loses no data.
-    if (::rename(g_path_new.c_str(), g_path.c_str()) != 0) {
-        ::unlink(g_path.c_str());
-        if (::rename(g_path_new.c_str(), g_path.c_str()) != 0) {
+    // FAT/exFAT rename of the staged file onto the canonical name
+    // bites two ways:
+    //   1) the destination exists → EEXIST, even with hbloader's
+    //      libnx newlib (no POSIX overwrite-rename here).
+    //   2) the unlink-then-rename fallback the prior implementation
+    //      used was destructive: unlink succeeded, second rename
+    //      then failed because the .new file was still mapped by
+    //      the running process (we chain-launch .new directly),
+    //      leaving the user with NO foyer.nro and a stranded .new.
+    //
+    // Promote via byte-copy instead. fopen("wb") on the canonical
+    // path doesn't require the underlying mapping to release —
+    // it truncates the file in place. After the bytes are copied
+    // we drop the .new sentinel; if the unlink fails (because the
+    // running process is mapped from .new), the canonical file is
+    // already correct and the next boot will run from canonical
+    // and re-clean.
+    auto copy_file = [](const char* from, const char* to) -> bool {
+        FILE* src = ::fopen(from, "rb");
+        if (!src) {
             foyer::log::write(
-                "[self_update] rename of staged nro failed errno=%d "
-                "(leaving %s in place for the next attempt)\n",
-                errno, g_path_new.c_str());
-            return;  // do NOT unlink .new on failure — see git history.
+                "[self_update] fopen(%s, rb) failed errno=%d\n",
+                from, errno);
+            return false;
         }
+        FILE* dst = ::fopen(to, "wb");
+        if (!dst) {
+            foyer::log::write(
+                "[self_update] fopen(%s, wb) failed errno=%d\n",
+                to, errno);
+            ::fclose(src);
+            return false;
+        }
+        std::vector<unsigned char> buf(64 * 1024);
+        bool ok = true;
+        for (;;) {
+            const std::size_t n = ::fread(buf.data(), 1, buf.size(), src);
+            if (n == 0) break;
+            if (::fwrite(buf.data(), 1, n, dst) != n) {
+                foyer::log::write("[self_update] fwrite short on %s\n", to);
+                ok = false;
+                break;
+            }
+        }
+        ::fclose(dst);
+        ::fclose(src);
+        return ok;
+    };
+
+    if (!copy_file(g_path_new.c_str(), g_path.c_str())) {
+        foyer::log::write(
+            "[self_update] copy of staged nro failed; leaving %s "
+            "in place for the next attempt\n", g_path_new.c_str());
+        return;
+    }
+    // Best-effort cleanup of the sentinel. If we're running from
+    // the .new file, the unlink may fail on FAT because the file
+    // is still mapped — the canonical copy is already correct,
+    // so just log and move on.
+    if (::unlink(g_path_new.c_str()) != 0) {
+        foyer::log::write(
+            "[self_update] unlink(%s) failed errno=%d "
+            "(will retry on next boot)\n",
+            g_path_new.c_str(), errno);
     }
     foyer::log::write("[self_update] applied staged nro -> %s\n",
         g_path.c_str());

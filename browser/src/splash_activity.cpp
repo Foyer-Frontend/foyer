@@ -92,14 +92,19 @@ void SplashActivity::handoff() {
         m_tick = nullptr;
     }
 
-    // Boot path now keeps Splash alone on the stack so Home
-    // can't bleed through brls's first deko3d frames. Push
-    // Home first, then pop self — both with NONE so there's
-    // no fade phase that would mark either as translucent.
+    // Push HomeActivity on top of the splash. brls's
+    // popActivity always pops the TOP of the stack, so
+    // popping here would just pop the Home we just pushed —
+    // that's why the prior implementation left the user stuck
+    // on the spinner. Instead, leave Splash dormant in the
+    // stack below Home. brls walks top-down and stops at the
+    // first non-translucent activity, so the splash never
+    // paints again. HomeActivity's quit drain calls
+    // Application::quit() rather than popActivity, so the
+    // user never falls back to the splash.
     brls::Application::pushActivity(
         new ::foyer::browser::HomeActivity(),
         brls::TransitionAnimation::NONE);
-    brls::Application::popActivity(brls::TransitionAnimation::NONE);
 }
 
 }  // namespace foyer::browser
