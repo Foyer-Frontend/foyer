@@ -1,5 +1,6 @@
 #include "tab/settings_tab.hpp"
 
+#include "activity/settings_activity.hpp"
 #include "activity/wizard_activity.hpp"
 #include "library_state.hpp"
 #include "i18n/i18n.hpp"
@@ -15,6 +16,7 @@
 #include "widgets/masked_input_cell.hpp"
 
 #include <borealis/views/cells/cell_detail.hpp>
+#include <switch.h>
 #include <borealis/views/cells/cell_input.hpp>
 #include <borealis/views/cells/cell_selector.hpp>
 #include <borealis/views/dialog.hpp>
@@ -133,9 +135,41 @@ FoyerGeneralTab::FoyerGeneralTab() {
     theme->init("Theme", theme_labels, theme_initial,
                 [](int) {},
                 [](int selected) {
-                    if (selected >= 0 && selected < (int)kThemeCodes.size()) {
-                        ::foyer::library::set_theme_override(kThemeCodes[selected]);
+                    if (selected < 0 || selected >= (int)kThemeCodes.size())
+                        return;
+                    const auto code = kThemeCodes[selected];
+                    ::foyer::library::set_theme_override(code);
+
+                    // Apply immediately so the new variant is live
+                    // before we re-push: theme_watcher would catch
+                    // it on the next tick, but waiting leaves the
+                    // re-pushed Settings inflated with the old
+                    // theme on its very first frame.
+                    brls::ThemeVariant want;
+                    if (code == "light") {
+                        want = brls::ThemeVariant::LIGHT;
+                    } else if (code == "dark") {
+                        want = brls::ThemeVariant::DARK;
+                    } else {
+                        ColorSetId id = ColorSetId_Light;
+                        setsysGetColorSetId(&id);
+                        want = (id == ColorSetId_Dark)
+                            ? brls::ThemeVariant::DARK
+                            : brls::ThemeVariant::LIGHT;
                     }
+                    brls::Application::getPlatform()->setThemeVariant(want);
+
+                    // brls caches some theme-derived colors at
+                    // view-attach time, so swapping the variant
+                    // mid-Settings only repaints half the chrome.
+                    // Pop + re-push SettingsActivity on the next
+                    // tick to land in a freshly-inflated view that
+                    // reads colors fresh.
+                    brls::sync([]() {
+                        brls::Application::popActivity();
+                        brls::Application::pushActivity(
+                            new ::foyer::browser::SettingsActivity());
+                    });
                 });
     host->addView(theme);
 
