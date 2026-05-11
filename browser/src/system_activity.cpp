@@ -1,7 +1,9 @@
 #include "activity/system_activity.hpp"
 
 #include "activity/game_activity.hpp"
+#include "launch.hpp"
 #include "library_state.hpp"
+#include "library/per_game.hpp"
 #include "library/config.hpp"
 #include "library/scrape_job.hpp"
 #include "library/system_db.hpp"
@@ -197,12 +199,51 @@ public:
         }
         m_cover_path = std::move(cover);
 
+        // A — launch the rom directly (chain-launch into the
+        // player nro). B / Y / X / + are wired below as
+        // tile-scoped actions so they fire only when this tile
+        // has focus.
         this->registerClickAction([this](brls::View*) {
-            brls::Application::pushActivity(
-                new GameActivity(m_system, m_path));
+            launch_focused_game();
             return true;
         });
         this->addGestureRecognizer(new brls::TapGestureRecognizer(this));
+
+        // Y — open the Game details view (cover, screenshots,
+        // metadata).
+        this->registerAction(
+            "Details", brls::BUTTON_Y,
+            [this](brls::View*) {
+                brls::Application::pushActivity(
+                    new GameActivity(m_system, m_path));
+                return true;
+            }, false, false, brls::SOUND_CLICK);
+
+        // X — toggle favourite. per_game.jsonc persists across
+        // launches; scanner reapplies on next rescan.
+        this->registerAction(
+            "Favourite", brls::BUTTON_X,
+            [this](brls::View*) {
+                const bool was = ::foyer::library::per_game_favorite(m_path);
+                ::foyer::library::set_per_game_favorite(m_path, !was);
+                brls::Application::notify(was
+                    ? "Removed from favourites"
+                    : "Added to favourites");
+                return true;
+            }, false, false, brls::SOUND_CLICK);
+
+        // + — per-game settings override (placeholder — wired
+        // to a Dialog until the per-game tab Activity lands).
+        this->registerAction(
+            "Settings", brls::BUTTON_START,
+            [](brls::View*) {
+                auto* dlg = new brls::Dialog(
+                    "Per-game settings — core override, runahead, "
+                    "shader pick. Coming soon.");
+                dlg->addButton("OK", []() {});
+                dlg->open();
+                return true;
+            }, false, false, brls::SOUND_CLICK);
     }
 
     // Idempotent — second call is a no-op. Public so the
@@ -245,6 +286,24 @@ public:
         brls::Box::onFocusGained();
         load_cover();
         if (m_host) m_host->onTileFocused(m_idx);
+    }
+
+    void launch_focused_game() {
+        const auto* sys = library_state::find_system(m_system);
+        if (!sys) {
+            brls::Application::notify("System not in library — rescan?");
+            return;
+        }
+        for (const auto& g : sys->games) {
+            if (g.path != m_path) continue;
+            if (launch_game(*sys, g)) {
+                brls::Application::quit();
+            } else {
+                brls::Application::notify(
+                    "Player nro missing — install the core from Settings");
+            }
+            return;
+        }
     }
 
 private:
@@ -439,13 +498,13 @@ void SystemActivity::onContentAvailable() {
         return n;
     };
     this->getContentView()->registerAction(
-        "hints/page_left", brls::BUTTON_LB,
+        "Page left", brls::BUTTON_LB,
         [jump_focus, page_size](brls::View*) {
             return jump_focus(-page_size());
         },
         false, true, brls::SOUND_FOCUS_CHANGE);
     this->getContentView()->registerAction(
-        "hints/page_right", brls::BUTTON_RB,
+        "Page right", brls::BUTTON_RB,
         [jump_focus, page_size](brls::View*) {
             return jump_focus(+page_size());
         },

@@ -183,13 +183,13 @@ void HomeActivity::onContentAvailable() {
             return n;
         };
         cv->registerAction(
-            "hints/page_left", brls::BUTTON_LB,
+            "Page left", brls::BUTTON_LB,
             [jump_focus, page_size](brls::View*) {
                 return jump_focus(-page_size());
             },
             false, true, brls::SOUND_FOCUS_CHANGE);
         cv->registerAction(
-            "hints/page_right", brls::BUTTON_RB,
+            "Page right", brls::BUTTON_RB,
             [jump_focus, page_size](brls::View*) {
                 return jump_focus(+page_size());
             },

@@ -100,6 +100,14 @@ if (PLAYER_BRLS)
         src/main_brls.cpp
         src/emulator_activity.cpp
         src/emulator_view.cpp
+
+        # borealis Switch platform glue. Provides userAppInit
+        # (including romfsInit) and the deko3d-side service
+        # initialisation brls needs before its first frame.
+        # Linker prefers this direct .o over foyer_shared.a's
+        # services.cpp (which the player binary doesn't pull
+        # otherwise), so there's no multi-def conflict.
+        ${borealis_SOURCE_DIR}/library/lib/platforms/switch/switch_wrapper.c
     )
     target_include_directories(${_player} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include)

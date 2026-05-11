@@ -89,14 +89,17 @@ void add_meta_row(brls::Box* host, const std::string& key,
     k->setText(key);
     k->setFontSize(18.0f);
     k->setWidth(140.0f);
-    auto theme = brls::Application::getTheme();
-    k->setTextColor(theme.getColor("brls/text_disabled"));
+    // Theme-independent red so the label reads against both the
+    // light and dark theme backgrounds; brls's "text_disabled"
+    // was too faint to scan in either mode.
+    k->setTextColor(nvgRGB(0xD0, 0x3A, 0x3A));
     row->addView(k);
 
     auto* v = new brls::Label();
     v->setText(value);
     v->setFontSize(18.0f);
     v->setMaxWidth(620.0f);
+    auto theme = brls::Application::getTheme();
     v->setTextColor(theme.getColor("brls/text"));
     row->addView(v);
 
@@ -163,14 +166,13 @@ void GameActivity::onContentAvailable() {
         m_clockTask->run();
     }
 
-    // Translucent body panel — theme background colour at ~78%
-    // alpha. Reads dark on dark theme, light on light theme so
-    // metadata stays legible over arbitrary fanart.
+    // No body background — the title + screenshots now float on
+    // the fanart underneath. The previous translucent theme
+    // backdrop read as a hard black/white surround on both
+    // themes; letting fanart show through keeps the layout
+    // cleaner and matches the rest of the views.
     if (body) {
-        auto th = brls::Application::getTheme();
-        NVGcolor bg = th.getColor("brls/background");
-        bg.a = 0.78f;
-        body->setBackgroundColor(bg);
+        body->setBackgroundColor(nvgRGBA(0, 0, 0, 0));
     }
 
     buildMetaPanel();
@@ -348,15 +350,29 @@ void GameActivity::show_slide(int idx) {
     if (idx >= (int)m_slides.size()) idx = (int)m_slides.size() - 1;
     m_slide_idx = idx;
     slide->setImageFromFile(m_slides[idx]);
+    // Aspect-fit instead of stretching — ScreenScraper screenshots
+    // come in at the source console's resolution and the gallery
+    // slot is 16:9, so a stretch chops/stretches the frame.
+    slide->setScalingType(brls::ImageScalingType::FIT);
     if (slideCaption) {
-        // Caption shows position N/M plus the basename so the user
-        // knows what's currently on screen.
         const auto& p = m_slides[idx];
         const auto slash = p.find_last_of('/');
         const std::string nm = (slash == std::string::npos) ? p : p.substr(slash + 1);
+        // Friendly caption mapped from the ScreenScraper kind
+        // prefix instead of the raw filename — "sstitle(us).png"
+        // -> "Title screen", "ss(wor).png" -> "Gameplay", etc.
+        std::string kind;
+        if      (nm.rfind("sstitle",       0) == 0) kind = "Title screen";
+        else if (nm.rfind("ss",            0) == 0) kind = "Gameplay";
+        else if (nm.rfind("box-2D",        0) == 0) kind = "Box art";
+        else if (nm.rfind("box-3D",        0) == 0) kind = "Box (3D)";
+        else if (nm.rfind("fanart",        0) == 0) kind = "Fanart";
+        else if (nm.rfind("screenmarquee", 0) == 0) kind = "Marquee";
+        else if (nm.rfind("bezel",         0) == 0) kind = "Bezel";
+        else                                        kind = "Screenshot";
         slideCaption->setText(
-            std::to_string(idx + 1) + "/" + std::to_string(m_slides.size())
-            + "   " + nm);
+            kind + "   " + std::to_string(idx + 1)
+            + "/" + std::to_string(m_slides.size()));
     }
 }
 
