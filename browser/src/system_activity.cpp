@@ -645,19 +645,48 @@ void SystemActivity::populateCarousel() {
     // platform at the same resolution; pulling that from the
     // hardcoded kBoxSizes table is more reliable than probing
     // the on-disk files (which can include hand-edited crops).
-    constexpr float kMaxSide = 280.0f;
-    const auto dims = box_dims_for_system(m_folder);
-    const float scale = std::min(kMaxSide / dims.w, kMaxSide / dims.h);
-    const float tile_w = dims.w * scale;
-    const float tile_h = dims.h * scale;
-    foyer::log::write("[system] %s tile size = %.0fx%.0f\n",
-        m_folder.c_str(), tile_w, tile_h);
+    constexpr float kMaxSide = 200.0f;
+
+    // For real systems every game shares the same box dims (the
+    // system's SS box-2D ratio). For the virtual carousels
+    // (Favourites / Recent / All Games) games are mixed across
+    // systems, so each tile gets its own dims derived from its
+    // rom path's parent folder.
+    const bool is_virtual = m_folder.rfind("__", 0) == 0;
+    auto system_of_game = [](const std::string& rom_path) {
+        const auto sl = rom_path.find_last_of('/');
+        if (sl == std::string::npos) return std::string{};
+        const auto upper = rom_path.substr(0, sl);
+        const auto up_sl = upper.find_last_of('/');
+        return up_sl == std::string::npos
+            ? upper : upper.substr(up_sl + 1);
+    };
 
     int idx = 0;
-    for (const auto& g : sys->games) {
-        carousel->addView(
-            new GameTile(this, idx++, m_folder, g.path, g.stem, g.box_art,
-                         tile_w, tile_h));
+    if (!is_virtual) {
+        const auto dims = box_dims_for_system(m_folder);
+        const float scale = std::min(kMaxSide / dims.w, kMaxSide / dims.h);
+        const float tile_w = dims.w * scale;
+        const float tile_h = dims.h * scale;
+        foyer::log::write("[system] %s tile size = %.0fx%.0f\n",
+            m_folder.c_str(), tile_w, tile_h);
+        for (const auto& g : sys->games) {
+            carousel->addView(
+                new GameTile(this, idx++, m_folder, g.path, g.stem,
+                             g.box_art, tile_w, tile_h));
+        }
+    } else {
+        for (const auto& g : sys->games) {
+            const auto game_sys = system_of_game(g.path);
+            const auto dims = box_dims_for_system(game_sys);
+            const float scale =
+                std::min(kMaxSide / dims.w, kMaxSide / dims.h);
+            const float tile_w = dims.w * scale;
+            const float tile_h = dims.h * scale;
+            carousel->addView(
+                new GameTile(this, idx++, game_sys, g.path, g.stem,
+                             g.box_art, tile_w, tile_h));
+        }
     }
 
     // Warm the first batch so the user sees real covers as soon

@@ -48,7 +48,7 @@ public:
                std::string_view title, std::size_t game_count)
         : m_host(host), m_folder(folder), m_title(title)
     {
-        constexpr float kSquare    = 250.0f;
+        constexpr float kSquare    = 175.0f;
         constexpr float kBannerH   = 36.0f;
 
         this->setWidth(kSquare);
@@ -187,7 +187,7 @@ void HomeActivity::onContentAvailable() {
             return true;
         };
         auto page_size = []() {
-            constexpr float kPitch = 264.0f;
+            constexpr float kPitch = 189.0f;
             constexpr float kViewport = 1280.0f;
             int n = (int)(kViewport / kPitch);
             if (n < 1) n = 1;
