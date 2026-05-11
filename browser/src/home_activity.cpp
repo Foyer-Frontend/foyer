@@ -3,6 +3,7 @@
 #include "activity/search_activity.hpp"
 #include "activity/settings_activity.hpp"
 #include "activity/system_activity.hpp"
+#include "install_queue.hpp"
 #include "theme_watcher.hpp"
 #include "update_check.hpp"
 
@@ -208,6 +209,7 @@ void HomeActivity::onContentAvailable() {
                     SystemActivity::cancel_pending_scrape();
                     theme_watcher::stop();
                     update_check::stop();
+                    install_queue::stop();
                     brls::Application::quit();
                 });
                 dlg->open();

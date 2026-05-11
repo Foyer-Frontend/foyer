@@ -41,6 +41,7 @@ add_executable(foyer
     src/theme_watcher.cpp
     src/masked_input_cell.cpp
     src/update_check.cpp
+    src/install_queue.cpp
 
     # borealis Switch platform glue (matches borealis_template demo).
     ${borealis_SOURCE_DIR}/library/lib/platforms/switch/switch_wrapper.c

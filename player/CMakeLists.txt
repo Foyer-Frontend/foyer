@@ -64,9 +64,19 @@ target_compile_definitions(${_frontend} PRIVATE
     # in-app per-core defaults can't apply.
     FOYER_CORE_NAME=${FOYER_CORE})
 
+# Pick the render shell for this player: borealis (Phase H) or the
+# legacy foyer_render (nanovg-deko3d App). The two cannot coexist —
+# they vendor different copies of nanovg-deko3d — so the choice
+# happens once per build.
+if (PLAYER_BRLS)
+    set(_render_lib borealis)
+else()
+    set(_render_lib foyer_render)
+endif()
+
 target_link_libraries(${_frontend} PUBLIC
     foyer_shared
-    foyer_render
+    ${_render_lib}
     core_${FOYER_CORE}
     ${_rcheevos_dep}
     # EGL + GLES3 + Mesa stack for the HW render callback path. Even
@@ -82,10 +92,22 @@ target_link_libraries(${_frontend} PUBLIC
 set_target_properties(${_frontend} PROPERTIES
     CXX_STANDARD 26)
 
-# Player executable.
-add_executable(${_player}
-    src/main.cpp
-)
+# Player executable. PLAYER_BRLS swaps the window loop from the
+# nanovg-deko3d shell (main.cpp + foyer::App) to the brls-hosted
+# EmulatorActivity (main_brls.cpp + EmulatorView).
+if (PLAYER_BRLS)
+    add_executable(${_player}
+        src/main_brls.cpp
+        src/emulator_activity.cpp
+        src/emulator_view.cpp
+    )
+    target_include_directories(${_player} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include)
+else()
+    add_executable(${_player}
+        src/main.cpp
+    )
+endif()
 target_link_libraries(${_player} PRIVATE
     ${_frontend}
 )

@@ -13,7 +13,6 @@
 #include "emulator_activity.hpp"
 
 #include "platform/log.hpp"
-#include "self_update.hpp"  // detect_paths only; player doesn't self-update
 
 #include <borealis.hpp>
 
@@ -38,7 +37,7 @@ std::string normalise_argv_path(std::string_view in) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    foyer::log::init("/foyer/data/logs");
+    foyer::log::init_file();
 
     if (argc < 2) {
         foyer::log::write("[player-brls] no rom path in argv\n");

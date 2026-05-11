@@ -7,10 +7,11 @@
 #include "library/config.hpp"
 #include "library/bezel_installer.hpp"
 #include "library/cheat_installer.hpp"
-#include "library/core_install_job.hpp"
+#include "library/core_installer.hpp"
 #include "library/shader_installer.hpp"
 #include "library/system_db.hpp"
 #include "library/worker.hpp"
+#include "install_queue.hpp"
 #include "manifest_cache.hpp"
 #include "scrapers/accounts.hpp"
 #include "update_check.hpp"
@@ -341,38 +342,34 @@ FoyerCoresTab::FoyerCoresTab() {
         hint->detail->setText("No network / not fetched");
         host->addView(hint);
     } else {
-        static std::unique_ptr<::foyer::library::CoreInstallJob> g_core_job;
-
+        // All core / bezel / shader / cheat installs share one
+        // global FIFO queue. enqueue() drops the job at the back
+        // and starts it immediately if nothing is currently
+        // running; otherwise the user gets a "Queued — N ahead"
+        // toast and the queue runner picks it up after the
+        // current job finishes.
         auto kick_install = [](::foyer::library::CoreManifest filt,
                                const std::string& tag, bool force) {
-            // Stale-job sweep — a previous run could have finished
-            // without our timer's done() tick (e.g. cancelled, or
-            // the worker exited before kick_install was hit again).
-            // active() lies for ~one tick after the body returns, so
-            // gate on (active && !done) to clear it cleanly.
-            if (g_core_job
-                && g_core_job->active() && !g_core_job->done()) {
-                brls::Application::notify("Install already running");
-                return;
-            }
-            if (g_core_job) {
-                if (g_core_job->done()) g_core_job->finish();
-                g_core_job.reset();
-            }
-            g_core_job = std::make_unique<::foyer::library::CoreInstallJob>();
-            if (g_core_job->start(filt, std::string(), force)) {
-                brls::Application::notify("Installing " + tag);
-                // watch_job streams "[1/N] name - installed/FAILED"
-                // lines from the worker as notifications. The
-                // trailing per-tag toast is omitted — the final
-                // libretro status line already carries the verb.
-                watch_job(g_core_job.get(), []() {
-                    g_core_job.reset();
+            ::foyer::browser::install_queue::enqueue(
+                tag,
+                [filt = std::move(filt), force]
+                (::foyer::library::Worker& w) {
+                    w.set_status("Starting core install…");
+                    ::foyer::library::install_cores(filt,
+                        [&w](const ::foyer::library::InstallProgress& p) {
+                            const char* verb =
+                                p.action == ::foyer::library::InstallAction::Skipped   ? "skipped" :
+                                p.action == ::foyer::library::InstallAction::Updated   ? "updated" :
+                                p.action == ::foyer::library::InstallAction::Installed ? "installed"
+                                                                                       : "FAILED";
+                            char buf[160];
+                            std::snprintf(buf, sizeof(buf), "[%d/%d] %s - %s",
+                                p.index, p.total, p.name.c_str(), verb);
+                            w.set_status(buf);
+                        },
+                        force,
+                        [&w]{ return w.cancelled(); });
                 });
-            } else {
-                brls::Application::notify("Install failed to start");
-                g_core_job.reset();
-            }
         };
 
         auto* install_all = new brls::DetailCell();
@@ -502,33 +499,23 @@ FoyerBezelsTab::FoyerBezelsTab() {
         hint->detail->setText("No network / not fetched");
         host->addView(hint);
     } else {
-        static std::unique_ptr<::foyer::library::Worker> g_bezel_job;
-
         auto kick = [](::foyer::library::BezelManifest filt,
                        const std::string& tag) {
-            if (g_bezel_job && g_bezel_job->active() && !g_bezel_job->done()) {
-                brls::Application::notify("Install already running");
-                return;
-            }
-            g_bezel_job = std::make_unique<::foyer::library::Worker>();
-            const auto copy = filt;
-            g_bezel_job->start([copy](::foyer::library::Worker& w) {
-                w.set_status("Installing bezels…");
-                ::foyer::library::install_bezels(copy,
-                    [&w](const ::foyer::library::BezelInstallProgress& p) {
-                        char buf[160];
-                        std::snprintf(buf, sizeof(buf),
-                            "[%d/%d] %s",
-                            p.index, p.total, p.name.c_str());
-                        w.set_status(buf);
-                    },
-                    {}, false, [&w]{ return w.cancelled(); });
-            });
-            brls::Application::notify("Installing " + tag);
-            watch_job(g_bezel_job.get(), [tag]() {
-                brls::Application::notify("Installed " + tag);
-                g_bezel_job.reset();
-            });
+            ::foyer::browser::install_queue::enqueue(
+                tag,
+                [filt = std::move(filt)]
+                (::foyer::library::Worker& w) {
+                    w.set_status("Starting bezel install…");
+                    ::foyer::library::install_bezels(filt,
+                        [&w](const ::foyer::library::BezelInstallProgress& p) {
+                            char buf[160];
+                            std::snprintf(buf, sizeof(buf),
+                                "[%d/%d] %s",
+                                p.index, p.total, p.name.c_str());
+                            w.set_status(buf);
+                        },
+                        {}, false, [&w]{ return w.cancelled(); });
+                });
         };
 
         auto* install_all = new brls::DetailCell();
@@ -621,33 +608,23 @@ FoyerShadersTab::FoyerShadersTab() {
         hint->detail->setText("No network / not fetched");
         host->addView(hint);
     } else {
-        static std::unique_ptr<::foyer::library::Worker> g_shader_job;
-
         auto kick = [](::foyer::library::ShaderManifest filt,
                        const std::string& tag) {
-            if (g_shader_job && g_shader_job->active() && !g_shader_job->done()) {
-                brls::Application::notify("Install already running");
-                return;
-            }
-            g_shader_job = std::make_unique<::foyer::library::Worker>();
-            const auto copy = filt;
-            g_shader_job->start([copy](::foyer::library::Worker& w) {
-                w.set_status("Installing shaders…");
-                ::foyer::library::install_shaders(copy,
-                    [&w](const ::foyer::library::ShaderInstallProgress& p) {
-                        char buf[160];
-                        std::snprintf(buf, sizeof(buf),
-                            "[%d/%d] %s",
-                            p.index, p.total, p.name.c_str());
-                        w.set_status(buf);
-                    },
-                    false, [&w]{ return w.cancelled(); });
-            });
-            brls::Application::notify("Installing " + tag);
-            watch_job(g_shader_job.get(), [tag]() {
-                brls::Application::notify("Installed " + tag);
-                g_shader_job.reset();
-            });
+            ::foyer::browser::install_queue::enqueue(
+                tag,
+                [filt = std::move(filt)]
+                (::foyer::library::Worker& w) {
+                    w.set_status("Starting shader install…");
+                    ::foyer::library::install_shaders(filt,
+                        [&w](const ::foyer::library::ShaderInstallProgress& p) {
+                            char buf[160];
+                            std::snprintf(buf, sizeof(buf),
+                                "[%d/%d] %s",
+                                p.index, p.total, p.name.c_str());
+                            w.set_status(buf);
+                        },
+                        false, [&w]{ return w.cancelled(); });
+                });
         };
 
         auto* install_all = new brls::DetailCell();
@@ -695,33 +672,23 @@ FoyerCheatsTab::FoyerCheatsTab() {
         hint->detail->setText("No network / not fetched");
         host->addView(hint);
     } else {
-        static std::unique_ptr<::foyer::library::Worker> g_cheat_job;
-
         auto kick = [](::foyer::library::CheatManifest filt,
                        const std::string& tag) {
-            if (g_cheat_job && g_cheat_job->active() && !g_cheat_job->done()) {
-                brls::Application::notify("Install already running");
-                return;
-            }
-            g_cheat_job = std::make_unique<::foyer::library::Worker>();
-            const auto copy = filt;
-            g_cheat_job->start([copy](::foyer::library::Worker& w) {
-                w.set_status("Installing cheats…");
-                ::foyer::library::install_cheats(copy,
-                    [&w](const ::foyer::library::CheatInstallProgress& p) {
-                        char buf[160];
-                        std::snprintf(buf, sizeof(buf),
-                            "[%d/%d] %s",
-                            p.index, p.total, p.name.c_str());
-                        w.set_status(buf);
-                    },
-                    {}, false, [&w]{ return w.cancelled(); });
-            });
-            brls::Application::notify("Installing " + tag);
-            watch_job(g_cheat_job.get(), [tag]() {
-                brls::Application::notify("Installed " + tag);
-                g_cheat_job.reset();
-            });
+            ::foyer::browser::install_queue::enqueue(
+                tag,
+                [filt = std::move(filt)]
+                (::foyer::library::Worker& w) {
+                    w.set_status("Starting cheat install…");
+                    ::foyer::library::install_cheats(filt,
+                        [&w](const ::foyer::library::CheatInstallProgress& p) {
+                            char buf[160];
+                            std::snprintf(buf, sizeof(buf),
+                                "[%d/%d] %s",
+                                p.index, p.total, p.name.c_str());
+                            w.set_status(buf);
+                        },
+                        {}, false, [&w]{ return w.cancelled(); });
+                });
         };
 
         auto* install_all = new brls::DetailCell();
