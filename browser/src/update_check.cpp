@@ -52,18 +52,30 @@ void prompt_restart() {
         "Update downloaded. Restart foyer now to install it?");
     dlg->addButton("Later", []() {});
     dlg->addButton("Restart", []() {
-        // Apply the staged file in place (rename .new -> canonical)
-        // so the next HBL load picks up the new build. Then chain-
-        // launch the canonical path so HOS jumps straight into
-        // foyer instead of dropping the user back to sphaira.
-        ::foyer::browser::self_update::apply_staged_if_present();
-        const std::string& path = ::foyer::browser::self_update::nro_path();
-        const std::string argv = path;
-        if (R_FAILED(envSetNextLoad(path.c_str(), argv.c_str()))) {
+        // Chain-launch the staged .new file directly. FAT/exFAT
+        // rename of a still-mapped running .nro intermittently
+        // hits EEXIST even after unlink+rename (filesystem
+        // cache lag), so the prior strategy of rename-then-
+        // chain-launch silently fell back to the OLD canonical
+        // nro on those failures — which is exactly what the
+        // user reported (downloaded 0.6.22, restart booted
+        // 0.6.21 again).
+        //
+        // Loading .new directly works because detect_paths()
+        // strips the ".new" suffix off argv[0] for path bookkeeping;
+        // apply_staged_if_present on the next boot then promotes
+        // the .new file to canonical with the filesystem in a
+        // clean state.
+        const std::string& staged =
+            ::foyer::browser::self_update::nro_new_path();
+        const std::string& canonical =
+            ::foyer::browser::self_update::nro_path();
+        const std::string& target = !staged.empty() ? staged : canonical;
+        if (R_FAILED(envSetNextLoad(target.c_str(), target.c_str()))) {
             foyer::log::write(
                 "[update] envSetNextLoad(%s) failed; quitting to "
                 "homebrew menu — user must relaunch foyer manually\n",
-                path.c_str());
+                target.c_str());
         }
         brls::Application::quit();
     });
