@@ -1,4 +1,5 @@
 #include "pause_activity.hpp"
+#include "slot_picker_activity.hpp"
 
 #include "libretro/savestate.hpp"
 #include "platform/log.hpp"
@@ -66,32 +67,19 @@ brls::View* PauseActivity::createContentView() {
             return true;
         });
 
-    add_cell("Save state", "Quick slot",
+    add_cell("Save state", "Pick a slot",
         [rom, sys](brls::View*) {
-            const auto path =
-                ::foyer::libretro::state_path_for(rom, sys, /*slot=*/0);
-            if (::foyer::libretro::save_state(path)) {
-                brls::Application::notify("Saved state");
-                foyer::log::write("[player-brls] saved state %s\n",
-                    path.c_str());
-            } else {
-                brls::Application::notify("Save state failed");
-            }
+            brls::Application::pushActivity(
+                new SlotPickerActivity(SlotPickerActivity::Mode::Save,
+                                       rom, sys));
             return true;
         });
 
-    add_cell("Load state", "Quick slot",
+    add_cell("Load state", "Pick a slot",
         [rom, sys](brls::View*) {
-            const auto path =
-                ::foyer::libretro::state_path_for(rom, sys, /*slot=*/0);
-            if (::foyer::libretro::load_state(path)) {
-                brls::Application::notify("Loaded state");
-                brls::Application::popActivity();
-                foyer::log::write("[player-brls] loaded state %s\n",
-                    path.c_str());
-            } else {
-                brls::Application::notify("Load state failed");
-            }
+            brls::Application::pushActivity(
+                new SlotPickerActivity(SlotPickerActivity::Mode::Load,
+                                       rom, sys));
             return true;
         });
 

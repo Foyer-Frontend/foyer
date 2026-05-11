@@ -228,10 +228,17 @@ void EmulatorActivity::tick_frame() {
         (held & HidNpadButton_StickL) && (held & HidNpadButton_StickR);
     if (combo && !m_pause_pushed) {
         m_pause_pushed = true;
-        brls::Application::pushActivity(
-            new PauseActivity(m_original_rom_path,
-                              m_system_folder,
-                              []() {}));
+        // Defer the push one tick. brls::popActivity tears the
+        // previous overlay down with a fade animation; pushing
+        // the next one synchronously while that fade is still
+        // referencing the activity's views faults intermittently
+        // on the second-and-later pause invocation.
+        const auto rom = m_original_rom_path;
+        const auto sys = m_system_folder;
+        brls::sync([rom, sys]() {
+            brls::Application::pushActivity(
+                new PauseActivity(rom, sys, []() {}));
+        });
         return;
     } else if (!combo) {
         m_pause_pushed = false;
