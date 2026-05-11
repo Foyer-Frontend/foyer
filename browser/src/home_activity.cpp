@@ -25,6 +25,17 @@ namespace foyer::browser {
 
 namespace {
 
+// Map a SystemDef folder name to the on-disk art directory name
+// under themes/foyer/systems/. Real systems use their folder name
+// verbatim; virtuals route to the "auto-*" assets the theme
+// packs ship for those.
+std::string art_dir_for(std::string_view folder) {
+    if (folder == "__recent")    return "auto-lastplayed";
+    if (folder == "__favorites") return "auto-favorites";
+    if (folder == "__allgames")  return "auto-allgames";
+    return std::string{folder};
+}
+
 // One carousel tile.
 //
 // Square focusable Box with the splash image as a child. On focus the
@@ -53,7 +64,7 @@ public:
         img->setScalingType(brls::ImageScalingType::FILL);
         this->addView(img);
         const std::string path =
-            "themes/foyer/systems/" + std::string(folder) + "/splash.png";
+            "themes/foyer/systems/" + art_dir_for(folder) + "/splash.png";
         foyer::log::write("[home] tile %.*s splash=%s\n",
             (int)folder.size(), folder.data(), path.c_str());
         img->setImageFromRes(path);
@@ -246,7 +257,7 @@ void HomeActivity::onSystemFocused(std::string_view folder,
 {
     if (backdrop) {
         const std::string bg =
-            "themes/foyer/systems/" + std::string(folder) + "/background.jpg";
+            "themes/foyer/systems/" + art_dir_for(folder) + "/background.jpg";
         backdrop->setImageFromRes(bg);
     }
 }

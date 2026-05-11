@@ -394,6 +394,9 @@ const SystemDef kVirtualRecentDef = {
 const SystemDef kVirtualFavoritesDef = {
     "__favorites", "Favorites", "FAVS", "", "", {},
 };
+const SystemDef kVirtualAllGamesDef = {
+    "__allgames", "All Games", "ALL", "", "", {},
+};
 const SystemDef kVirtualUnknownDef = {
     "__unknown", "Unknown",  "UNK", "", "", {},
 };

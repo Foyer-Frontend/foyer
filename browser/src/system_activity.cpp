@@ -29,6 +29,17 @@ namespace foyer::browser {
 
 namespace {
 
+// Map a SystemDef folder name to the on-disk art directory name
+// under themes/foyer/systems/. Real systems use their folder
+// name verbatim; virtuals route to the "auto-*" assets the
+// theme packs ship for those.
+std::string art_dir_for(std::string_view folder) {
+    if (folder == "__recent")    return "auto-lastplayed";
+    if (folder == "__favorites") return "auto-favorites";
+    if (folder == "__allgames")  return "auto-allgames";
+    return std::string{folder};
+}
+
 // Long-lived scrape job. Survives the activity popping so the
 // download keeps running while the user is back on Home.
 // unique_ptr so we can replace it cleanly on subsequent runs.
@@ -168,7 +179,7 @@ public:
         // instant. The splash file is 49 unique PNGs already in
         // the romfs cache — brls dedupes by path.
         m_img->setImageFromRes(
-            "themes/foyer/systems/" + std::string(system_folder)
+            "themes/foyer/systems/" + art_dir_for(system_folder)
             + "/splash.png");
         fit_to_bottom();
 
@@ -409,7 +420,7 @@ void SystemActivity::onContentAvailable() {
     // Backdrop — same per-system art as Home shows on tile focus.
     if (backdrop) {
         backdrop->setImageFromRes(
-            "themes/foyer/systems/" + m_folder + "/background.jpg");
+            "themes/foyer/systems/" + art_dir_for(m_folder) + "/background.jpg");
     }
 
     if (clock && !m_clockTask) {
@@ -539,7 +550,7 @@ void SystemActivity::buildLogo() {
     logo->setScalingType(brls::ImageScalingType::FIT);
     logoHolder->addView(logo);
     logo->setImageFromRes(
-        "themes/foyer/systems/" + m_folder + "/" + variant);
+        "themes/foyer/systems/" + art_dir_for(m_folder) + "/" + variant);
 }
 
 void SystemActivity::buildActionRow() {

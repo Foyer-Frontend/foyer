@@ -300,6 +300,20 @@ std::vector<System> scan_library(const ScanOptions& opts) {
                         });
                 },
                 /*cap=*/100);
+            add_virtual(kVirtualAllGamesDef,
+                [](const Game&) { return true; },
+                [](std::vector<Game>& v) {
+                    std::sort(v.begin(), v.end(),
+                        [](const Game& a, const Game& b) { return a.stem < b.stem; });
+                },
+                /*cap=*/0);
+            // Always-present Switch virtual (placeholder).
+            {
+                System v;
+                v.def       = &kVirtualSwitchDef;
+                v.root_path = "(virtual)";
+                out_real.insert(out_real.begin(), std::move(v));
+            }
             return std::move(*cached);
         }
     }
@@ -396,6 +410,23 @@ std::vector<System> scan_library(const ScanOptions& opts) {
                 });
         },
         /*cap=*/100);
+    add_virtual(kVirtualAllGamesDef,
+        [](const Game&) { return true; },
+        [](std::vector<Game>& v) {
+            std::sort(v.begin(), v.end(),
+                [](const Game& a, const Game& b) { return a.stem < b.stem; });
+        },
+        /*cap=*/0);
+
+    // Switch-titles virtual — always present even with zero
+    // games so the Home carousel shows its splash + backdrop.
+    // The launch path (switch://...) is restored separately.
+    {
+        System v;
+        v.def       = &kVirtualSwitchDef;
+        v.root_path = "(virtual)";
+        out.insert(out.begin(), std::move(v));
+    }
 
     foyer::log::write("[scan] %zu system(s) populated\n", out.size());
     for (const auto& s : out) {

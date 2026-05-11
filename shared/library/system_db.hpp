@@ -51,6 +51,7 @@ const CoreDef* find_core_in_system(const SystemDef& sys, std::string_view core_n
 // sentinels (which have an empty cores span).
 extern const SystemDef kVirtualRecentDef;     // "__recent"
 extern const SystemDef kVirtualFavoritesDef;  // "__favorites"
+extern const SystemDef kVirtualAllGamesDef;   // "__allgames"
 extern const SystemDef kVirtualSwitchDef;     // "__switch" — installed Switch titles
 // Catch-all for /foyer/roms/<folder>/ paths whose folder name doesn't
 // match any entry in kSystems. Surfaced so the user at least *sees*
