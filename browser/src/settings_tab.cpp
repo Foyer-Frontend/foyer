@@ -236,6 +236,36 @@ FoyerGeneralTab::FoyerGeneralTab() {
                      });
     host->addView(boot_check);
 
+    auto* scrub_toggle = new brls::BooleanCell();
+    scrub_toggle->init("Scrub extracted games",
+                       cfg.scrub_extracted_enabled,
+                       [](bool v) {
+                           ::foyer::library::set_scrub_extracted_enabled(v);
+                       });
+    host->addView(scrub_toggle);
+
+    static const std::array<int, 6> kScrubDays = { 3, 7, 10, 14, 30, 60 };
+    std::vector<std::string> scrub_labels;
+    scrub_labels.reserve(kScrubDays.size());
+    for (int d : kScrubDays) scrub_labels.emplace_back(std::to_string(d) + " days");
+    int scrub_initial = 2;  // 10 days default
+    for (std::size_t i = 0; i < kScrubDays.size(); i++) {
+        if (kScrubDays[i] == cfg.scrub_extracted_days) {
+            scrub_initial = static_cast<int>(i);
+            break;
+        }
+    }
+    auto* scrub_days = new brls::SelectorCell();
+    scrub_days->init("Scrub after", scrub_labels, scrub_initial,
+                     [](int) {},
+                     [](int selected) {
+                         if (selected >= 0 && selected < (int)kScrubDays.size()) {
+                             ::foyer::library::set_scrub_extracted_days(
+                                 kScrubDays[selected]);
+                         }
+                     });
+    host->addView(scrub_days);
+
     auto* rerun_wizard = new brls::DetailCell();
     rerun_wizard->title->setText("Re-run wizard");
     rerun_wizard->detail->setText("Open now");

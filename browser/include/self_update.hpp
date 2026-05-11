@@ -20,6 +20,14 @@ void apply_staged_if_present();
 // effect after first run.
 void scrub_legacy_default_bezel();
 
+// LRU sweep of /foyer/data/extract/. Each player launch materialises
+// a .zip / .7z's inner rom into that directory and leaves it in
+// place so subsequent launches of the same rom skip the re-extract.
+// Files untouched for `days_threshold` days are unlinked. Called
+// from boot only when the user opts in via Settings → General →
+// Scrub extracted games.
+void scrub_extract_lru(int days_threshold);
+
 const std::string& nro_path();      // /switch/foyer/foyer.nro
 const std::string& nro_new_path();  // /switch/foyer/foyer.nro.new
 

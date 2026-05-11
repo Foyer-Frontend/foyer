@@ -3,6 +3,9 @@
 #include <switch.h>
 #include <cerrno>
 #include <cstring>
+#include <ctime>
+#include <dirent.h>
+#include <string>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -83,6 +86,33 @@ void scrub_legacy_default_bezel() {
     if (::unlink("/foyer/content/bezels/default.png") == 0) {
         foyer::log::write(
             "[bezel] scrubbed legacy /foyer/content/bezels/default.png\n");
+    }
+}
+
+void scrub_extract_lru(int days_threshold) {
+    if (days_threshold < 1) days_threshold = 1;
+    const time_t kMaxAgeSeconds =
+        (time_t)days_threshold * 24LL * 60 * 60;
+    const time_t now = ::time(nullptr);
+
+    const char* kDir = "/foyer/data/extract";
+    DIR* d = ::opendir(kDir);
+    if (!d) return;
+    int dropped = 0;
+    while (auto* ent = ::readdir(d)) {
+        if (ent->d_name[0] == '.') continue;
+        const std::string path = std::string(kDir) + "/" + ent->d_name;
+        struct stat st{};
+        if (::stat(path.c_str(), &st) != 0) continue;
+        if (!S_ISREG(st.st_mode)) continue;
+        if (now - st.st_mtime < kMaxAgeSeconds) continue;
+        if (::unlink(path.c_str()) == 0) dropped++;
+    }
+    ::closedir(d);
+    if (dropped > 0) {
+        foyer::log::write(
+            "[extract] scrubbed %d stale rom(s) from /foyer/data/extract/\n",
+            dropped);
     }
 }
 

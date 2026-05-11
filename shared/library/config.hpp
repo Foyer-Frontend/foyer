@@ -109,6 +109,14 @@ struct Config {
     // variants.
     std::string  region              = "";
 
+    // Off by default — keeping extracted .zip / .7z roms around in
+    // /foyer/data/extract/ lets a hot game skip the re-unzip on
+    // its next launch. When the user opts in, anything in that
+    // directory whose mtime hasn't been touched in
+    // scrub_extracted_days days gets unlinked on browser boot.
+    bool         scrub_extracted_enabled = false;
+    int          scrub_extracted_days    = 10;
+
     // 0.5.2 Home action-row external app chain-launch targets. The
     // eShop / Album buttons walk this list in order until one resolves
     // to an existing .nro on the SD; we then envSetNextLoad it so
@@ -225,6 +233,9 @@ void          set_theme_override(std::string_view value);
 void          set_region(std::string_view value);
 
 void          set_update_check_on_boot(bool enabled);
+
+void          set_scrub_extracted_enabled(bool enabled);
+void          set_scrub_extracted_days(int days);
 void          set_sort_mode(Config::SortMode mode);
 void          set_system_sort_mode(Config::SystemSortMode mode);
 void          set_system_custom_order(std::vector<std::string> order);

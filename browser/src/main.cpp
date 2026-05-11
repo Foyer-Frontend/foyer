@@ -85,6 +85,10 @@ int main(int argc, char* argv[])
     // brls now owns the romfs fd. Safe to swap the staged-update file in.
     foyer::browser::self_update::apply_staged_if_present();
     foyer::browser::self_update::scrub_legacy_default_bezel();
+    if (foyer::library::config().scrub_extracted_enabled) {
+        foyer::browser::self_update::scrub_extract_lru(
+            foyer::library::config().scrub_extracted_days);
+    }
     foyer::log::write("[boot] self_update applied\n");
 
     // curl one-shot init must run on the main thread before any

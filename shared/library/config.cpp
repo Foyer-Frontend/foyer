@@ -139,6 +139,10 @@ void write_locked() {
     out << "    \"update_check_on_boot\": "
         << (g_config.update_check_on_boot ? "true" : "false") << ",\n";
     out << "    \"region\":           \"" << g_config.region << "\",\n";
+    out << "    \"scrub_extracted_enabled\": "
+        << (g_config.scrub_extracted_enabled ? "true" : "false") << ",\n";
+    out << "    \"scrub_extracted_days\":    "
+        << g_config.scrub_extracted_days << ",\n";
     out << "    \"mtp_autostart\":     " << bstr(g_config.mtp_autostart) << ",\n";
     out << "    \"debug_log\":         " << bstr(g_config.debug_log) << ",\n";
     out << "    \"cores_manifest_url\": \"" << g_config.cores_manifest_url << "\",\n";
@@ -268,6 +272,15 @@ void load_locked() {
     if (auto* v = yyjson_obj_get(root, "region");
         v && yyjson_is_str(v)) {
         g_config.region = yyjson_get_str(v);
+    }
+
+    if (auto* v = yyjson_obj_get(root, "scrub_extracted_enabled");
+        v && yyjson_is_bool(v)) {
+        g_config.scrub_extracted_enabled = yyjson_get_bool(v);
+    }
+    if (auto* v = yyjson_obj_get(root, "scrub_extracted_days");
+        v && yyjson_is_int(v)) {
+        g_config.scrub_extracted_days = (int)yyjson_get_int(v);
     }
 
     if (auto* v = yyjson_obj_get(root, "language");
@@ -408,6 +421,18 @@ void set_region(std::string_view value) {
 void set_update_check_on_boot(bool enabled) {
     std::scoped_lock lk{g_mutex};
     g_config.update_check_on_boot = enabled;
+    write_locked();
+}
+
+void set_scrub_extracted_enabled(bool enabled) {
+    std::scoped_lock lk{g_mutex};
+    g_config.scrub_extracted_enabled = enabled;
+    write_locked();
+}
+
+void set_scrub_extracted_days(int days) {
+    std::scoped_lock lk{g_mutex};
+    g_config.scrub_extracted_days = days < 1 ? 1 : days;
     write_locked();
 }
 

@@ -6,6 +6,11 @@
 #include "libretro/input.hpp"
 #include "libretro/video.hpp"
 #include "platform/log.hpp"
+#include "util/archive.hpp"
+
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 using namespace brls::literals;
 
@@ -40,6 +45,11 @@ EmulatorActivity::~EmulatorActivity() {
     auto& fe = foyer::libretro::Frontend::instance();
     if (m_game_ok) fe.unload_game();
     fe.shutdown();
+
+    // Don't unlink the extracted rom — keeping it around lets a
+    // hot game skip the re-extract on its next launch. Stale
+    // files are scrubbed by the browser at boot via
+    // self_update::scrub_extract_lru() (>10 days untouched).
 }
 
 brls::View* EmulatorActivity::createContentView() {
@@ -60,6 +70,66 @@ void EmulatorActivity::onContentAvailable() {
         brls::Application::quit();
         return;
     }
+
+    // Archive support — mirrors legacy main.cpp's path. Cores
+    // refuse .zip / .7z directly; extract the first matching
+    // inner rom into /foyer/data/extract/ and load that.
+    auto ends_with_ci = [](std::string_view s, std::string_view suf) {
+        if (s.size() < suf.size()) return false;
+        for (std::size_t i = 0; i < suf.size(); i++) {
+            char a = s[s.size() - suf.size() + i];
+            char b = suf[i];
+            if (a >= 'A' && a <= 'Z') a = (char)(a + 32);
+            if (b >= 'A' && b <= 'Z') b = (char)(b + 32);
+            if (a != b) return false;
+        }
+        return true;
+    };
+    if (ends_with_ci(m_rom_path, ".zip")
+        || ends_with_ci(m_rom_path, ".7z")) {
+        const std::string& valid = fe.system_info().valid_extensions;
+        const auto inner = foyer::util::archive_peek_inner_rom(
+            m_rom_path, valid);
+        if (inner.empty()) {
+            foyer::log::write(
+                "[player-brls] archive %s holds no compatible rom\n",
+                m_rom_path.c_str());
+        } else {
+            const auto slash = inner.rfind('/');
+            const std::string inner_base = (slash == std::string::npos)
+                ? inner : inner.substr(slash + 1);
+            const std::string out = "/foyer/data/extract/" + inner_base;
+            ::mkdir("/foyer/data", 0777);
+            ::mkdir("/foyer/data/extract", 0777);
+
+            // Reuse if a prior session already extracted this
+            // file — saves unzipping ~MB on every hot-game
+            // launch. Touch the file so the LRU scrub on next
+            // boot sees recent mtime.
+            struct stat st{};
+            const bool cached = (::stat(out.c_str(), &st) == 0
+                                 && S_ISREG(st.st_mode)
+                                 && st.st_size > 0);
+            if (cached) {
+                foyer::log::write(
+                    "[player-brls] reusing cached extract %s\n",
+                    out.c_str());
+                ::utimensat(AT_FDCWD, out.c_str(), nullptr, 0);
+                m_rom_path = out;
+            } else if (foyer::util::archive_extract_inner_rom(
+                           m_rom_path, valid, out)) {
+                foyer::log::write(
+                    "[player-brls] extracted %s -> %s\n",
+                    inner.c_str(), out.c_str());
+                m_rom_path = out;
+            } else {
+                foyer::log::write(
+                    "[player-brls] failed to extract %s from %s\n",
+                    inner.c_str(), m_rom_path.c_str());
+            }
+        }
+    }
+
     if (!fe.load_game(m_rom_path)) {
         foyer::log::write("[player-brls] load_game(%s) failed\n",
             m_rom_path.c_str());
@@ -76,15 +146,65 @@ void EmulatorActivity::onContentAvailable() {
         m_ticker->start();
     }
 
-    // B = pause / quit. Pause overlay isn't ported to brls yet —
-    // wire B to quit so users have a clean exit path.
     if (auto* cv = this->getContentView()) {
+        // Eat every face button + DPAD so brls's default
+        // "B = back" / "A = click" handlers don't fire on
+        // top of libretro's input. Libretro reads the pad
+        // directly via libnx in shared/libretro/input.cpp,
+        // so swallowing the brls callback is enough to let
+        // the core see the press.
+        // Eat every face button + DPAD + shoulder so brls's
+        // default "B = back" / "A = click" handlers don't fire
+        // on top of libretro's input. Libretro reads the pad
+        // directly via libnx in shared/libretro/input.cpp, so
+        // swallowing the brls action callback is enough to let
+        // the core see the press. Action is hidden + soundless
+        // so the brls hint bar / click SFX never trip.
+        auto swallow = [](brls::View*) { return true; };
+        const brls::ControllerButton kSwallow[] = {
+            brls::BUTTON_A, brls::BUTTON_B,
+            brls::BUTTON_X, brls::BUTTON_Y,
+            brls::BUTTON_LB, brls::BUTTON_RB,
+            brls::BUTTON_LT, brls::BUTTON_RT,
+            brls::BUTTON_UP, brls::BUTTON_DOWN,
+            brls::BUTTON_LEFT, brls::BUTTON_RIGHT,
+            brls::BUTTON_BACK,
+        };
+        for (auto b : kSwallow) {
+            cv->registerAction("", b, swallow,
+                /*repeating=*/true, /*hidden=*/true,
+                brls::SOUND_NONE);
+        }
+
+        // + (Start on Switch) — pause overlay. brls Dialog's
+        // button list is the closest fit for a single-screen
+        // menu without designing a whole overlay Activity. The
+        // entries that aren't wired yet pop a "Coming soon"
+        // notify so users can see what's planned.
         cv->registerAction(
-            "Quit", brls::BUTTON_B,
+            "Pause menu", brls::BUTTON_START,
             [](brls::View*) {
-                brls::Application::quit();
+                auto* dlg = new brls::Dialog(
+                    "Game paused");
+                auto soon = [](const std::string& name) {
+                    return [name]() {
+                        brls::Application::notify(name + " — coming soon");
+                    };
+                };
+                dlg->addButton("Resume",        []() {});
+                dlg->addButton("Core options",  soon("Core options"));
+                dlg->addButton("Display",       soon("Display settings"));
+                dlg->addButton("Shaders",       soon("Shaders"));
+                dlg->addButton("Cheats",        soon("Cheats"));
+                dlg->addButton("Save state",    soon("Save state"));
+                dlg->addButton("Load state",    soon("Load state"));
+                dlg->addButton("Quit",          []() {
+                    brls::Application::quit();
+                });
+                dlg->open();
                 return true;
-            }, false, false, brls::SOUND_BACK);
+            },
+            false, false, brls::SOUND_NONE);
     }
 }
 
