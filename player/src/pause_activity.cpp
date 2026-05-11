@@ -105,6 +105,19 @@ brls::View* PauseActivity::createContentView() {
 
     auto* frame = new brls::AppletFrame(scroll);
     frame->setTitle("Game paused");
+    // Hide brls's footer clock/wifi/battery cluster — the user
+    // wants those only on the top bar. Hint pills sit in the
+    // same BottomBar though, so we keep the footer Box visible
+    // and only flip the indicators GONE.
+    if (auto* footer = frame->getFooter()) {
+        for (const char* id : {"brls/hints/time",
+                               "brls/battery",
+                               "brls/wireless"}) {
+            if (auto* v = footer->getView(id)) {
+                v->setVisibility(brls::Visibility::GONE);
+            }
+        }
+    }
     return frame;
 }
 

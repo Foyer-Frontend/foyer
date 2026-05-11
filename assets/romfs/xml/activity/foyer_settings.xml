@@ -32,6 +32,13 @@
             paddingLeft="@style/brls/hints/footer_padding_sides"
             paddingRight="@style/brls/hints/footer_padding_sides">
 
+            <brls:Label
+                text="Settings"
+                width="auto"
+                height="auto"
+                fontSize="22"
+                textColor="@theme/brls/text" />
+
             <brls:Box width="auto" height="auto" grow="1.0" />
 
             <brls:Box

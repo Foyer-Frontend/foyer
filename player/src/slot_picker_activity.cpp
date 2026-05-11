@@ -92,6 +92,15 @@ brls::View* SlotPickerActivity::createContentView() {
 
     auto* frame = new brls::AppletFrame(scroll);
     frame->setTitle(m_mode == Mode::Save ? "Save state" : "Load state");
+    if (auto* footer = frame->getFooter()) {
+        for (const char* id : {"brls/hints/time",
+                               "brls/battery",
+                               "brls/wireless"}) {
+            if (auto* v = footer->getView(id)) {
+                v->setVisibility(brls::Visibility::GONE);
+            }
+        }
+    }
     return frame;
 }
 

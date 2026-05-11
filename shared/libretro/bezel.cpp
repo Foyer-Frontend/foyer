@@ -36,6 +36,32 @@ std::string resolve_path() {
         g_folder.c_str(), g_stem.c_str(), (int)enabled);
     if (!enabled) return {};
     char buf[512];
+
+    // 1) Per-game ScreenScraper bundle. The scraper writes
+    // /foyer/assets/system/<sys>/<stem>/bezel-<aspect>(<region>).png
+    // (e.g. "bezel-16-9(us).png"); region tag varies, so probe a
+    // small set of plausible names in priority order.
+    if (!g_folder.empty() && !g_stem.empty()) {
+        const std::string bundle_dir =
+            "/foyer/assets/system/" + g_folder + "/" + g_stem + "/";
+        const char* bundle_candidates[] = {
+            "bezel-16-9(wor).png", "bezel-16-9(us).png",
+            "bezel-16-9(eu).png",  "bezel-16-9(jp).png",
+            "bezel-16-9.png",
+            "bezel(wor).png",      "bezel(us).png",
+            "bezel(eu).png",       "bezel(jp).png",
+            "bezel.png",
+        };
+        for (const char* name : bundle_candidates) {
+            const std::string path = bundle_dir + name;
+            const bool found = exists(path);
+            foyer::log::write("[bezel]   try bundle %s -> %s\n",
+                path.c_str(), found ? "FOUND" : "miss");
+            if (found) return path;
+        }
+    }
+
+    // 2) Per-rom override in /foyer/content/bezels/<sys>/<stem>.png.
     if (!g_folder.empty() && !g_stem.empty()) {
         std::snprintf(buf, sizeof(buf),
             "/foyer/content/bezels/%s/%s.png", g_folder.c_str(), g_stem.c_str());
@@ -44,6 +70,7 @@ std::string resolve_path() {
             buf, found ? "FOUND" : "miss");
         if (found) return std::string{buf};
     }
+    // 3) Per-system fallback in /foyer/content/bezels/<sys>.png.
     if (!g_folder.empty()) {
         std::snprintf(buf, sizeof(buf),
             "/foyer/content/bezels/%s.png", g_folder.c_str());

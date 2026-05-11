@@ -53,6 +53,19 @@ void SettingsActivity::onContentAvailable() {
                 brls::Application::popActivity();
                 return true;
             }, false, false, brls::SOUND_BACK);
+
+        // brls's AppletFrame footer (BottomBar) ships its own
+        // time / battery / wifi cluster. Settings already shows
+        // those in the custom top status row, so flip the
+        // footer duplicates GONE — hint pills stay since they
+        // live in a separate Box.
+        for (const char* id : {"brls/hints/time",
+                               "brls/battery",
+                               "brls/wireless"}) {
+            if (auto* v = content->getView(id)) {
+                v->setVisibility(brls::Visibility::GONE);
+            }
+        }
     }
 }
 
