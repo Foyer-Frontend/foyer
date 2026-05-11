@@ -9,6 +9,7 @@
 #include "library/cheat_installer.hpp"
 #include "library/core_install_job.hpp"
 #include "library/shader_installer.hpp"
+#include "library/system_db.hpp"
 #include "library/worker.hpp"
 #include "manifest_cache.hpp"
 #include "scrapers/accounts.hpp"
@@ -24,6 +25,8 @@
 #include <borealis/views/scrolling_frame.hpp>
 
 #include <array>
+#include <cstdio>
+#include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -48,6 +51,32 @@ brls::Box* tab_root_box() {
     root->setWidth(10000.0f);
     root->setPadding(20.0f, 32.0f, 32.0f, 32.0f);
     return root;
+}
+
+// Poll a job (anything with done(), finish(), status_snapshot())
+// at 500 ms cadence. Notifies a fresh status line each time the
+// worker publishes one ("[1/55] fceumm - installed", …). When
+// done: invoke on_done(), then defer the timer's delete to next
+// tick — brls's RepeatingTimer::onUpdate writes after the
+// callback returns, so freeing the timer inline would fault.
+template <typename Job>
+void watch_job(Job* job, std::function<void()> on_done) {
+    auto* timer = new brls::RepeatingTimer();
+    timer->setPeriod(500);
+    auto last = std::make_shared<std::string>();
+    timer->setCallback([job, on_done, timer, last]() {
+        if (!job) return;
+        const std::string snap = job->status_snapshot();
+        if (!snap.empty() && snap != *last) {
+            *last = snap;
+            brls::Application::notify(snap);
+        }
+        if (!job->done()) return;
+        job->finish();
+        on_done();
+        brls::sync([timer]() { timer->stop(); delete timer; });
+    });
+    timer->start();
 }
 
 void wrap_with_scroll(brls::Box* host, brls::Box* parent) {
@@ -322,6 +351,10 @@ FoyerCoresTab::FoyerCoresTab() {
             g_core_job = std::make_unique<::foyer::library::CoreInstallJob>();
             if (g_core_job->start(filt, std::string(), false)) {
                 brls::Application::notify("Installing " + tag);
+                watch_job(g_core_job.get(), [tag]() {
+                    brls::Application::notify("Installed " + tag);
+                    g_core_job.reset();
+                });
             } else {
                 brls::Application::notify("Install failed to start");
                 g_core_job.reset();
@@ -338,19 +371,77 @@ FoyerCoresTab::FoyerCoresTab() {
         });
         host->addView(install_all);
 
-        for (std::size_t i = 0; i < mf.cores.size(); i++) {
-            const auto& entry = mf.cores[i];
-            auto* cell = new brls::DetailCell();
-            cell->title->setText(entry.name);
-            cell->detail->setText("Tap to install");
-            cell->registerClickAction([entry, &mf, kick_install](brls::View*) {
-                ::foyer::library::CoreManifest filt{};
-                filt.version = mf.version;
-                filt.cores.push_back(entry);
-                kick_install(filt, entry.name);
-                return true;
-            });
-            host->addView(cell);
+        // Group manifest entries by SystemDef so each system gets a
+        // Header above its cores. find_core() maps a manifest entry
+        // (by short name like "fceumm") back to its SystemDef and
+        // CoreDef. Cores with no system mapping land in "Other".
+        std::vector<bool> placed(mf.cores.size(), false);
+        for (const auto& sys : ::foyer::library::all_systems()) {
+            if (::foyer::library::is_virtual_system(sys)) continue;
+
+            std::vector<std::size_t> picks;
+            for (std::size_t i = 0; i < mf.cores.size(); i++) {
+                if (placed[i]) continue;
+                const auto look =
+                    ::foyer::library::find_core(mf.cores[i].name);
+                if (look.sys && look.sys->folder_name == sys.folder_name) {
+                    picks.push_back(i);
+                }
+            }
+            if (picks.empty()) continue;
+            host->addView([&sys]() {
+                auto* h = new brls::Header();
+                h->setTitle(std::string(sys.display_name));
+                return h;
+            }());
+            for (std::size_t i : picks) {
+                placed[i] = true;
+                const auto& entry = mf.cores[i];
+                const auto look = ::foyer::library::find_core(entry.name);
+                const std::string label = look.core
+                    ? std::string(look.core->display_name)
+                    : entry.name;
+                auto* cell = new brls::DetailCell();
+                cell->title->setText(label);
+                cell->detail->setText("Tap to install");
+                cell->registerClickAction(
+                    [entry, &mf, kick_install](brls::View*) {
+                        ::foyer::library::CoreManifest filt{};
+                        filt.version = mf.version;
+                        filt.cores.push_back(entry);
+                        kick_install(filt, entry.name);
+                        return true;
+                    });
+                host->addView(cell);
+            }
+        }
+        // Trailing "Other" — manifest entries whose name doesn't
+        // match any SystemDef's cores span. Keeps unmapped cores
+        // visible instead of silently dropping them.
+        std::vector<std::size_t> rest;
+        for (std::size_t i = 0; i < mf.cores.size(); i++)
+            if (!placed[i]) rest.push_back(i);
+        if (!rest.empty()) {
+            host->addView([]() {
+                auto* h = new brls::Header();
+                h->setTitle("Other");
+                return h;
+            }());
+            for (std::size_t i : rest) {
+                const auto& entry = mf.cores[i];
+                auto* cell = new brls::DetailCell();
+                cell->title->setText(entry.name);
+                cell->detail->setText("Tap to install");
+                cell->registerClickAction(
+                    [entry, &mf, kick_install](brls::View*) {
+                        ::foyer::library::CoreManifest filt{};
+                        filt.version = mf.version;
+                        filt.cores.push_back(entry);
+                        kick_install(filt, entry.name);
+                        return true;
+                    });
+                host->addView(cell);
+            }
         }
     }
 
@@ -386,9 +477,21 @@ FoyerBezelsTab::FoyerBezelsTab() {
             const auto copy = filt;
             g_bezel_job->start([copy](::foyer::library::Worker& w) {
                 w.set_status("Installing bezels…");
-                ::foyer::library::install_bezels(copy, {}, {}, false, {});
+                ::foyer::library::install_bezels(copy,
+                    [&w](const ::foyer::library::BezelInstallProgress& p) {
+                        char buf[160];
+                        std::snprintf(buf, sizeof(buf),
+                            "[%d/%d] %s",
+                            p.index, p.total, p.name.c_str());
+                        w.set_status(buf);
+                    },
+                    {}, false, [&w]{ return w.cancelled(); });
             });
             brls::Application::notify("Installing " + tag);
+            watch_job(g_bezel_job.get(), [tag]() {
+                brls::Application::notify("Installed " + tag);
+                g_bezel_job.reset();
+            });
         };
 
         auto* install_all = new brls::DetailCell();
@@ -401,20 +504,64 @@ FoyerBezelsTab::FoyerBezelsTab() {
         });
         host->addView(install_all);
 
-        for (std::size_t i = 0; i < mf.packs.size(); i++) {
-            const auto& entry = mf.packs[i];
-            auto* cell = new brls::DetailCell();
-            cell->title->setText(entry.name);
-            cell->detail->setText("Tap to install");
-            cell->registerClickAction([entry, &mf, kick](brls::View*) {
-                ::foyer::library::BezelManifest filt{};
-                filt.version  = mf.version;
-                filt.upstream = mf.upstream;
-                filt.packs.push_back(entry);
-                kick(filt, entry.name);
-                return true;
-            });
-            host->addView(cell);
+        // Group manifest entries by SystemDef. Bezel packs are
+        // keyed by foyer folder name (e.g. "nes", "snes"), so we
+        // can look up the matching SystemDef directly.
+        std::vector<bool> placed(mf.packs.size(), false);
+        for (const auto& sys : ::foyer::library::all_systems()) {
+            if (::foyer::library::is_virtual_system(sys)) continue;
+            std::vector<std::size_t> picks;
+            for (std::size_t i = 0; i < mf.packs.size(); i++) {
+                if (placed[i]) continue;
+                if (mf.packs[i].name == sys.folder_name) picks.push_back(i);
+            }
+            if (picks.empty()) continue;
+            host->addView([&sys]() {
+                auto* h = new brls::Header();
+                h->setTitle(std::string(sys.display_name));
+                return h;
+            }());
+            for (std::size_t i : picks) {
+                placed[i] = true;
+                const auto& entry = mf.packs[i];
+                auto* cell = new brls::DetailCell();
+                cell->title->setText(entry.name);
+                cell->detail->setText("Tap to install");
+                cell->registerClickAction([entry, &mf, kick](brls::View*) {
+                    ::foyer::library::BezelManifest filt{};
+                    filt.version  = mf.version;
+                    filt.upstream = mf.upstream;
+                    filt.packs.push_back(entry);
+                    kick(filt, entry.name);
+                    return true;
+                });
+                host->addView(cell);
+            }
+        }
+        std::vector<std::size_t> rest;
+        for (std::size_t i = 0; i < mf.packs.size(); i++)
+            if (!placed[i]) rest.push_back(i);
+        if (!rest.empty()) {
+            host->addView([]() {
+                auto* h = new brls::Header();
+                h->setTitle("Other");
+                return h;
+            }());
+            for (std::size_t i : rest) {
+                const auto& entry = mf.packs[i];
+                auto* cell = new brls::DetailCell();
+                cell->title->setText(entry.name);
+                cell->detail->setText("Tap to install");
+                cell->registerClickAction([entry, &mf, kick](brls::View*) {
+                    ::foyer::library::BezelManifest filt{};
+                    filt.version  = mf.version;
+                    filt.upstream = mf.upstream;
+                    filt.packs.push_back(entry);
+                    kick(filt, entry.name);
+                    return true;
+                });
+                host->addView(cell);
+            }
         }
     }
     wrap_with_scroll(host, this);
@@ -449,9 +596,21 @@ FoyerShadersTab::FoyerShadersTab() {
             const auto copy = filt;
             g_shader_job->start([copy](::foyer::library::Worker& w) {
                 w.set_status("Installing shaders…");
-                ::foyer::library::install_shaders(copy, {}, false, {});
+                ::foyer::library::install_shaders(copy,
+                    [&w](const ::foyer::library::ShaderInstallProgress& p) {
+                        char buf[160];
+                        std::snprintf(buf, sizeof(buf),
+                            "[%d/%d] %s",
+                            p.index, p.total, p.name.c_str());
+                        w.set_status(buf);
+                    },
+                    false, [&w]{ return w.cancelled(); });
             });
             brls::Application::notify("Installing " + tag);
+            watch_job(g_shader_job.get(), [tag]() {
+                brls::Application::notify("Installed " + tag);
+                g_shader_job.reset();
+            });
         };
 
         auto* install_all = new brls::DetailCell();
@@ -511,9 +670,21 @@ FoyerCheatsTab::FoyerCheatsTab() {
             const auto copy = filt;
             g_cheat_job->start([copy](::foyer::library::Worker& w) {
                 w.set_status("Installing cheats…");
-                ::foyer::library::install_cheats(copy, {}, {}, false, {});
+                ::foyer::library::install_cheats(copy,
+                    [&w](const ::foyer::library::CheatInstallProgress& p) {
+                        char buf[160];
+                        std::snprintf(buf, sizeof(buf),
+                            "[%d/%d] %s",
+                            p.index, p.total, p.name.c_str());
+                        w.set_status(buf);
+                    },
+                    {}, false, [&w]{ return w.cancelled(); });
             });
             brls::Application::notify("Installing " + tag);
+            watch_job(g_cheat_job.get(), [tag]() {
+                brls::Application::notify("Installed " + tag);
+                g_cheat_job.reset();
+            });
         };
 
         auto* install_all = new brls::DetailCell();
@@ -526,19 +697,59 @@ FoyerCheatsTab::FoyerCheatsTab() {
         });
         host->addView(install_all);
 
-        for (std::size_t i = 0; i < mf.packs.size(); i++) {
-            const auto& entry = mf.packs[i];
-            auto* cell = new brls::DetailCell();
-            cell->title->setText(entry.name);
-            cell->detail->setText("Tap to install");
-            cell->registerClickAction([entry, &mf, kick](brls::View*) {
-                ::foyer::library::CheatManifest filt{};
-                filt.version = mf.version;
-                filt.packs.push_back(entry);
-                kick(filt, entry.name);
-                return true;
-            });
-            host->addView(cell);
+        std::vector<bool> placed(mf.packs.size(), false);
+        for (const auto& sys : ::foyer::library::all_systems()) {
+            if (::foyer::library::is_virtual_system(sys)) continue;
+            std::vector<std::size_t> picks;
+            for (std::size_t i = 0; i < mf.packs.size(); i++) {
+                if (placed[i]) continue;
+                if (mf.packs[i].name == sys.folder_name) picks.push_back(i);
+            }
+            if (picks.empty()) continue;
+            host->addView([&sys]() {
+                auto* h = new brls::Header();
+                h->setTitle(std::string(sys.display_name));
+                return h;
+            }());
+            for (std::size_t i : picks) {
+                placed[i] = true;
+                const auto& entry = mf.packs[i];
+                auto* cell = new brls::DetailCell();
+                cell->title->setText(entry.name);
+                cell->detail->setText("Tap to install");
+                cell->registerClickAction([entry, &mf, kick](brls::View*) {
+                    ::foyer::library::CheatManifest filt{};
+                    filt.version = mf.version;
+                    filt.packs.push_back(entry);
+                    kick(filt, entry.name);
+                    return true;
+                });
+                host->addView(cell);
+            }
+        }
+        std::vector<std::size_t> rest;
+        for (std::size_t i = 0; i < mf.packs.size(); i++)
+            if (!placed[i]) rest.push_back(i);
+        if (!rest.empty()) {
+            host->addView([]() {
+                auto* h = new brls::Header();
+                h->setTitle("Other");
+                return h;
+            }());
+            for (std::size_t i : rest) {
+                const auto& entry = mf.packs[i];
+                auto* cell = new brls::DetailCell();
+                cell->title->setText(entry.name);
+                cell->detail->setText("Tap to install");
+                cell->registerClickAction([entry, &mf, kick](brls::View*) {
+                    ::foyer::library::CheatManifest filt{};
+                    filt.version = mf.version;
+                    filt.packs.push_back(entry);
+                    kick(filt, entry.name);
+                    return true;
+                });
+                host->addView(cell);
+            }
         }
     }
     wrap_with_scroll(host, this);

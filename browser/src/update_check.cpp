@@ -11,6 +11,8 @@
 #include "platform/log.hpp"
 
 #include <borealis.hpp>
+#include <switch.h>
+
 #include <memory>
 #include <string>
 
@@ -50,6 +52,19 @@ void prompt_restart() {
         "Update downloaded. Restart foyer now to install it?");
     dlg->addButton("Later", []() {});
     dlg->addButton("Restart", []() {
+        // Apply the staged file in place (rename .new -> canonical)
+        // so the next HBL load picks up the new build. Then chain-
+        // launch the canonical path so HOS jumps straight into
+        // foyer instead of dropping the user back to sphaira.
+        ::foyer::browser::self_update::apply_staged_if_present();
+        const std::string& path = ::foyer::browser::self_update::nro_path();
+        const std::string argv = path;
+        if (R_FAILED(envSetNextLoad(path.c_str(), argv.c_str()))) {
+            foyer::log::write(
+                "[update] envSetNextLoad(%s) failed; quitting to "
+                "homebrew menu — user must relaunch foyer manually\n",
+                path.c_str());
+        }
         brls::Application::quit();
     });
     dlg->open();
