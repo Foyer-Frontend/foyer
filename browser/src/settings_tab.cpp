@@ -344,16 +344,29 @@ FoyerCoresTab::FoyerCoresTab() {
         static std::unique_ptr<::foyer::library::CoreInstallJob> g_core_job;
 
         auto kick_install = [](::foyer::library::CoreManifest filt,
-                               const std::string& tag) {
-            if (g_core_job && g_core_job->active()) {
+                               const std::string& tag, bool force) {
+            // Stale-job sweep — a previous run could have finished
+            // without our timer's done() tick (e.g. cancelled, or
+            // the worker exited before kick_install was hit again).
+            // active() lies for ~one tick after the body returns, so
+            // gate on (active && !done) to clear it cleanly.
+            if (g_core_job
+                && g_core_job->active() && !g_core_job->done()) {
                 brls::Application::notify("Install already running");
                 return;
             }
+            if (g_core_job) {
+                if (g_core_job->done()) g_core_job->finish();
+                g_core_job.reset();
+            }
             g_core_job = std::make_unique<::foyer::library::CoreInstallJob>();
-            if (g_core_job->start(filt, std::string(), false)) {
+            if (g_core_job->start(filt, std::string(), force)) {
                 brls::Application::notify("Installing " + tag);
-                watch_job(g_core_job.get(), [tag]() {
-                    brls::Application::notify("Installed " + tag);
+                // watch_job streams "[1/N] name - installed/FAILED"
+                // lines from the worker as notifications. The
+                // trailing per-tag toast is omitted — the final
+                // libretro status line already carries the verb.
+                watch_job(g_core_job.get(), []() {
                     g_core_job.reset();
                 });
             } else {
@@ -367,10 +380,27 @@ FoyerCoresTab::FoyerCoresTab() {
         install_all->detail->setText(
             std::to_string(mf.cores.size()) + " cores");
         install_all->registerClickAction([&mf, kick_install](brls::View*) {
-            kick_install(mf, "all cores");
+            // force=false → cores already at the manifest version
+            // skip the download. Re-install per-row when needed.
+            kick_install(mf, "all cores", /*force=*/false);
             return true;
         });
         host->addView(install_all);
+
+        // Per-cell label + force flag depend on what's already on
+        // disk for this core's nro. Reads the version sidecar
+        // installed_core_version() writes after each successful
+        // download. "Tap to install" only fires for cores the user
+        // hasn't pulled yet; the rest get "Tap to re-install" or
+        // "Tap to update".
+        auto label_for = [](const ::foyer::library::CoreManifestEntry& e)
+            -> std::pair<std::string, bool> {
+            const std::string have =
+                ::foyer::library::installed_core_version(e.nro);
+            if (have.empty()) return {"Tap to install", false};
+            if (have == e.version) return {"Tap to re-install", true};
+            return {"Tap to update (v" + e.version + ")", false};
+        };
 
         // Walk every SystemDef and emit a Header + a cell for each
         // of its cores that the manifest knows about. We iterate
@@ -404,16 +434,17 @@ FoyerCoresTab::FoyerCoresTab() {
                 const auto* entry = find_manifest(cd->name);
                 ::foyer::library::CoreManifestEntry copy = *entry;
                 const std::string label{cd->display_name};
+                const auto [detail, force] = label_for(copy);
                 auto* cell = new brls::DetailCell();
                 cell->title->setText(label);
-                cell->detail->setText("Tap to install");
+                cell->detail->setText(detail);
                 cell->registerClickAction(
-                    [copy, mf_version = mf.version, kick_install]
+                    [copy, mf_version = mf.version, kick_install, force]
                     (brls::View*) {
                         ::foyer::library::CoreManifest filt{};
                         filt.version = mf_version;
                         filt.cores.push_back(copy);
-                        kick_install(filt, copy.name);
+                        kick_install(filt, copy.name, force);
                         return true;
                     });
                 host->addView(cell);
@@ -433,16 +464,17 @@ FoyerCoresTab::FoyerCoresTab() {
             }());
             for (const auto* e : orphans) {
                 ::foyer::library::CoreManifestEntry copy = *e;
+                const auto [detail, force] = label_for(copy);
                 auto* cell = new brls::DetailCell();
                 cell->title->setText(copy.name);
-                cell->detail->setText("Tap to install");
+                cell->detail->setText(detail);
                 cell->registerClickAction(
-                    [copy, mf_version = mf.version, kick_install]
+                    [copy, mf_version = mf.version, kick_install, force]
                     (brls::View*) {
                         ::foyer::library::CoreManifest filt{};
                         filt.version = mf_version;
                         filt.cores.push_back(copy);
-                        kick_install(filt, copy.name);
+                        kick_install(filt, copy.name, force);
                         return true;
                     });
                 host->addView(cell);

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(foyer
-    VERSION 0.6.8
+    VERSION 0.6.9
     LANGUAGES C CXX
 )
 
@@ -10,6 +10,11 @@ project(foyer
 # ---------------------------------------------------------------------------
 option(BUILD_BROWSER "Build the foyer browser nro"     ON)
 option(BUILD_PLAYER  "Build per-core player nros"      OFF)
+# Phase H — players-on-borealis. When ON, the player nro replaces its
+# nanovg-deko3d window loop (foyer_render) with brls + an
+# EmulatorActivity that hosts a custom EmulatorView. Off by default
+# until the pause overlay + bezel + shader paths are reskinned.
+option(PLAYER_BRLS   "Build per-core players on borealis (Phase H)" OFF)
 # FOYER_CORE = single core name (legacy single-build presets).
 set(FOYER_CORE  "" CACHE STRING
     "Single libretro core to build (e.g. fceumm). Used by Player-* presets.")
@@ -118,7 +123,7 @@ find_package(CURL REQUIRED)
 # nanovg-deko3d via foyer_render — borealis vendors its own nanovg copy
 # and the two cannot coexist in the same binary.
 # ---------------------------------------------------------------------------
-if (BUILD_BROWSER)
+if (BUILD_BROWSER OR PLAYER_BRLS)
     # Switch + deko3d backend. We bypass borealis's toolchain.cmake (it
     # tries to include $DEVKITPRO/cmake/Switch.cmake, which our top-level
     # preset already loaded), so the BOREALIS_USE_* flags must be set
