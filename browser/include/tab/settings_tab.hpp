@@ -39,6 +39,12 @@ public:
     static brls::View* create();
 };
 
+class FoyerEmulatorsTab : public brls::Box {
+public:
+    FoyerEmulatorsTab();
+    static brls::View* create();
+};
+
 class FoyerBezelsTab : public brls::Box {
 public:
     FoyerBezelsTab();

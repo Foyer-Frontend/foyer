@@ -121,6 +121,7 @@ int main(int argc, char* argv[])
     brls::Application::registerXMLView("FoyerAccountsTab", FoyerAccountsTab::create);
     brls::Application::registerXMLView("FoyerLibraryTab",  FoyerLibraryTab::create);
     brls::Application::registerXMLView("FoyerCoresTab",    FoyerCoresTab::create);
+    brls::Application::registerXMLView("FoyerEmulatorsTab", FoyerEmulatorsTab::create);
     brls::Application::registerXMLView("FoyerBezelsTab",   FoyerBezelsTab::create);
     brls::Application::registerXMLView("FoyerShadersTab",  FoyerShadersTab::create);
     brls::Application::registerXMLView("FoyerCheatsTab",   FoyerCheatsTab::create);
@@ -162,9 +163,12 @@ int main(int argc, char* argv[])
 
         // Boot-time update check — silent unless a newer manifest
         // version is published, in which case the user gets a
-        // Yes/No prompt over the home screen. Skip when first-run
-        // wizard is still on top to avoid stacking dialogs.
-        ::foyer::browser::update_check::kick(/*verbose=*/false);
+        // Yes/No prompt over the home screen. Gated on the
+        // General → Check for updates on boot toggle; users who
+        // want no network on boot opt out in Settings.
+        if (::foyer::library::config().update_check_on_boot) {
+            ::foyer::browser::update_check::kick(/*verbose=*/false);
+        }
     }
     foyer::log::write("[boot] entering main loop\n");
 

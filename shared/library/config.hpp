@@ -94,6 +94,21 @@ struct Config {
     // every poll, so flipping HOS while pinned is a no-op.
     std::string  theme_override     = "";
 
+    // Boot-time update check toggle. true = on splash we fire a
+    // silent update_check::kick(false) so the user sees a prompt
+    // when the manifest carries a newer version; false skips
+    // entirely. Settings → General exposes this so users who
+    // don't want network on boot can opt out.
+    bool         update_check_on_boot = true;
+
+    // Preferred metadata region. "" = auto (scraper falls back to
+    // wor → us → eu → jp). Explicit values: "us", "eu", "jp",
+    // "br", "wor". Used by the ScreenScraper region picker and
+    // surfaced as the per-game "release date / publisher / name"
+    // language hint when the scraper offers multiple regional
+    // variants.
+    std::string  region              = "";
+
     // 0.5.2 Home action-row external app chain-launch targets. The
     // eShop / Album buttons walk this list in order until one resolves
     // to an existing .nro on the SD; we then envSetNextLoad it so
@@ -205,6 +220,11 @@ void          set_language(std::string_view code);
 // UI theme override. "" / "auto" = follow HOS ColorSetId.
 // "light" / "dark" = pinned variant. Persisted to /foyer/data/config/.
 void          set_theme_override(std::string_view value);
+
+// "" = auto. Other values: "us", "eu", "jp", "br", "wor".
+void          set_region(std::string_view value);
+
+void          set_update_check_on_boot(bool enabled);
 void          set_sort_mode(Config::SortMode mode);
 void          set_system_sort_mode(Config::SystemSortMode mode);
 void          set_system_custom_order(std::vector<std::string> order);

@@ -1,6 +1,7 @@
 #include "screenscraper.hpp"
 #include "accounts.hpp"
 #include "cache.hpp"
+#include "library/config.hpp"
 #include "library/game_meta.hpp"
 #include "net/http.hpp"
 #include "platform/log.hpp"
@@ -147,8 +148,14 @@ bool fetch_cover(std::string_view system_folder,
         if (!medias || !yyjson_is_arr(medias)) return out;
         // Region preference. SS tags media with "us", "eu", "wor",
         // "jp", region-specific BR/FR, etc. Prefer worldwide → US
-        // → Europe → Japan → first-available.
-        const char* prefs[] = { "wor", "us", "eu", "jp" };
+        // → Europe → Japan → first-available, unless the user
+        // pinned a region in Settings → General, in which case
+        // that one gets first dibs.
+        std::vector<const char*> prefs = { "wor", "us", "eu", "jp" };
+        const auto& user_region = ::foyer::library::config().region;
+        if (!user_region.empty()) {
+            prefs.insert(prefs.begin(), user_region.c_str());
+        }
         std::size_t i, max; yyjson_val* item;
         for (auto* want_region : prefs) {
             yyjson_arr_foreach(medias, i, max, item) {

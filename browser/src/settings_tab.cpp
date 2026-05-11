@@ -17,6 +17,7 @@
 #include "update_check.hpp"
 #include "widgets/masked_input_cell.hpp"
 
+#include <borealis/views/cells/cell_bool.hpp>
 #include <borealis/views/cells/cell_detail.hpp>
 #include <switch.h>
 #include <borealis/views/cells/cell_input.hpp>
@@ -203,6 +204,37 @@ FoyerGeneralTab::FoyerGeneralTab() {
                     });
                 });
     host->addView(theme);
+
+    static const std::array<std::string_view, 6> kRegionCodes = {
+        "", "us", "eu", "jp", "br", "wor",
+    };
+    std::vector<std::string> region_labels = {
+        "Auto", "United States", "Europe", "Japan", "Brazil", "World",
+    };
+    int region_initial = 0;
+    for (std::size_t i = 0; i < kRegionCodes.size(); i++) {
+        if (kRegionCodes[i] == cfg.region) {
+            region_initial = static_cast<int>(i);
+            break;
+        }
+    }
+    auto* region = new brls::SelectorCell();
+    region->init("Region", region_labels, region_initial,
+                 [](int) {},
+                 [](int selected) {
+                     if (selected >= 0 && selected < (int)kRegionCodes.size()) {
+                         ::foyer::library::set_region(kRegionCodes[selected]);
+                     }
+                 });
+    host->addView(region);
+
+    auto* boot_check = new brls::BooleanCell();
+    boot_check->init("Check for updates on boot",
+                     cfg.update_check_on_boot,
+                     [](bool v) {
+                         ::foyer::library::set_update_check_on_boot(v);
+                     });
+    host->addView(boot_check);
 
     auto* rerun_wizard = new brls::DetailCell();
     rerun_wizard->title->setText("Re-run wizard");
@@ -482,6 +514,59 @@ FoyerCoresTab::FoyerCoresTab() {
     wrap_with_scroll(host, this);
 }
 brls::View* FoyerCoresTab::create() { return new FoyerCoresTab(); }
+
+// ============ FoyerEmulatorsTab ==========================================
+
+FoyerEmulatorsTab::FoyerEmulatorsTab() {
+    this->setAxis(brls::Axis::COLUMN);
+    this->setAlignItems(brls::AlignItems::STRETCH);
+
+    auto* host = tab_root_box();
+    host->addView([]() {
+        auto* h = new brls::Header();
+        h->setTitle("Default emulator per system");
+        return h;
+    }());
+
+    const auto& cfg = ::foyer::library::config();
+    for (const auto& sys : ::foyer::library::all_systems()) {
+        if (::foyer::library::is_virtual_system(sys)) continue;
+        if (sys.cores.empty()) continue;
+
+        // Selector options = the system's core span. Order matters:
+        // cores[0] is the system's bundled default, so picking index
+        // 0 maps back to "" in config (i.e. use the default rather
+        // than pin a name).
+        std::vector<std::string> labels;
+        std::vector<std::string> codes;
+        labels.reserve(sys.cores.size());
+        codes.reserve(sys.cores.size());
+        for (const auto& c : sys.cores) {
+            labels.emplace_back(c.display_name);
+            codes.emplace_back(c.name);
+        }
+        const char* current = cfg.default_core_for(sys.folder_name);
+        int initial = 0;
+        if (current && *current) {
+            for (std::size_t i = 0; i < codes.size(); i++) {
+                if (codes[i] == current) { initial = static_cast<int>(i); break; }
+            }
+        }
+        const std::string folder{sys.folder_name};
+        auto* cell = new brls::SelectorCell();
+        cell->init(std::string(sys.display_name), labels, initial,
+                   [](int) {},
+                   [folder, codes](int selected) {
+                       if (selected < 0 || selected >= (int)codes.size()) return;
+                       ::foyer::library::set_default_core_for(
+                           folder, codes[selected]);
+                   });
+        host->addView(cell);
+    }
+
+    wrap_with_scroll(host, this);
+}
+brls::View* FoyerEmulatorsTab::create() { return new FoyerEmulatorsTab(); }
 
 // ============ FoyerBezelsTab =============================================
 

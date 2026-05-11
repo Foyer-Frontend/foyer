@@ -80,6 +80,10 @@
                 <FoyerCoresTab />
             </brls:Tab>
 
+            <brls:Tab label="Emulators">
+                <FoyerEmulatorsTab />
+            </brls:Tab>
+
             <brls:Tab label="Bezels">
                 <FoyerBezelsTab />
             </brls:Tab>

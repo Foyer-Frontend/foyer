@@ -136,6 +136,9 @@ void write_locked() {
     out << "    \"hide_empty_systems\":" << bstr(g_config.hide_empty_systems) << ",\n";
     out << "    \"language\":          \"" << g_config.language << "\",\n";
     out << "    \"theme_override\":    \"" << g_config.theme_override << "\",\n";
+    out << "    \"update_check_on_boot\": "
+        << (g_config.update_check_on_boot ? "true" : "false") << ",\n";
+    out << "    \"region\":           \"" << g_config.region << "\",\n";
     out << "    \"mtp_autostart\":     " << bstr(g_config.mtp_autostart) << ",\n";
     out << "    \"debug_log\":         " << bstr(g_config.debug_log) << ",\n";
     out << "    \"cores_manifest_url\": \"" << g_config.cores_manifest_url << "\",\n";
@@ -255,6 +258,16 @@ void load_locked() {
     if (auto* v = yyjson_obj_get(root, "theme_override");
         v && yyjson_is_str(v)) {
         g_config.theme_override = yyjson_get_str(v);
+    }
+
+    if (auto* v = yyjson_obj_get(root, "update_check_on_boot");
+        v && yyjson_is_bool(v)) {
+        g_config.update_check_on_boot = yyjson_get_bool(v);
+    }
+
+    if (auto* v = yyjson_obj_get(root, "region");
+        v && yyjson_is_str(v)) {
+        g_config.region = yyjson_get_str(v);
     }
 
     if (auto* v = yyjson_obj_get(root, "language");
@@ -383,6 +396,18 @@ void set_language(std::string_view code) {
 void set_theme_override(std::string_view value) {
     std::scoped_lock lk{g_mutex};
     g_config.theme_override = std::string{value};
+    write_locked();
+}
+
+void set_region(std::string_view value) {
+    std::scoped_lock lk{g_mutex};
+    g_config.region = std::string{value};
+    write_locked();
+}
+
+void set_update_check_on_boot(bool enabled) {
+    std::scoped_lock lk{g_mutex};
+    g_config.update_check_on_boot = enabled;
     write_locked();
 }
 
