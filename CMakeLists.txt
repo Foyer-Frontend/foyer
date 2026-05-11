@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(foyer
-    VERSION 0.6.28
+    VERSION 0.6.29
     LANGUAGES C CXX
 )
 
@@ -14,7 +14,7 @@ option(BUILD_PLAYER  "Build per-core player nros"      OFF)
 # nanovg-deko3d window loop (foyer_render) with brls + an
 # EmulatorActivity that hosts a custom EmulatorView. Off by default
 # until the pause overlay + bezel + shader paths are reskinned.
-option(PLAYER_BRLS   "Build per-core players on borealis (Phase H)" OFF)
+option(PLAYER_BRLS   "Build per-core players on borealis (Phase H)" ON)
 # FOYER_CORE = single core name (legacy single-build presets).
 set(FOYER_CORE  "" CACHE STRING
     "Single libretro core to build (e.g. fceumm). Used by Player-* presets.")
