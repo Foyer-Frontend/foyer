@@ -501,13 +501,13 @@ void SystemActivity::onContentAvailable() {
         return n;
     };
     this->getContentView()->registerAction(
-        "Page nav", brls::BUTTON_LB,
+        "Prev page", brls::BUTTON_LB,
         [jump_focus, page_size](brls::View*) {
             return jump_focus(-page_size());
         },
         false, true, brls::SOUND_FOCUS_CHANGE);
     this->getContentView()->registerAction(
-        "", brls::BUTTON_RB,
+        "Next page", brls::BUTTON_RB,
         [jump_focus, page_size](brls::View*) {
             return jump_focus(+page_size());
         },
