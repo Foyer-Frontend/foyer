@@ -1,4 +1,5 @@
 #include "pause_activity.hpp"
+#include "display_picker_activity.hpp"
 #include "slot_picker_activity.hpp"
 
 #include "libretro/savestate.hpp"
@@ -9,6 +10,13 @@
 #include <borealis/views/applet_frame.hpp>
 #include <borealis/views/cells/cell_detail.hpp>
 #include <borealis/views/scrolling_frame.hpp>
+#include <borealis/views/widgets/battery.hpp>
+#include <borealis/views/widgets/wireless.hpp>
+
+#include <chrono>
+#include <ctime>
+#include <iomanip>
+#include <sstream>
 
 using namespace brls::literals;
 
@@ -78,7 +86,13 @@ brls::View* PauseActivity::createContentView() {
         });
 
     add_cell("Core options", "Per-core knobs", soon("Core options"));
-    add_cell("Display",      "Aspect / scale", soon("Display settings"));
+    add_cell("Display",      "Aspect / scale",
+        [](brls::View*) {
+            brls::Application::pushActivity(
+                new DisplayPickerActivity(),
+                brls::TransitionAnimation::NONE);
+            return true;
+        });
     add_cell("Shaders",      "Pick a preset",  soon("Shaders"));
     add_cell("Cheats",       "Toggle cheats",  soon("Cheats"));
 
@@ -105,10 +119,6 @@ brls::View* PauseActivity::createContentView() {
 
     auto* frame = new brls::AppletFrame(scroll);
     frame->setTitle("Game paused");
-    // Hide brls's footer clock/wifi/battery cluster — the user
-    // wants those only on the top bar. Hint pills sit in the
-    // same BottomBar though, so we keep the footer Box visible
-    // and only flip the indicators GONE.
     if (auto* footer = frame->getFooter()) {
         for (const char* id : {"brls/hints/time",
                                "brls/battery",
@@ -116,6 +126,46 @@ brls::View* PauseActivity::createContentView() {
             if (auto* v = footer->getView(id)) {
                 v->setVisibility(brls::Visibility::GONE);
             }
+        }
+    }
+
+    // Inject clock + wifi + battery into the AppletFrame
+    // header's hint_box so the pause overlay's top bar mirrors
+    // every other view's chrome.
+    if (auto* header = frame->getHeader()) {
+        auto* hint_box = dynamic_cast<brls::Box*>(
+            header->getView("brls/applet_frame/hint_box"));
+        if (hint_box) {
+            auto* clock = new brls::Label();
+            clock->setText("--:--");
+            clock->setFontSize(22.0f);
+            clock->setMargins(0.0f, 20.0f, 0.0f, 0.0f);
+            hint_box->addView(clock);
+
+            auto* wifi = new brls::WirelessWidget();
+            wifi->setMargins(0.0f, 20.0f, 2.0f, 0.0f);
+            hint_box->addView(wifi);
+
+            auto* batt = new brls::BatteryWidget();
+            batt->setMargins(0.0f, 0.0f, 2.0f, 0.0f);
+            hint_box->addView(batt);
+
+            // Keep the clock label up to date — RepeatingTimer
+            // owns itself; we just stop() it from
+            // onContentAvailable's caller via brls's auto-cleanup
+            // when the activity tears down (Application::frame
+            // owns the deletion pool).
+            auto* timer = new brls::RepeatingTimer();
+            timer->setPeriod(1000);
+            timer->setCallback([clock]() {
+                const auto now = std::chrono::system_clock::now();
+                const auto t   = std::chrono::system_clock::to_time_t(now);
+                std::tm tm     = *std::localtime(&t);
+                std::stringstream ss;
+                ss << std::put_time(&tm, "%H:%M");
+                clock->setText(ss.str());
+            });
+            timer->start();
         }
     }
     return frame;
