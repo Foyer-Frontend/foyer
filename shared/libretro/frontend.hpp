@@ -122,6 +122,15 @@ struct Frontend {
     void set_system_directory(std::string path) { m_system_dir = std::move(path); }
     const std::string& system_directory() const { return m_system_dir; }
 
+    // Override the path used to derive the .srm filename. Default
+    // is the rom_path passed to load_game(), which may be a
+    // temporary extract path for .zip / .7z launches; pointing
+    // this at the original sd-side rom keeps SRAM stable across
+    // archive vs raw-rom launches of the same game.
+    void set_sram_basis_path(std::string path) {
+        m_rom_path = std::move(path);
+    }
+
 private:
     Frontend() = default;
     Frontend(const Frontend&) = delete;

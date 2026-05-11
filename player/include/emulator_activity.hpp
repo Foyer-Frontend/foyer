@@ -35,9 +35,20 @@ private:
     void tick_frame();
 
     std::string          m_rom_path;
+    // Path the user actually picked (e.g. /foyer/roms/nes/Foo.zip).
+    // Held alongside m_rom_path so the pause menu's Save/Load
+    // state cells can derive the .state file's slot path off the
+    // original location — extraction rewrites m_rom_path to
+    // /foyer/data/extract/Foo.nes, which would otherwise mis-route
+    // both state and SRAM files.
+    std::string          m_original_rom_path;
+    std::string          m_system_folder;
     EmulatorView*        m_view      = nullptr;
     brls::RepeatingTask* m_ticker    = nullptr;
     bool                 m_game_ok   = false;
+    // Edge-trigger gate for the L3+R3 pause combo so the menu
+    // doesn't re-push every tick while the user holds it.
+    bool                 m_pause_pushed = false;
 };
 
 }  // namespace foyer::player

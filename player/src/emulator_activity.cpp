@@ -1,5 +1,6 @@
 #include "emulator_activity.hpp"
 #include "emulator_view.hpp"
+#include "pause_activity.hpp"
 
 #include "libretro/frontend.hpp"
 #include "libretro/audio.hpp"
@@ -7,6 +8,8 @@
 #include "libretro/video.hpp"
 #include "platform/log.hpp"
 #include "util/archive.hpp"
+
+#include <switch.h>
 
 #include <sys/stat.h>
 #include <unistd.h>
@@ -34,7 +37,18 @@ private:
 }  // namespace
 
 EmulatorActivity::EmulatorActivity(std::string rom_path)
-    : m_rom_path(std::move(rom_path)) {}
+    : m_rom_path(rom_path), m_original_rom_path(rom_path) {
+    // /foyer/roms/<sys>/<file> -> sys is the parent dir name.
+    // Used by libretro::state_path_for to route .state slots
+    // under /foyer/states/<sys>/.
+    const auto slash = m_original_rom_path.find_last_of('/');
+    if (slash != std::string::npos && slash > 0) {
+        const auto upper = m_original_rom_path.substr(0, slash);
+        const auto up_slash = upper.find_last_of('/');
+        m_system_folder = (up_slash == std::string::npos)
+            ? upper : upper.substr(up_slash + 1);
+    }
+}
 
 EmulatorActivity::~EmulatorActivity() {
     if (m_ticker) {
@@ -42,6 +56,7 @@ EmulatorActivity::~EmulatorActivity() {
         delete m_ticker;
         m_ticker = nullptr;
     }
+    foyer::libretro::AudioSink::instance().shutdown();
     auto& fe = foyer::libretro::Frontend::instance();
     if (m_game_ok) fe.unload_game();
     fe.shutdown();
@@ -138,6 +153,22 @@ void EmulatorActivity::onContentAvailable() {
     }
     m_game_ok = true;
 
+    // Pin SRAM naming to the original rom path (the .zip / .7z
+    // the launcher handed us) so the .srm survives extract dir
+    // churn and stays in sync with raw-rom launches of the
+    // same game.
+    fe.set_sram_basis_path(m_original_rom_path);
+
+    // Audio. Sample rate comes from retro_av_info populated by
+    // load_game above; AudioSink owns its own libnx audren
+    // service + worker thread.
+    if (!foyer::libretro::AudioSink::instance().init(
+            (unsigned)fe.sample_rate())) {
+        foyer::log::write(
+            "[player-brls] audio init failed @ %u Hz — silent run\n",
+            (unsigned)fe.sample_rate());
+    }
+
     // Per-frame retro_run + view invalidation. The ticker fires on
     // brls's main thread, so calls into retro_run + the video sink
     // are race-free with the draw path.
@@ -147,64 +178,29 @@ void EmulatorActivity::onContentAvailable() {
     }
 
     if (auto* cv = this->getContentView()) {
-        // Eat every face button + DPAD so brls's default
-        // "B = back" / "A = click" handlers don't fire on
-        // top of libretro's input. Libretro reads the pad
-        // directly via libnx in shared/libretro/input.cpp,
-        // so swallowing the brls callback is enough to let
-        // the core see the press.
-        // Eat every face button + DPAD + shoulder so brls's
-        // default "B = back" / "A = click" handlers don't fire
-        // on top of libretro's input. Libretro reads the pad
-        // directly via libnx in shared/libretro/input.cpp, so
-        // swallowing the brls action callback is enough to let
-        // the core see the press. Action is hidden + soundless
-        // so the brls hint bar / click SFX never trip.
+        // Eat every button brls might otherwise consume so the
+        // core sees the press through its own libnx pad poll
+        // in shared/libretro/input.cpp. Includes + and -
+        // (BUTTON_START / BUTTON_BACK) which the user wants
+        // routed straight to the libretro Start / Select.
+        // Hidden + soundless so the brls hint bar / click SFX
+        // never trip.
         auto swallow = [](brls::View*) { return true; };
         const brls::ControllerButton kSwallow[] = {
-            brls::BUTTON_A, brls::BUTTON_B,
-            brls::BUTTON_X, brls::BUTTON_Y,
-            brls::BUTTON_LB, brls::BUTTON_RB,
-            brls::BUTTON_LT, brls::BUTTON_RT,
-            brls::BUTTON_UP, brls::BUTTON_DOWN,
-            brls::BUTTON_LEFT, brls::BUTTON_RIGHT,
-            brls::BUTTON_BACK,
+            brls::BUTTON_A,     brls::BUTTON_B,
+            brls::BUTTON_X,     brls::BUTTON_Y,
+            brls::BUTTON_LB,    brls::BUTTON_RB,
+            brls::BUTTON_LT,    brls::BUTTON_RT,
+            brls::BUTTON_UP,    brls::BUTTON_DOWN,
+            brls::BUTTON_LEFT,  brls::BUTTON_RIGHT,
+            brls::BUTTON_START, brls::BUTTON_BACK,
+            brls::BUTTON_LSB,   brls::BUTTON_RSB,
         };
         for (auto b : kSwallow) {
             cv->registerAction("", b, swallow,
                 /*repeating=*/true, /*hidden=*/true,
                 brls::SOUND_NONE);
         }
-
-        // + (Start on Switch) — pause overlay. brls Dialog's
-        // button list is the closest fit for a single-screen
-        // menu without designing a whole overlay Activity. The
-        // entries that aren't wired yet pop a "Coming soon"
-        // notify so users can see what's planned.
-        cv->registerAction(
-            "Pause menu", brls::BUTTON_START,
-            [](brls::View*) {
-                auto* dlg = new brls::Dialog(
-                    "Game paused");
-                auto soon = [](const std::string& name) {
-                    return [name]() {
-                        brls::Application::notify(name + " — coming soon");
-                    };
-                };
-                dlg->addButton("Resume",        []() {});
-                dlg->addButton("Core options",  soon("Core options"));
-                dlg->addButton("Display",       soon("Display settings"));
-                dlg->addButton("Shaders",       soon("Shaders"));
-                dlg->addButton("Cheats",        soon("Cheats"));
-                dlg->addButton("Save state",    soon("Save state"));
-                dlg->addButton("Load state",    soon("Load state"));
-                dlg->addButton("Quit",          []() {
-                    brls::Application::quit();
-                });
-                dlg->open();
-                return true;
-            },
-            false, false, brls::SOUND_NONE);
     }
 }
 
@@ -212,6 +208,32 @@ void EmulatorActivity::tick_frame() {
     auto& fe = foyer::libretro::Frontend::instance();
     fe.run_frame();
     if (m_view) m_view->invalidate();
+
+    // Pause-overlay trigger: L3+R3 held together. We poll libnx
+    // directly because the brls action callback only fires on
+    // a single button down, and the user wants + / - reserved
+    // for libretro Start / Select. A static PadState catches
+    // up on the first call.
+    static PadState s_pad;
+    static bool     s_pad_inited = false;
+    if (!s_pad_inited) {
+        padConfigureInput(1, HidNpadStyleSet_NpadStandard);
+        padInitializeDefault(&s_pad);
+        s_pad_inited = true;
+    }
+    padUpdate(&s_pad);
+    const u64 held = padGetButtons(&s_pad);
+    const bool combo =
+        (held & HidNpadButton_StickL) && (held & HidNpadButton_StickR);
+    if (combo && !m_pause_pushed) {
+        m_pause_pushed = true;
+        brls::Application::pushActivity(
+            new PauseActivity(m_original_rom_path,
+                              m_system_folder,
+                              []() {}));
+    } else if (!combo) {
+        m_pause_pushed = false;
+    }
 }
 
 }  // namespace foyer::player

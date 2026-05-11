@@ -100,6 +100,7 @@ if (PLAYER_BRLS)
         src/main_brls.cpp
         src/emulator_activity.cpp
         src/emulator_view.cpp
+        src/pause_activity.cpp
 
         # borealis Switch platform glue. Provides userAppInit
         # (including romfsInit) and the deko3d-side service
