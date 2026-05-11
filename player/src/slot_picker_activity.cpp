@@ -3,6 +3,7 @@
 #include "libretro/savestate.hpp"
 #include "platform/log.hpp"
 
+#include <borealis/views/applet_frame.hpp>
 #include <borealis/views/cells/cell_detail.hpp>
 #include <borealis/views/scrolling_frame.hpp>
 
@@ -21,24 +22,11 @@ SlotPickerActivity::SlotPickerActivity(Mode mode,
     , m_system_folder(std::move(system_folder)) {}
 
 brls::View* SlotPickerActivity::createContentView() {
-    auto* root = new brls::Box();
-    root->setAxis(brls::Axis::COLUMN);
-    root->setAlignItems(brls::AlignItems::STRETCH);
-    auto th = brls::Application::getTheme();
-    root->setBackgroundColor(th.getColor("brls/background"));
-
-    auto* title = new brls::Label();
-    title->setText(m_mode == Mode::Save ? "Save state" : "Load state");
-    title->setFontSize(28.0f);
-    title->setMargins(20.0f, 32.0f, 12.0f, 32.0f);
-    title->setTextColor(nvgRGB(0xD0, 0x3A, 0x3A));
-    root->addView(title);
-
     auto* host = new brls::Box();
     host->setAxis(brls::Axis::COLUMN);
     host->setAlignItems(brls::AlignItems::STRETCH);
     host->setWidth(10000.0f);
-    host->setPadding(0.0f, 32.0f, 32.0f, 32.0f);
+    host->setPadding(20.0f, 32.0f, 32.0f, 32.0f);
 
     // Probe every slot up front so each row can show whether
     // there's already data on disk + when it was saved.
@@ -101,8 +89,10 @@ brls::View* SlotPickerActivity::createContentView() {
     scroll->setScrollingBehavior(brls::ScrollingBehavior::CENTERED);
     scroll->setGrow(1.0f);
     scroll->setContentView(host);
-    root->addView(scroll);
-    return root;
+
+    auto* frame = new brls::AppletFrame(scroll);
+    frame->setTitle(m_mode == Mode::Save ? "Save state" : "Load state");
+    return frame;
 }
 
 void SlotPickerActivity::onContentAvailable() {

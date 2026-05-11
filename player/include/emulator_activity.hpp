@@ -50,6 +50,11 @@ private:
     // Edge-trigger gate for the L3+R3 pause combo so the menu
     // doesn't re-push every tick while the user holds it.
     bool                 m_pause_pushed = false;
+    // Wall-clock ms (brls::getCPUTimeUsec()/1000) until which the
+    // L3+R3 trigger is muted after a pause overlay closes — gives
+    // brls's deletion pool a couple of frames to flush so the
+    // next push doesn't trip the second-pause crash.
+    long long            m_pause_cooldown_until_ms = 0;
     PadState             m_pad{};
     bool                 m_pad_inited = false;
 };

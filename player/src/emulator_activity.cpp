@@ -9,6 +9,8 @@
 #include "platform/log.hpp"
 #include "util/archive.hpp"
 
+#include <borealis/core/time.hpp>
+
 #include <switch.h>
 
 #include <sys/stat.h>
@@ -227,20 +229,32 @@ void EmulatorActivity::tick_frame() {
     const bool combo =
         (held & HidNpadButton_StickL) && (held & HidNpadButton_StickR);
     if (combo && !m_pause_pushed) {
-        m_pause_pushed = true;
-        // Defer the push one tick. brls::popActivity tears the
-        // previous overlay down with a fade animation; pushing
-        // the next one synchronously while that fade is still
-        // referencing the activity's views faults intermittently
-        // on the second-and-later pause invocation.
-        const auto rom = m_original_rom_path;
-        const auto sys = m_system_folder;
-        brls::sync([rom, sys]() {
-            brls::Application::pushActivity(
-                new PauseActivity(rom, sys, []() {}));
-        });
-        return;
+        // Only push when we're alone on the stack AND the post-
+        // pop cooldown has elapsed. brls::popActivity defers the
+        // delete + fade animation by a couple of frames; pushing
+        // a new activity while the dying one still hangs in the
+        // deletion pool was the second-pause crash signature.
+        const auto stack_size =
+            brls::Application::getActivitiesStack().size();
+        const auto now_ms = brls::getCPUTimeUsec() / 1000;
+        if (stack_size == 1 && now_ms >= m_pause_cooldown_until_ms) {
+            m_pause_pushed = true;
+            const auto rom = m_original_rom_path;
+            const auto sys = m_system_folder;
+            brls::sync([rom, sys]() {
+                brls::Application::pushActivity(
+                    new PauseActivity(rom, sys, []() {}));
+            });
+            return;
+        }
     } else if (!combo) {
+        if (m_pause_pushed) {
+            // L3+R3 released after a pause cycle — start the
+            // cooldown so the next press doesn't catch brls's
+            // deletion pool mid-flush.
+            m_pause_cooldown_until_ms =
+                (brls::getCPUTimeUsec() / 1000) + 750;
+        }
         m_pause_pushed = false;
     }
 
