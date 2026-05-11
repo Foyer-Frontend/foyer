@@ -243,7 +243,8 @@ void EmulatorActivity::tick_frame() {
             const auto sys = m_system_folder;
             brls::sync([rom, sys]() {
                 brls::Application::pushActivity(
-                    new PauseActivity(rom, sys, []() {}));
+                    new PauseActivity(rom, sys, []() {}),
+                    brls::TransitionAnimation::NONE);
             });
             return;
         }

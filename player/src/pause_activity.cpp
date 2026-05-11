@@ -51,7 +51,7 @@ brls::View* PauseActivity::createContentView() {
 
     add_cell("Resume", "Close menu",
         [](brls::View*) {
-            brls::Application::popActivity();
+            brls::Application::popActivity(brls::TransitionAnimation::NONE);
             return true;
         });
 
@@ -59,7 +59,8 @@ brls::View* PauseActivity::createContentView() {
         [rom, sys](brls::View*) {
             brls::Application::pushActivity(
                 new SlotPickerActivity(SlotPickerActivity::Mode::Save,
-                                       rom, sys));
+                                       rom, sys),
+                brls::TransitionAnimation::NONE);
             return true;
         });
 
@@ -67,7 +68,8 @@ brls::View* PauseActivity::createContentView() {
         [rom, sys](brls::View*) {
             brls::Application::pushActivity(
                 new SlotPickerActivity(SlotPickerActivity::Mode::Load,
-                                       rom, sys));
+                                       rom, sys),
+                brls::TransitionAnimation::NONE);
             return true;
         });
 
@@ -103,7 +105,7 @@ void PauseActivity::onContentAvailable() {
         cv->registerAction(
             "Back", brls::BUTTON_B,
             [](brls::View*) {
-                brls::Application::popActivity();
+                brls::Application::popActivity(brls::TransitionAnimation::NONE);
                 return true;
             }, false, false, brls::SOUND_BACK);
     }

@@ -63,7 +63,7 @@ brls::View* SlotPickerActivity::createContentView() {
                 } else {
                     brls::Application::notify("Save failed");
                 }
-                brls::Application::popActivity();
+                brls::Application::popActivity(brls::TransitionAnimation::NONE);
             } else {
                 if (::foyer::libretro::load_state(path)) {
                     brls::Application::notify(
@@ -72,8 +72,8 @@ brls::View* SlotPickerActivity::createContentView() {
                         path.c_str());
                     // Pop the picker AND the pause overlay so
                     // the user is straight back in the game.
-                    brls::Application::popActivity();
-                    brls::Application::popActivity();
+                    brls::Application::popActivity(brls::TransitionAnimation::NONE);
+                    brls::Application::popActivity(brls::TransitionAnimation::NONE);
                 } else {
                     brls::Application::notify("Load failed");
                 }
@@ -100,7 +100,7 @@ void SlotPickerActivity::onContentAvailable() {
         cv->registerAction(
             "Back", brls::BUTTON_B,
             [](brls::View*) {
-                brls::Application::popActivity();
+                brls::Application::popActivity(brls::TransitionAnimation::NONE);
                 return true;
             }, false, false, brls::SOUND_BACK);
     }
