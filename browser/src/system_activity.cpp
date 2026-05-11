@@ -2,6 +2,8 @@
 
 #include "activity/game_activity.hpp"
 #include "launch.hpp"
+#include "activity/per_game_activity.hpp"
+#include "activity/per_system_activity.hpp"
 #include "library_state.hpp"
 #include "library/per_game.hpp"
 #include "library/config.hpp"
@@ -235,16 +237,13 @@ public:
                 return true;
             }, false, false, brls::SOUND_CLICK);
 
-        // + — per-game settings override (placeholder — wired
-        // to a Dialog until the per-game tab Activity lands).
+        // + — per-game settings override.
         this->registerAction(
             "Settings", brls::BUTTON_START,
-            [](brls::View*) {
-                auto* dlg = new brls::Dialog(
-                    "Per-game settings — core override, runahead, "
-                    "shader pick. Coming soon.");
-                dlg->addButton("OK", []() {});
-                dlg->open();
+            [this](brls::View*) {
+                brls::Application::pushActivity(
+                    new PerGameActivity(m_system, m_path),
+                    brls::TransitionAnimation::NONE);
                 return true;
             }, false, false, brls::SOUND_CLICK);
     }
@@ -607,8 +606,17 @@ void SystemActivity::buildActionRow() {
         }));
 
     actionRow->addView(new ActionButton(
+        "img/actions/search.png", "Search",
+        coming_soon("Per-system search — coming soon.")));
+
+    actionRow->addView(new ActionButton(
         "img/actions/settings.png", "Settings",
-        coming_soon("Per-system settings — wired in a later alpha.")));
+        [this](brls::View*) {
+            brls::Application::pushActivity(
+                new PerSystemActivity(m_folder, m_display_name),
+                brls::TransitionAnimation::NONE);
+            return true;
+        }));
 }
 
 void SystemActivity::populateCarousel() {

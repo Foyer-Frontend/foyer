@@ -103,6 +103,9 @@ if (PLAYER_BRLS)
         src/pause_activity.cpp
         src/slot_picker_activity.cpp
         src/display_picker_activity.cpp
+        src/core_options_picker_activity.cpp
+        src/shaders_picker_activity.cpp
+        src/cheats_picker_activity.cpp
 
         # borealis Switch platform glue. Provides userAppInit
         # (including romfsInit) and the deko3d-side service

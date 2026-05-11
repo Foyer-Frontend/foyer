@@ -100,10 +100,16 @@ void stop() {
         // next tick when the timer is no longer being driven.
         brls::sync([dead]() { delete dead; });
     }
-    // Don't join the worker thread on shutdown — see
-    // SystemActivity::cancel_pending_scrape for why blocking on
-    // HOS exit looks like a crash.
-    if (g_worker) (void)g_worker.release();
+    // Signal cancel so curl bails out of any in-flight transfer
+    // at its next progress callback. The worker is still
+    // released (not joined) per SystemActivity's pattern —
+    // joining on HOS exit hangs deko3d's watchdog — but
+    // cancel cuts curl short so its write callback can't
+    // touch process state we're about to tear down.
+    if (g_worker) {
+        g_worker->cancel();
+        (void)g_worker.release();
+    }
     g_active_tag.clear();
     g_last_status.clear();
 }

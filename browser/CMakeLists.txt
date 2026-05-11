@@ -42,6 +42,8 @@ add_executable(foyer
     src/masked_input_cell.cpp
     src/update_check.cpp
     src/install_queue.cpp
+    src/per_game_activity.cpp
+    src/per_system_activity.cpp
 
     # borealis Switch platform glue (matches borealis_template demo).
     ${borealis_SOURCE_DIR}/library/lib/platforms/switch/switch_wrapper.c

@@ -1,5 +1,8 @@
 #include "pause_activity.hpp"
+#include "cheats_picker_activity.hpp"
+#include "core_options_picker_activity.hpp"
 #include "display_picker_activity.hpp"
+#include "shaders_picker_activity.hpp"
 #include "slot_picker_activity.hpp"
 
 #include "libretro/savestate.hpp"
@@ -85,7 +88,13 @@ brls::View* PauseActivity::createContentView() {
             return true;
         });
 
-    add_cell("Core options", "Per-core knobs", soon("Core options"));
+    add_cell("Core options", "Per-core knobs",
+        [](brls::View*) {
+            brls::Application::pushActivity(
+                new CoreOptionsPickerActivity(),
+                brls::TransitionAnimation::NONE);
+            return true;
+        });
     add_cell("Display",      "Aspect / scale",
         [](brls::View*) {
             brls::Application::pushActivity(
@@ -93,8 +102,30 @@ brls::View* PauseActivity::createContentView() {
                 brls::TransitionAnimation::NONE);
             return true;
         });
-    add_cell("Shaders",      "Pick a preset",  soon("Shaders"));
-    add_cell("Cheats",       "Toggle cheats",  soon("Cheats"));
+    add_cell("Shaders",      "Pick a preset",
+        [](brls::View*) {
+            brls::Application::pushActivity(
+                new ShadersPickerActivity(),
+                brls::TransitionAnimation::NONE);
+            return true;
+        });
+    {
+        // Derive rom stem from the rom path for the cheats picker.
+        std::string stem = rom;
+        if (const auto sl = stem.find_last_of('/'); sl != std::string::npos)
+            stem = stem.substr(sl + 1);
+        if (const auto dot = stem.find_last_of('.'); dot != std::string::npos)
+            stem = stem.substr(0, dot);
+        const auto sys_copy = sys;
+        const auto stem_copy = stem;
+        add_cell("Cheats", "Toggle cheats",
+            [sys_copy, stem_copy](brls::View*) {
+                brls::Application::pushActivity(
+                    new CheatsPickerActivity(sys_copy, stem_copy),
+                    brls::TransitionAnimation::NONE);
+                return true;
+            });
+    }
 
     const std::string back = m_back_nro;
     add_cell("Quit", "Back to foyer",

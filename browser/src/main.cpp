@@ -149,25 +149,21 @@ int main(int argc, char* argv[])
     foyer::browser::library_state::rescan();
     foyer::log::write("[boot] library scan done\n");
 
-    // Push Home first, then Splash on top. When the splash worker
-    // finishes its background work (manifest prefetch on first-run,
-    // otherwise a no-op short delay), it pops itself off the stack
-    // and Home is revealed. This avoids the pop-and-push race that
-    // crashed earlier alphas — only one transition fires.
-    foyer::log::write("[boot] pushing HomeActivity\n");
-    brls::Application::pushActivity(new ::foyer::browser::HomeActivity());
-
     if (!::foyer::browser::first_run::is_complete()) {
         foyer::log::write("[boot] first-run marker missing — wizard\n");
         ::foyer::browser::manifest_cache::prefetch();
+        foyer::log::write("[boot] pushing HomeActivity\n");
+        brls::Application::pushActivity(new ::foyer::browser::HomeActivity());
         brls::Application::pushActivity(new ::foyer::browser::WizardActivity());
     } else {
-        foyer::log::write("[boot] pushing SplashActivity\n");
-        // No fade animation — the fade marks the splash as
-        // translucent for its duration, and brls then draws
-        // every activity below (HomeActivity's action row,
-        // carousel etc) for those frames, bleeding through as
-        // an artifact during boot.
+        // Splash-only stack until the worker finishes — Home is
+        // pushed from inside SplashActivity::handoff(). Walking
+        // a two-deep stack (Home under Splash) during boot let
+        // Home's action row + carousel bleed through brls's
+        // first frames before Splash's image fully decoded.
+        // Splash-only avoids any chance of a translucent draw
+        // showing the layer below.
+        foyer::log::write("[boot] pushing SplashActivity (sole)\n");
         brls::Application::pushActivity(
             new ::foyer::browser::SplashActivity(),
             brls::TransitionAnimation::NONE);

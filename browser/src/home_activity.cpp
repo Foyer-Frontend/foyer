@@ -224,19 +224,20 @@ void HomeActivity::onContentAvailable() {
 
 void HomeActivity::populateCarousel() {
     if (!carousel) return;
-    // Static system list for Phase C — real library scan + per-tile
-    // game-count badge come back in alpha.5 when scanner.cpp is
-    // re-introduced into the brls build.
-    for (const auto& sys : ::foyer::library::all_systems()) {
-        const std::string label = sys.display_name.empty()
-            ? std::string(sys.folder_name)
-            : std::string(sys.display_name);
-        // Game count comes from the cached library scan. Empty
-        // when the system folder isn't on the SD card yet.
-        const auto* scanned = library_state::find_system(sys.folder_name);
-        const std::size_t count = scanned ? scanned->games.size() : 0;
+    // Walk the scanned library list rather than all_systems():
+    // scanner injects the virtual "Favourites" / "Recently
+    // played" entries at the front of that vector, so iterating
+    // it here surfaces them as their own carousel tiles. Real
+    // systems come right after the virtuals in the same order
+    // all_systems() declares them.
+    for (const auto& sys : library_state::systems()) {
+        if (!sys.def) continue;
+        const std::string label = sys.def->display_name.empty()
+            ? std::string(sys.def->folder_name)
+            : std::string(sys.def->display_name);
         carousel->addView(
-            new SystemTile(this, sys.folder_name, label, count));
+            new SystemTile(this, sys.def->folder_name,
+                           label, sys.games.size()));
     }
 }
 

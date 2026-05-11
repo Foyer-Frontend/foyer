@@ -1,5 +1,6 @@
 #include "activity/splash_activity.hpp"
 
+#include "activity/home_activity.hpp"
 #include "manifest_cache.hpp"
 #include "platform/log.hpp"
 
@@ -82,7 +83,7 @@ void SplashActivity::tick() {
 }
 
 void SplashActivity::handoff() {
-    foyer::log::write("[splash] handoff — popping self, revealing Home\n");
+    foyer::log::write("[splash] handoff — pushing Home, popping self\n");
     m_worker->finish();
 
     if (m_tick) {
@@ -91,11 +92,13 @@ void SplashActivity::handoff() {
         m_tick = nullptr;
     }
 
-    // Home is already underneath us — main pushed Home first, then
-    // Splash on top. A single popActivity reveals it. No push race.
-    // No fade — the fade phase marks the popped splash as
-    // translucent and shows HomeActivity bleeding through
-    // around its edges for the duration.
+    // Boot path now keeps Splash alone on the stack so Home
+    // can't bleed through brls's first deko3d frames. Push
+    // Home first, then pop self — both with NONE so there's
+    // no fade phase that would mark either as translucent.
+    brls::Application::pushActivity(
+        new ::foyer::browser::HomeActivity(),
+        brls::TransitionAnimation::NONE);
     brls::Application::popActivity(brls::TransitionAnimation::NONE);
 }
 
