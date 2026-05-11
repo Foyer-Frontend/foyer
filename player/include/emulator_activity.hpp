@@ -1,6 +1,7 @@
 #pragma once
 
 #include <borealis.hpp>
+#include <switch.h>
 
 #include <memory>
 #include <string>
@@ -49,6 +50,8 @@ private:
     // Edge-trigger gate for the L3+R3 pause combo so the menu
     // doesn't re-push every tick while the user holds it.
     bool                 m_pause_pushed = false;
+    PadState             m_pad{};
+    bool                 m_pad_inited = false;
 };
 
 }  // namespace foyer::player

@@ -451,14 +451,17 @@ void GameActivity::buildMetaPanel() {
         hdr->setText("Synopsis");
         hdr->setFontSize(20.0f);
         hdr->setMargins(0.0f, 0.0f, 4.0f, 0.0f);
-        auto theme = brls::Application::getTheme();
-        hdr->setTextColor(theme.getColor("brls/text_disabled"));
+        // Match the metadata key labels above — same red across
+        // both themes so the section header stays readable
+        // against arbitrary fanart.
+        hdr->setTextColor(nvgRGB(0xD0, 0x3A, 0x3A));
         metaHolder->addView(hdr);
 
         auto* body = new brls::Label();
         body->setText(synopsis);
         body->setFontSize(18.0f);
         body->setMaxWidth(760.0f);
+        auto theme = brls::Application::getTheme();
         body->setTextColor(theme.getColor("brls/text"));
         metaHolder->addView(body);
     }

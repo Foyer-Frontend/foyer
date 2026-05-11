@@ -3,8 +3,9 @@
 #include "libretro/savestate.hpp"
 #include "platform/log.hpp"
 
+#include <borealis/views/applet_frame.hpp>
 #include <borealis/views/cells/cell_detail.hpp>
-#include <borealis/views/header.hpp>
+#include <borealis/views/scrolling_frame.hpp>
 
 using namespace brls::literals;
 
@@ -18,28 +19,19 @@ PauseActivity::PauseActivity(std::string rom_path,
     , m_on_quit(std::move(on_quit)) {}
 
 brls::View* PauseActivity::createContentView() {
-    // Translucent overlay: dim the running game behind us so the
-    // menu reads on any frame.
-    auto* outer = new brls::Box();
-    outer->setAxis(brls::Axis::COLUMN);
-    outer->setAlignItems(brls::AlignItems::CENTER);
-    outer->setJustifyContent(brls::JustifyContent::CENTER);
-    outer->setBackgroundColor(nvgRGBA(0, 0, 0, 178));
+    // Full-screen frame, theme background, scrolling list of
+    // DetailCells. AppletFrame gives us the standard top bar
+    // (title + hint chrome) and the hint footer for free; the
+    // BottomBar shows the brls glyphs for whichever cell has
+    // focus.
+    auto* frame = new brls::AppletFrame();
+    frame->setTitle("Game paused");
 
-    // Inner panel — fixed width column of cells.
-    auto* panel = new brls::Box();
-    panel->setAxis(brls::Axis::COLUMN);
-    panel->setAlignItems(brls::AlignItems::STRETCH);
-    panel->setWidth(540.0f);
-    panel->setMaxHeight(580.0f);
-    auto th = brls::Application::getTheme();
-    panel->setBackgroundColor(th.getColor("brls/background"));
-    panel->setCornerRadius(10.0f);
-    panel->setPadding(16.0f, 24.0f, 24.0f, 24.0f);
-
-    auto* header = new brls::Header();
-    header->setTitle("Game paused");
-    panel->addView(header);
+    auto* host = new brls::Box();
+    host->setAxis(brls::Axis::COLUMN);
+    host->setAlignItems(brls::AlignItems::STRETCH);
+    host->setWidth(10000.0f);
+    host->setPadding(20.0f, 32.0f, 32.0f, 32.0f);
 
     auto add_cell = [&](const std::string& title, const std::string& detail,
                         std::function<bool(brls::View*)> on_click) {
@@ -47,7 +39,7 @@ brls::View* PauseActivity::createContentView() {
         c->title->setText(title);
         c->detail->setText(detail);
         c->registerClickAction(std::move(on_click));
-        panel->addView(c);
+        host->addView(c);
     };
 
     auto soon = [](const std::string& name) {
@@ -107,8 +99,14 @@ brls::View* PauseActivity::createContentView() {
             return true;
         });
 
-    outer->addView(panel);
-    return outer;
+    auto* scroll = new brls::ScrollingFrame();
+    scroll->setAxis(brls::Axis::COLUMN);
+    scroll->setAlignItems(brls::AlignItems::STRETCH);
+    scroll->setScrollingBehavior(brls::ScrollingBehavior::CENTERED);
+    scroll->setGrow(1.0f);
+    scroll->setContentView(host);
+    frame->setContentView(scroll);
+    return frame;
 }
 
 void PauseActivity::onContentAvailable() {

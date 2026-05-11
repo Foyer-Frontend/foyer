@@ -205,24 +205,25 @@ void EmulatorActivity::onContentAvailable() {
 }
 
 void EmulatorActivity::tick_frame() {
-    auto& fe = foyer::libretro::Frontend::instance();
-    fe.run_frame();
-    if (m_view) m_view->invalidate();
-
-    // Pause-overlay trigger: L3+R3 held together. We poll libnx
-    // directly because the brls action callback only fires on
-    // a single button down, and the user wants + / - reserved
-    // for libretro Start / Select. A static PadState catches
-    // up on the first call.
-    static PadState s_pad;
-    static bool     s_pad_inited = false;
-    if (!s_pad_inited) {
-        padConfigureInput(1, HidNpadStyleSet_NpadStandard);
-        padInitializeDefault(&s_pad);
-        s_pad_inited = true;
+    // Skip the whole frame while the pause overlay is on top —
+    // the activity stack's top changes as the user navigates,
+    // and we don't want to keep advancing the core (or its
+    // audio output) while paused.
+    if (brls::Application::getActivitiesStack().back() != this) {
+        return;
     }
-    padUpdate(&s_pad);
-    const u64 held = padGetButtons(&s_pad);
+
+    if (!m_pad_inited) {
+        padConfigureInput(1, HidNpadStyleSet_NpadStandard);
+        padInitializeDefault(&m_pad);
+        m_pad_inited = true;
+    }
+    padUpdate(&m_pad);
+
+    // L3+R3 hold → push the pause overlay. Detected before the
+    // libretro input poll so the combo doesn't also register as
+    // L3/R3 inside the running core.
+    const u64 held = padGetButtons(&m_pad);
     const bool combo =
         (held & HidNpadButton_StickL) && (held & HidNpadButton_StickR);
     if (combo && !m_pause_pushed) {
@@ -231,9 +232,19 @@ void EmulatorActivity::tick_frame() {
             new PauseActivity(m_original_rom_path,
                               m_system_folder,
                               []() {}));
+        return;
     } else if (!combo) {
         m_pause_pushed = false;
     }
+
+    // Mirror the Switch pad into the libretro frontend's
+    // InputState. Without this, retro_run sees zeroed buttons
+    // and the user can't get past a game's title screen.
+    foyer::libretro::poll_input(m_pad);
+
+    auto& fe = foyer::libretro::Frontend::instance();
+    fe.run_frame();
+    if (m_view) m_view->invalidate();
 }
 
 }  // namespace foyer::player
