@@ -44,7 +44,14 @@ int main(int argc, char** argv) {
         return 1;
     }
     const std::string rom_path = normalise_argv_path(argv[1]);
-    foyer::log::write("[player-brls] booting with rom=%s\n", rom_path.c_str());
+    // argv[2] is the launcher's own nro path so we can chain-launch
+    // back on Quit. Browser fills it in launch::launch_game; if the
+    // user double-tapped foyer-<core>.nro from hbmenu directly,
+    // argv[2] is absent and Quit just exits to homebrew menu.
+    const std::string back_nro =
+        (argc >= 3) ? normalise_argv_path(argv[2]) : std::string{};
+    foyer::log::write("[player-brls] booting with rom=%s back=%s\n",
+        rom_path.c_str(), back_nro.c_str());
 
     if (!brls::Application::init()) {
         foyer::log::write("[player-brls] brls init failed\n");
@@ -53,7 +60,7 @@ int main(int argc, char** argv) {
     brls::Application::createWindow("foyer");
 
     brls::Application::pushActivity(
-        new foyer::player::EmulatorActivity(rom_path));
+        new foyer::player::EmulatorActivity(rom_path, back_nro));
 
     while (brls::Application::mainLoop())
         ;

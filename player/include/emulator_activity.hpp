@@ -26,8 +26,10 @@ class EmulatorView;
 //     own unload path.
 class EmulatorActivity : public brls::Activity {
 public:
-    explicit EmulatorActivity(std::string rom_path);
+    EmulatorActivity(std::string rom_path, std::string back_nro);
     ~EmulatorActivity() override;
+
+    const std::string& back_nro() const { return m_back_nro; }
 
     brls::View* createContentView() override;
     void onContentAvailable() override;
@@ -44,6 +46,7 @@ private:
     // both state and SRAM files.
     std::string          m_original_rom_path;
     std::string          m_system_folder;
+    std::string          m_back_nro;
     EmulatorView*        m_view      = nullptr;
     brls::RepeatingTask* m_ticker    = nullptr;
     bool                 m_game_ok   = false;

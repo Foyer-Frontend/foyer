@@ -2,6 +2,7 @@
 #include "emulator_view.hpp"
 #include "pause_activity.hpp"
 
+#include "libretro/bezel.hpp"
 #include "libretro/frontend.hpp"
 #include "libretro/audio.hpp"
 #include "libretro/input.hpp"
@@ -38,8 +39,11 @@ private:
 
 }  // namespace
 
-EmulatorActivity::EmulatorActivity(std::string rom_path)
-    : m_rom_path(rom_path), m_original_rom_path(rom_path) {
+EmulatorActivity::EmulatorActivity(std::string rom_path,
+                                   std::string back_nro)
+    : m_rom_path(rom_path)
+    , m_original_rom_path(rom_path)
+    , m_back_nro(std::move(back_nro)) {
     // /foyer/roms/<sys>/<file> -> sys is the parent dir name.
     // Used by libretro::state_path_for to route .state slots
     // under /foyer/states/<sys>/.
@@ -59,6 +63,8 @@ EmulatorActivity::~EmulatorActivity() {
         m_ticker = nullptr;
     }
     foyer::libretro::AudioSink::instance().shutdown();
+    foyer::libretro::invalidate_bezel(
+        brls::Application::getNVGContext());
     auto& fe = foyer::libretro::Frontend::instance();
     if (m_game_ok) fe.unload_game();
     fe.shutdown();
@@ -161,6 +167,15 @@ void EmulatorActivity::onContentAvailable() {
     // same game.
     fe.set_sram_basis_path(m_original_rom_path);
 
+    // Bezel lookup keys off (system_folder, rom_stem). Strip
+    // dir + extension off the *original* rom path.
+    std::string stem = m_original_rom_path;
+    if (const auto sl = stem.find_last_of('/'); sl != std::string::npos)
+        stem = stem.substr(sl + 1);
+    if (const auto dot = stem.find_last_of('.'); dot != std::string::npos)
+        stem = stem.substr(0, dot);
+    foyer::libretro::set_bezel_rom_id(m_system_folder, stem);
+
     // Audio. Sample rate comes from retro_av_info populated by
     // load_game above; AudioSink owns its own libnx audren
     // service + worker thread.
@@ -249,9 +264,10 @@ void EmulatorActivity::tick_frame() {
             m_pause_pushed = true;
             const auto rom = m_original_rom_path;
             const auto sys = m_system_folder;
-            brls::sync([rom, sys]() {
+            const auto back = m_back_nro;
+            brls::sync([rom, sys, back]() {
                 brls::Application::pushActivity(
-                    new PauseActivity(rom, sys, []() {}),
+                    new PauseActivity(rom, sys, back, []() {}),
                     brls::TransitionAnimation::NONE);
             });
             return;

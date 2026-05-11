@@ -4,6 +4,8 @@
 #include "libretro/savestate.hpp"
 #include "platform/log.hpp"
 
+#include <switch.h>
+
 #include <borealis/views/applet_frame.hpp>
 #include <borealis/views/cells/cell_detail.hpp>
 #include <borealis/views/scrolling_frame.hpp>
@@ -14,9 +16,11 @@ namespace foyer::player {
 
 PauseActivity::PauseActivity(std::string rom_path,
                              std::string system_folder,
+                             std::string back_nro,
                              QuitCallback on_quit)
     : m_rom_path(std::move(rom_path))
     , m_system_folder(std::move(system_folder))
+    , m_back_nro(std::move(back_nro))
     , m_on_quit(std::move(on_quit)) {}
 
 brls::View* PauseActivity::createContentView() {
@@ -78,9 +82,16 @@ brls::View* PauseActivity::createContentView() {
     add_cell("Shaders",      "Pick a preset",  soon("Shaders"));
     add_cell("Cheats",       "Toggle cheats",  soon("Cheats"));
 
-    add_cell("Quit", "End the game",
-        [this](brls::View*) {
+    const std::string back = m_back_nro;
+    add_cell("Quit", "Back to foyer",
+        [this, back](brls::View*) {
             if (m_on_quit) m_on_quit();
+            // Chain-launch back to foyer.nro instead of dropping
+            // the user on sphaira / HOS. The browser stamped its
+            // own path as argv[2] when launching us.
+            if (!back.empty()) {
+                envSetNextLoad(back.c_str(), back.c_str());
+            }
             brls::Application::quit();
             return true;
         });

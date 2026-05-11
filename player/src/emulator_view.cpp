@@ -1,5 +1,6 @@
 #include "emulator_view.hpp"
 
+#include "libretro/bezel.hpp"
 #include "libretro/video.hpp"
 
 namespace foyer::player {
@@ -41,6 +42,9 @@ void EmulatorView::draw(NVGcontext* vg,
     nvgFill(vg);
     nvgTranslate(vg, x, y);
     foyer::libretro::VideoSinkImpl::instance().draw(vg, w, h);
+    // Bezel sits on top of the video frame — per-rom PNG with a
+    // transparent hole where the emulator output shows through.
+    foyer::libretro::draw_bezel(vg, w, h);
     nvgRestore(vg);
 }
 

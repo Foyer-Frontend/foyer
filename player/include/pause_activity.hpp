@@ -22,6 +22,7 @@ public:
 
     PauseActivity(std::string rom_path,
                   std::string system_folder,
+                  std::string back_nro,
                   QuitCallback on_quit);
 
     brls::View* createContentView() override;
@@ -30,6 +31,7 @@ public:
 private:
     std::string  m_rom_path;
     std::string  m_system_folder;
+    std::string  m_back_nro;
     QuitCallback m_on_quit;
 };
 
