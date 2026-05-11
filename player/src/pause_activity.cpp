@@ -3,7 +3,6 @@
 #include "libretro/savestate.hpp"
 #include "platform/log.hpp"
 
-#include <borealis/views/applet_frame.hpp>
 #include <borealis/views/cells/cell_detail.hpp>
 #include <borealis/views/scrolling_frame.hpp>
 
@@ -19,19 +18,28 @@ PauseActivity::PauseActivity(std::string rom_path,
     , m_on_quit(std::move(on_quit)) {}
 
 brls::View* PauseActivity::createContentView() {
-    // Full-screen frame, theme background, scrolling list of
-    // DetailCells. AppletFrame gives us the standard top bar
-    // (title + hint chrome) and the hint footer for free; the
-    // BottomBar shows the brls glyphs for whichever cell has
-    // focus.
-    auto* frame = new brls::AppletFrame();
-    frame->setTitle("Game paused");
+    // Full-screen Box with theme background — the
+    // EmulatorActivity ticker stops while this is on top, so
+    // letting the theme paint over the running game gives the
+    // user a clear "paused" signal.
+    auto* root = new brls::Box();
+    root->setAxis(brls::Axis::COLUMN);
+    root->setAlignItems(brls::AlignItems::STRETCH);
+    auto th = brls::Application::getTheme();
+    root->setBackgroundColor(th.getColor("brls/background"));
+
+    auto* title = new brls::Label();
+    title->setText("Game paused");
+    title->setFontSize(28.0f);
+    title->setMargins(20.0f, 32.0f, 12.0f, 32.0f);
+    title->setTextColor(nvgRGB(0xD0, 0x3A, 0x3A));
+    root->addView(title);
 
     auto* host = new brls::Box();
     host->setAxis(brls::Axis::COLUMN);
     host->setAlignItems(brls::AlignItems::STRETCH);
     host->setWidth(10000.0f);
-    host->setPadding(20.0f, 32.0f, 32.0f, 32.0f);
+    host->setPadding(0.0f, 32.0f, 32.0f, 32.0f);
 
     auto add_cell = [&](const std::string& title, const std::string& detail,
                         std::function<bool(brls::View*)> on_click) {
@@ -105,8 +113,8 @@ brls::View* PauseActivity::createContentView() {
     scroll->setScrollingBehavior(brls::ScrollingBehavior::CENTERED);
     scroll->setGrow(1.0f);
     scroll->setContentView(host);
-    frame->setContentView(scroll);
-    return frame;
+    root->addView(scroll);
+    return root;
 }
 
 void PauseActivity::onContentAvailable() {
