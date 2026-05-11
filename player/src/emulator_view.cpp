@@ -8,10 +8,15 @@ EmulatorView::EmulatorView() {
     // Fill the entire activity content area; the activity owns no
     // chrome above us.
     this->setGrow(1.0f);
-    // Focus is irrelevant for the emulator surface itself — input
-    // routes via the EmulatorActivity tick into libretro/input.cpp
-    // rather than through brls focus traversal.
-    this->setFocusable(false);
+    // Focusable so brls's pop-restore-focus path has a valid
+    // target when PauseActivity / SlotPickerActivity close.
+    // Otherwise the focus pointer stays on the dying overlay's
+    // cell, and the next A press faults dereferencing a freed
+    // view. Libretro input still routes via libnx directly, so
+    // owning brls focus here costs nothing.
+    this->setFocusable(true);
+    this->setHideHighlight(true);
+    this->setHideHighlightBackground(true);
 }
 
 void EmulatorView::draw(NVGcontext* vg,

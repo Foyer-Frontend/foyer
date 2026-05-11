@@ -179,6 +179,14 @@ void EmulatorActivity::onContentAvailable() {
         m_ticker->start();
     }
 
+    // Land focus on the EmulatorView so brls's pop-focus
+    // restore path on the way back from PauseActivity has a
+    // live target — otherwise the focus pointer hangs on the
+    // dying overlay's cell and the next A press faults.
+    if (m_view) {
+        brls::Application::giveFocus(m_view);
+    }
+
     if (auto* cv = this->getContentView()) {
         // Eat every button brls might otherwise consume so the
         // core sees the press through its own libnx pad poll
