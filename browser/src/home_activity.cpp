@@ -8,6 +8,7 @@
 #include "update_check.hpp"
 
 #include "hos_status.hpp"
+#include "library/config.hpp"
 #include "library_state.hpp"
 #include "library/system_db.hpp"
 #include "platform/log.hpp"
@@ -205,6 +206,30 @@ void HomeActivity::onContentAvailable() {
                 return jump_focus(+page_size());
             },
             false, true, brls::SOUND_FOCUS_CHANGE);
+
+        cv->registerAction(
+            "Sort", brls::BUTTON_BACK,
+            [this](brls::View*) {
+                using M = ::foyer::library::Config::SystemSortMode;
+                M cur = ::foyer::library::config().system_sort_mode;
+                M nxt = cur;
+                const char* label = "";
+                switch (cur) {
+                    case M::ScannerOrder: nxt = M::Alphabetical; label = "Alphabetical"; break;
+                    case M::Alphabetical: nxt = M::GameCount;    label = "Game count";   break;
+                    case M::GameCount:    nxt = M::Custom;       label = "Custom order"; break;
+                    case M::Custom:
+                    default:              nxt = M::ScannerOrder; label = "Scanner order"; break;
+                }
+                ::foyer::library::set_system_sort_mode(nxt);
+                library_state::rescan();
+                if (this->carousel) {
+                    this->carousel->clearViews();
+                    populateCarousel();
+                }
+                brls::Application::notify(std::string("Sort: ") + label);
+                return true;
+            }, false, false, brls::SOUND_FOCUS_CHANGE);
 
         cv->registerAction(
             "Quit", brls::BUTTON_B,

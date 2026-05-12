@@ -460,6 +460,33 @@ void SystemActivity::onContentAvailable() {
             return true;
         }, false, false, brls::SOUND_BACK);
 
+    // Minus — cycle the game sort mode for this view. We rescan
+    // so the cached library_state::systems() is re-sorted by
+    // the new SortMode, then rebuild the carousel in place.
+    this->getContentView()->registerAction(
+        "Sort", brls::BUTTON_BACK,
+        [this](brls::View*) {
+            using M = ::foyer::library::Config::SortMode;
+            M cur = ::foyer::library::config().sort_mode;
+            M nxt = cur;
+            const char* label = "";
+            switch (cur) {
+                case M::Name:      nxt = M::Recent;    label = "Recent";    break;
+                case M::Recent:    nxt = M::Playtime;  label = "Playtime";  break;
+                case M::Playtime:  nxt = M::Favorites; label = "Favorites"; break;
+                case M::Favorites:
+                default:           nxt = M::Name;      label = "Name";      break;
+            }
+            ::foyer::library::set_sort_mode(nxt);
+            library_state::rescan();
+            if (carousel) {
+                carousel->clearViews();
+                populateCarousel();
+            }
+            brls::Application::notify(std::string("Sort: ") + label);
+            return true;
+        }, false, false, brls::SOUND_FOCUS_CHANGE);
+
     // L / R: jump 10 tiles in the cover-flow carousel. brls's
     // default carousel navigation is one-tile-at-a-time on the
     // d-pad / left stick; the shoulder buttons skim faster
