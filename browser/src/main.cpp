@@ -28,6 +28,7 @@
 
 #include "i18n/i18n.hpp"
 #include "library/config.hpp"
+#include "library/switch_titles.hpp"
 #include "net/http.hpp"
 #include "platform/log.hpp"
 
@@ -164,6 +165,14 @@ int main(int argc, char* argv[])
     // before pushing Home so the tile game-count banners have real
     // values to display. The splash overlay below covers any visible
     // hitch.
+    // Enumerate installed Switch titles BEFORE the library scan so
+    // the __switch virtual system gets populated on first pass.
+    // Subsequent boots fast-path off the on-disk NACP cache; only
+    // newly installed apps hit the slow nsGetApplicationControlData
+    // path.
+    foyer::library::load_switch_titles();
+    foyer::log::write("[boot] switch titles enumerated\n");
+
     foyer::browser::library_state::rescan();
     foyer::log::write("[boot] library scan done\n");
 

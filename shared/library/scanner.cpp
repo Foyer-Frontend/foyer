@@ -2,6 +2,7 @@
 #include "config.hpp"
 #include "library_cache.hpp"
 #include "per_game.hpp"
+#include "switch_titles.hpp"
 #include "system_db.hpp"
 #include "platform/log.hpp"
 #include "util/archive.hpp"
@@ -307,11 +308,21 @@ std::vector<System> scan_library(const ScanOptions& opts) {
                         [](const Game& a, const Game& b) { return a.stem < b.stem; });
                 },
                 /*cap=*/0);
-            // Always-present Switch virtual (placeholder).
+            // Always-present Switch virtual — populated from
+            // libnx's nsListApplicationRecord at boot.
             {
                 System v;
                 v.def       = &kVirtualSwitchDef;
                 v.root_path = "(virtual)";
+                for (const auto& t : ::foyer::library::switch_titles()) {
+                    Game g{};
+                    g.path      = switch_path_for(t.application_id);
+                    g.stem      = t.name.empty()
+                        ? std::string{"Untitled"} : t.name;
+                    g.display   = g.stem;
+                    g.box_art   = t.icon_path;
+                    v.games.push_back(std::move(g));
+                }
                 out_real.insert(out_real.begin(), std::move(v));
             }
             return std::move(*cached);
@@ -418,13 +429,24 @@ std::vector<System> scan_library(const ScanOptions& opts) {
         },
         /*cap=*/0);
 
-    // Switch-titles virtual — always present even with zero
-    // games so the Home carousel shows its splash + backdrop.
-    // The launch path (switch://...) is restored separately.
+    // Switch-titles virtual — populated from
+    // foyer::library::switch_titles() (loaded in main.cpp boot
+    // path). Each installed Switch app becomes a Game whose
+    // `path` is "switch://<hex>"; launch.cpp peels the hex back
+    // out and hands it to appletRequestLaunchApplication.
     {
         System v;
         v.def       = &kVirtualSwitchDef;
         v.root_path = "(virtual)";
+        for (const auto& t : ::foyer::library::switch_titles()) {
+            Game g{};
+            g.path      = switch_path_for(t.application_id);
+            g.stem      = t.name.empty()
+                ? std::string{"Untitled"} : t.name;
+            g.display   = g.stem;
+            g.box_art   = t.icon_path;
+            v.games.push_back(std::move(g));
+        }
         out.insert(out.begin(), std::move(v));
     }
 

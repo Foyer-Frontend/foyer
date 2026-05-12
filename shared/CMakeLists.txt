@@ -30,6 +30,7 @@ add_library(foyer_shared STATIC
     library/foyer_update_job.cpp
     library/scrape_job.cpp
     library/skipped_versions.cpp
+    library/switch_titles.cpp
     library/updates.cpp
     net/http.cpp
     scrapers/cache.cpp
