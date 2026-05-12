@@ -3,6 +3,8 @@
 #include "activity/game_activity.hpp"
 #include "install_queue.hpp"
 #include "launch.hpp"
+
+#include <sys/stat.h>
 #include "activity/per_game_activity.hpp"
 #include "activity/per_system_activity.hpp"
 #include "library_state.hpp"
@@ -147,7 +149,8 @@ public:
              std::string_view game_stem, std::string_view box_art_path,
              float tile_w, float tile_h)
         : m_host(host), m_idx(idx),
-          m_system(system_folder), m_path(game_path)
+          m_system(system_folder), m_path(game_path),
+          m_stem(game_stem)
     {
         m_tile_w = tile_w;
         m_tile_h = tile_h;
@@ -291,7 +294,9 @@ public:
         m_img->setPositionBottom(0.0f);
     }
 
-    int  index() const { return m_idx; }
+    int                index() const  { return m_idx;   }
+    const std::string& system() const { return m_system; }
+    const std::string& stem() const   { return m_stem;   }
 
     void onFocusGained() override {
         brls::Box::onFocusGained();
@@ -322,6 +327,7 @@ private:
     int             m_idx  = 0;
     std::string     m_system;
     std::string     m_path;
+    std::string     m_stem;
     std::string     m_cover_path;
     brls::Image*    m_img = nullptr;
     bool            m_cover_loaded = false;
@@ -709,6 +715,28 @@ void SystemActivity::onTileFocused(int idx) {
         foyer::log::write("[system] preloaded tiles %d..%d (%s)\n",
             m_loaded_until, next_until - 1, m_folder.c_str());
         m_loaded_until = next_until;
+    }
+
+    // Backdrop swap. If the focused tile's per-game ScreenScraper
+    // bundle has a fanart.jpg, paint that; otherwise fall back to
+    // the system's bundled default backdrop. Reads disk on every
+    // focus change but the file (a single 1280-wide jpeg) decodes
+    // in < 30 ms even on Switch — well under the carousel scroll
+    // animation duration. brls::Image dedupes by path so revisiting
+    // the same tile is free.
+    if (!backdrop || idx < 0 || idx >= n) return;
+    auto* tile = dynamic_cast<GameTile*>(carousel->getChildren()[idx]);
+    if (!tile) return;
+
+    const auto bundle = ::foyer::scrapers::game_asset_dir(
+        tile->system(), tile->stem());
+    const auto fanart = bundle + "fanart.jpg";
+    struct stat st{};
+    if (::stat(fanart.c_str(), &st) == 0 && st.st_size > 0) {
+        backdrop->setImageFromFile(fanart);
+    } else {
+        backdrop->setImageFromRes(
+            "themes/foyer/systems/" + art_dir_for(m_folder) + "/background.jpg");
     }
 }
 
