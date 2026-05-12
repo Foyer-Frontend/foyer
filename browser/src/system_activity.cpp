@@ -1,6 +1,7 @@
 #include "activity/system_activity.hpp"
 
 #include "activity/game_activity.hpp"
+#include "install_queue.hpp"
 #include "launch.hpp"
 #include "activity/per_game_activity.hpp"
 #include "activity/per_system_activity.hpp"
@@ -40,11 +41,6 @@ std::string art_dir_for(std::string_view folder) {
     return std::string{folder};
 }
 
-// Long-lived scrape job. Survives the activity popping so the
-// download keeps running while the user is back on Home.
-// unique_ptr so we can replace it cleanly on subsequent runs.
-std::unique_ptr<::foyer::library::ScrapeJob> g_scrape_job;
-
 ::foyer::library::ScrapeJob::Source preferred_scrape_source() {
     using S = ::foyer::library::Config::Scraper;
     using J = ::foyer::library::ScrapeJob::Source;
@@ -56,9 +52,11 @@ std::unique_ptr<::foyer::library::ScrapeJob> g_scrape_job;
     }
 }
 
-// Polls g_scrape_job and pushes counter text into
-// SystemActivity's scrape_status label. Stops automatically when
-// the job is no longer active.
+// Mirrors install_queue's current status into the scrape banner
+// when the active tag looks like a scrape job. install_queue runs
+// every long-lived background op now (cores / bezels / shaders /
+// cheats / foyer self-update / scrapes), so the banner only
+// surfaces scrape activity by sniffing the tag prefix.
 class ScrapeStatusTask : public brls::RepeatingTask {
 public:
     ScrapeStatusTask(SystemActivity* host)
@@ -334,25 +332,9 @@ private:
 }  // namespace
 
 void SystemActivity::cancel_pending_scrape() {
-    if (!g_scrape_job) return;
-    if (g_scrape_job->active() && !g_scrape_job->done()) {
-        foyer::log::write(
-            "[system] signalling scrape cancel on quit (no join)\n");
-        g_scrape_job->cancel();
-        // Intentionally do NOT call finish() / unique_ptr reset
-        // here. finish() blocks on threadWaitForExit, and a
-        // worker mid-curl_easy_perform can take many seconds to
-        // honour the cancel — the deko3d watchdog or HOS sees
-        // the UI thread stalled and kills the process. Leak the
-        // unique_ptr; the OS reaps the thread + sockets when
-        // the process exits a moment later.
-        (void)g_scrape_job.release();
-    } else {
-        // Worker already done — finish() is a fast threadClose,
-        // safe to call inline.
-        g_scrape_job->finish();
-        g_scrape_job.reset();
-    }
+    // Scrapes now ride install_queue, which HomeActivity's quit
+    // drain already calls stop() on. Left as a no-op so the
+    // SystemActivity public interface doesn't change.
 }
 
 SystemActivity::SystemActivity(std::string_view folder,
@@ -384,34 +366,24 @@ SystemActivity::~SystemActivity() {
 
 void SystemActivity::refreshScrapeStatus() {
     if (!scrapeStatus) return;
-    if (!g_scrape_job || !g_scrape_job->active()) {
-        // Job ended — clear label, drop task. finish() reclaims
-        // the worker thread handle.
-        if (g_scrape_job && g_scrape_job->done()) {
-            const int hits = g_scrape_job->hits();
-            const int total = g_scrape_job->total();
-            g_scrape_job->finish();
-            scrapeStatus->setText("");
-            brls::Application::notify(
-                "Scrape done — " + std::to_string(hits)
-                + "/" + std::to_string(total) + " hits");
-        } else {
-            scrapeStatus->setText("");
-        }
+    const auto snap = ::foyer::browser::install_queue::snapshot();
+    // Only surface scrape activity. Other install_queue jobs (core
+    // installs, foyer self-update, etc.) get their own banners
+    // elsewhere; the scrape label stays empty for those.
+    const bool is_scrape =
+        !snap.active_tag.empty()
+        && (snap.active_tag.rfind("Scrape ",   0) == 0
+         || snap.active_tag.rfind("Rescrape ", 0) == 0);
+    if (is_scrape && !snap.last_status.empty()) {
+        scrapeStatus->setText(snap.last_status);
+    } else {
+        scrapeStatus->setText("");
         if (m_scrapeStatusTask) {
             m_scrapeStatusTask->stop();
             delete m_scrapeStatusTask;
             m_scrapeStatusTask = nullptr;
         }
-        return;
     }
-    const int done  = g_scrape_job->done_ct();
-    const int total = g_scrape_job->total();
-    const int hits  = g_scrape_job->hits();
-    std::stringstream ss;
-    ss << "Scraping " << done << "/" << total
-       << " (" << hits << " hits)";
-    scrapeStatus->setText(ss.str());
 }
 
 void SystemActivity::onContentAvailable() {
@@ -433,11 +405,13 @@ void SystemActivity::onContentAvailable() {
     buildActionRow();
     populateCarousel();
 
-    // If the user started a scrape from this same system, popped
-    // back to Home, then re-entered, the job is still running on
-    // its background thread. Resume showing progress on the new
-    // activity instance.
-    if (g_scrape_job && g_scrape_job->active() && !m_scrapeStatusTask) {
+    // Resume the status banner if install_queue is currently
+    // running a scrape (the user popped back to Home + re-entered
+    // while a scrape was still in flight).
+    const auto snap = ::foyer::browser::install_queue::snapshot();
+    if ((snap.active_tag.rfind("Scrape ",   0) == 0
+      || snap.active_tag.rfind("Rescrape ", 0) == 0)
+        && !m_scrapeStatusTask) {
         m_scrapeStatusTask = new ScrapeStatusTask(this);
         m_scrapeStatusTask->start();
     }
@@ -600,37 +574,28 @@ void SystemActivity::buildActionRow() {
                 brls::Application::notify("Nothing to scrape — no games scanned");
                 return true;
             }
-            if (g_scrape_job) {
-                if (g_scrape_job->active() && !g_scrape_job->done()) {
-                    brls::Application::notify("Scrape already running");
-                    return true;
-                }
-                // Job finished but the polling task was torn down
-                // before it could finish() the worker (user popped
-                // back to Home or never opened the system view
-                // again). Reclaim the thread handle and start
-                // fresh.
-                if (g_scrape_job->done()) g_scrape_job->finish();
-                g_scrape_job.reset();
-            }
-            g_scrape_job = std::make_unique<::foyer::library::ScrapeJob>();
             const auto src = preferred_scrape_source();
-            if (g_scrape_job->start(*sys, src)) {
-                foyer::log::write(
-                    "[system] kicked scrape for %s (%zu games)\n",
-                    m_folder.c_str(), sys->games.size());
-                brls::Application::notify(
-                    "Scraping " + std::to_string(sys->games.size()) + " games…");
-                if (!m_scrapeStatusTask) {
-                    m_scrapeStatusTask = new ScrapeStatusTask(this);
-                    m_scrapeStatusTask->start();
-                }
-            } else {
-                foyer::log::write(
-                    "[system] scrape job failed to start for %s\n",
-                    m_folder.c_str());
-                brls::Application::notify("Scrape failed to start");
-                g_scrape_job.reset();
+            const std::string short_name{sys->def->short_name};
+            const std::string tag = "Scrape " + short_name;
+
+            // Snapshot the system into a heap copy so the queued
+            // worker body can outlive this lambda invocation.
+            auto sys_copy =
+                std::make_shared<::foyer::library::System>(*sys);
+            ::foyer::browser::install_queue::enqueue(
+                tag,
+                [sys_copy, src](::foyer::library::Worker& w) {
+                    ::foyer::library::run_system_scrape(*sys_copy, src, w);
+                });
+            foyer::log::write(
+                "[system] queued scrape for %s (%zu games)\n",
+                m_folder.c_str(), sys->games.size());
+            // Spin up the local status task so the in-view banner
+            // mirrors the queue's last_status. install_queue drives
+            // its own "Installing/Installed" toasts independently.
+            if (!m_scrapeStatusTask) {
+                m_scrapeStatusTask = new ScrapeStatusTask(this);
+                m_scrapeStatusTask->start();
             }
             return true;
         }));

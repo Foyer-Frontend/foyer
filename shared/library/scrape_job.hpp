@@ -4,40 +4,39 @@
 #include "worker.hpp"
 
 #include <string>
+#include <string_view>
 
 namespace foyer::library {
 
-// Background per-system cover scrape. The worker walks every game in
-// the snapshot, fetches the cover from the configured source, and
-// reports progress via the Worker status string.
-//
-// We snapshot the system data into the job (folder/short names + game
-// stems) rather than capture by reference because the UI is free to
-// rescan the library while the worker is running.
-class ScrapeJob {
-public:
+// Source enumeration kept under this name for back-compat with existing
+// callers (system_activity / game_activity). The class wrapper around an
+// owned Worker is gone — every scrape now flows through
+// foyer::browser::install_queue, and run_system_scrape() is the inline
+// body queued workers call.
+namespace ScrapeJob {
     enum class Source { Libretro, ScreenScraper, SteamGridDB };
+}
 
-    bool active()    const { return m_worker.active();    }
-    bool done()      const { return m_worker.done();      }
-    bool cancelled() const { return m_worker.cancelled(); }
+// Walks every game in `sys`, fetches cover art (+ title / snap for the
+// libretro source), and reports progress through `w.set_status`. Honors
+// `w.cancelled()` at each game boundary so a queued scrape can be
+// aborted via install_queue::stop. Caller should construct sys.def +
+// sys.games before calling.
+//
+// Returned struct exposes per-batch counters for callers that want to
+// surface them in a completion toast. Counters are valid only after the
+// function returns; mid-flight progress lives in the status string
+// (parseable as "Scraping <short> [<src>]  N / M").
+struct ScrapeStats { int total = 0; int done = 0; int hits = 0; };
+ScrapeStats run_system_scrape(const System& sys, ScrapeJob::Source src,
+                              Worker& w);
 
-    bool start(const System& sys, Source src);
-
-    void cancel() { m_worker.cancel(); }
-    std::string status_snapshot() const { return m_worker.status_snapshot(); }
-
-    int hits()    const { return m_hits;    }
-    int total()   const { return m_total;   }
-    int done_ct() const { return m_done_ct; }
-
-    void finish() { m_worker.finish(); }
-
-private:
-    Worker      m_worker;
-    int         m_hits    = 0;
-    int         m_total   = 0;
-    int         m_done_ct = 0;
-};
+// Single-game scrape — used by game_activity's Y rescrape. Drops the
+// bundle's metadata.json + legacy cover BEFORE the lookup so the cache
+// gate in run_system_scrape's loop doesn't short-circuit.
+bool run_one_scrape(std::string_view system_folder,
+                    std::string_view rom_path,
+                    std::string_view rom_stem,
+                    Worker& w);
 
 } // namespace foyer::library

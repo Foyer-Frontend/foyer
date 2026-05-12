@@ -15,9 +15,27 @@ name: Dispatch cores rebuild
 on:
   push:
     branches: [main]
+    # Only fire when code that the player nro actually links is
+    # touched. Browser-only subtrees (shared/library scanner +
+    # installers + scrape_job + update jobs, shared/scrapers) get
+    # left out so docs / Settings / install_queue edits don't
+    # trigger a full 55-core rebuild. The smart-matrix nightly
+    # cron still catches any drift if the filter ever undercounts.
     paths:
-      - 'shared/**'
       - 'player/**'
+      - 'shared/libretro/**'
+      - 'shared/platform/**'
+      - 'shared/ui/**'
+      - 'shared/net/**'
+      - 'shared/util/**'
+      - 'shared/library/config.*'
+      - 'shared/library/per_game.*'
+      - 'shared/library/system_db.*'
+      - 'shared/library/worker.*'
+      - 'shared/library/game_meta.*'
+      - 'shared/CMakeLists.txt'
+      - 'CMakeLists.txt'
+      - 'CMakePresets.json'
   workflow_dispatch:
 
 # Serialize so a burst of shared/ commits doesn't queue 5 redundant

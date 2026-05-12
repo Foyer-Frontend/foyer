@@ -1,8 +1,10 @@
 #include "activity/game_activity.hpp"
 
+#include "install_queue.hpp"
 #include "launch.hpp"
 #include "library_state.hpp"
 #include "library/per_game.hpp"
+#include "library/scrape_job.hpp"
 #include "library/worker.hpp"
 #include "platform/log.hpp"
 #include "scrapers/cache.hpp"
@@ -30,11 +32,10 @@ namespace foyer::browser {
 
 namespace {
 
-// Per-game rescrape worker. Survives the activity popping so the
-// download keeps running while the user is back on Home or the
-// system view. unique_ptr so subsequent rescrapes get a clean
-// instance instead of touching a half-finished Worker.
-std::unique_ptr<::foyer::library::Worker> g_rescrape_worker;
+// Rescrape now flows through install_queue::enqueue (see Y action
+// registration below). No per-activity Worker / lifetime juggling —
+// the queue owns the in-flight job and serialises against every
+// other install_queue user.
 
 // Live observer pointer + path. The rescrape worker's completion
 // lambda runs through brls::sync (UI thread) and checks these to
@@ -243,66 +244,29 @@ void GameActivity::onContentAvailable() {
                 return true;
             }, false, false, brls::SOUND_CLICK);
 
-        // Y — Rescrape this single rom. Drops the bundle's
-        // metadata.json (cache marker) + the legacy cover, then
-        // kicks a one-shot Worker that calls SS for this rom.
+        // Y — Rescrape this single rom. Enqueues a one-shot scrape
+        // on install_queue so it serializes against every other
+        // long-running op (core installs, system scrapes, foyer
+        // self-update). install_queue dedup means mash-tapping Y
+        // won't queue the same rescrape twice.
         cv->registerAction(
             "Rescrape", brls::BUTTON_Y,
             [folder, path_copy, stem_copy](brls::View*) {
-                if (g_rescrape_worker && g_rescrape_worker->active()
-                    && !g_rescrape_worker->done()) {
-                    brls::Application::notify("Rescrape already running");
-                    return true;
-                }
-                if (g_rescrape_worker) {
-                    if (g_rescrape_worker->done()) g_rescrape_worker->finish();
-                    g_rescrape_worker.reset();
-                }
-
-                const auto bundle = ::foyer::scrapers::game_asset_dir(
-                    folder, stem_copy);
-                ::unlink((bundle + "metadata.json").c_str());
-                const auto legacy = ::foyer::scrapers::cover_path(
-                    folder, stem_copy);
-                ::unlink(legacy.c_str());
-
-                g_rescrape_worker = std::make_unique<::foyer::library::Worker>();
-                g_rescrape_worker->start(
-                    [folder, path_copy, stem_copy](::foyer::library::Worker& w) {
-                        w.set_status("Rescraping…");
-                        const auto dest = ::foyer::scrapers::cover_path(
-                            folder, stem_copy);
-                        const bool ok =
-                            ::foyer::scrapers::screenscraper::fetch_cover(
-                                folder, path_copy, stem_copy, dest);
-                        // Worker bodies run off the UI thread, so
-                        // route the completion toast through
-                        // brls::sync — Application::notify mutates
-                        // brls's notification list which isn't
-                        // thread-safe.
+                ::foyer::browser::install_queue::enqueue(
+                    "Rescrape " + stem_copy,
+                    [folder, path_copy, stem_copy]
+                    (::foyer::library::Worker& w) {
+                        const bool ok = ::foyer::library::run_one_scrape(
+                            folder, path_copy, stem_copy, w);
                         const std::string stem_done = stem_copy;
                         const std::string path_done = path_copy;
                         brls::sync([stem_done, path_done, ok]() {
-                            brls::Application::notify(ok
-                                ? std::string("Rescraped ") + stem_done
-                                : std::string("Rescrape failed for ") + stem_done);
-                            // Refresh in place — if the user is
-                            // still on the game-details view for
-                            // this rom, swap in the freshly
-                            // scraped metadata + screenshots
-                            // without making them back out + re-
-                            // enter. Live observer is set in
-                            // onContentAvailable, cleared in dtor,
-                            // and only touched on the UI thread so
-                            // checking g_live_activity here is
-                            // safe.
                             if (ok && g_live_activity
                                 && g_live_game_path == path_done) {
                                 g_live_activity->refresh_from_disk();
                             }
                         });
-                    }, 0x100000);
-                brls::Application::notify("Rescraping " + stem_copy + "…");
+                    });
                 return true;
             }, false, false, brls::SOUND_CLICK);
 

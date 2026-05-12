@@ -8,6 +8,9 @@
 
 #include <cstdio>
 #include <sys/stat.h>
+#include <unistd.h>
+
+#include <switch.h>
 
 namespace foyer::library {
 namespace {
@@ -21,119 +24,126 @@ const char* source_label(ScrapeJob::Source s) {
     return "?";
 }
 
+bool fetch_one(ScrapeJob::Source src,
+               const std::string& folder,
+               const std::string& thumbs_db,
+               const std::string& game_path,
+               const std::string& game_stem,
+               const std::string& dest_cover) {
+    using S = ScrapeJob::Source;
+    switch (src) {
+        case S::Libretro: {
+            const bool ok = scrapers::libretro_thumb::fetch_cover(
+                thumbs_db, game_stem, dest_cover);
+            scrapers::libretro_thumb::fetch_title(
+                thumbs_db, game_stem,
+                scrapers::title_path(folder, game_stem));
+            scrapers::libretro_thumb::fetch_screenshot(
+                thumbs_db, game_stem,
+                scrapers::snap_path(folder, game_stem));
+            return ok;
+        }
+        case S::ScreenScraper:
+            return scrapers::screenscraper::fetch_cover(
+                folder, game_path, game_stem, dest_cover);
+        case S::SteamGridDB:
+            return scrapers::steamgriddb::fetch_cover(
+                folder, game_stem, dest_cover);
+    }
+    return false;
+}
+
+std::uint64_t throttle_ns(ScrapeJob::Source src) {
+    // ScreenScraper anon tier caps ~1 req/s; SGDB is friendlier;
+    // libretro-thumbnails is plain GitHub CDN with no rate cap.
+    switch (src) {
+        case ScrapeJob::Source::ScreenScraper: return 1'100'000'000ULL;
+        case ScrapeJob::Source::SteamGridDB:   return   500'000'000ULL;
+        case ScrapeJob::Source::Libretro:      return    50'000'000ULL;
+    }
+    return 0;
+}
+
 } // namespace
 
-bool ScrapeJob::start(const System& sys, Source src) {
-    if (!sys.def) return false;
+ScrapeStats run_system_scrape(const System& sys, ScrapeJob::Source src,
+                              Worker& w) {
+    ScrapeStats out;
+    if (!sys.def) return out;
 
-    // Snapshot the system fields the worker needs. Library may be
-    // rescanned mid-job; the worker keeps the older snapshot.
     struct GameRow { std::string path; std::string stem; };
     std::vector<GameRow> games;
     games.reserve(sys.games.size());
     for (const auto& g : sys.games) games.push_back({g.path, g.stem});
 
-    std::string folder      = std::string{sys.def->folder_name};
-    std::string short_name  = std::string{sys.def->short_name};
-    std::string thumbs_db   = std::string{sys.def->thumbnails_db};
+    const std::string folder     {sys.def->folder_name};
+    const std::string short_name {sys.def->short_name};
+    const std::string thumbs_db  {sys.def->thumbnails_db};
+    const char* label = source_label(src);
+    out.total = (int)games.size();
 
-    m_total   = (int)games.size();
-    m_done_ct = 0;
-    m_hits    = 0;
+    for (const auto& g : games) {
+        if (w.cancelled()) {
+            w.set_status("Scrape cancelled");
+            break;
+        }
+        out.done++;
+        char banner[200];
+        std::snprintf(banner, sizeof(banner),
+            "Scraping %s [%s]  %d / %d",
+            short_name.c_str(), label, out.done, out.total);
+        w.set_status(banner);
 
-    // 1 MB stack — the SS jeuInfos response is multi-KB JSON
-    // walked recursively by yyjson + we hold libcurl's TLS state
-    // simultaneously. The default 256 KB worker stack overflows
-    // mid-scrape on bigger systems (50+ games), and a stack-fault
-    // looks identical to a generic crash with no last-line log.
-    constexpr std::size_t kScrapeStack = 0x100000;
-    return m_worker.start(
-        [this, games = std::move(games),
-               folder, short_name, thumbs_db, src](Worker& w) {
-            const char* label = source_label(src);
-            for (const auto& g : games) {
-                if (w.cancelled()) {
-                    w.set_status("Scrape cancelled");
-                    break;
-                }
-                m_done_ct++;
-                char banner[200];
-                std::snprintf(banner, sizeof(banner),
-                    "Scraping %s [%s]  %d / %d",
-                    short_name.c_str(), label, m_done_ct, m_total);
-                w.set_status(banner);
+        // Cache gate — skip games that already have a metadata.json
+        // bundle (the only marker that survives across foyer
+        // versions; old covers don't qualify).
+        const auto bundle_meta =
+            scrapers::game_asset_dir(folder, g.stem) + "metadata.json";
+        struct stat st{};
+        if (::stat(bundle_meta.c_str(), &st) == 0) continue;
 
-                const auto dest = scrapers::cover_path(folder, g.stem);
-                // Cache marker is the per-game metadata.json now,
-                // not the legacy cover. Old foyer versions only
-                // wrote box-2D into /foyer/assets/covers; users
-                // upgrading would have those files but no bundle
-                // companions (bezel/fanart/sstitle/ss/video/meta),
-                // so we re-fetch until the bundle's metadata.json
-                // shows up — that's only written once a successful
-                // SS lookup completes.
-                const auto bundle_meta =
-                    scrapers::game_asset_dir(folder, g.stem) + "metadata.json";
-                struct stat st{};
-                if (::stat(bundle_meta.c_str(), &st) == 0) continue; // cached
+        const auto dest = scrapers::cover_path(folder, g.stem);
+        if (fetch_one(src, folder, thumbs_db, g.path, g.stem, dest)) {
+            out.hits++;
+        }
+        svcSleepThread(throttle_ns(src));
+    }
 
-                bool ok = false;
-                switch (src) {
-                    case Source::Libretro:
-                        // Box art is the primary; title + snap are
-                        // best-effort secondary downloads. Only the
-                        // box art counts toward the hit total since
-                        // it's what the System view tile renders;
-                        // the others land alongside for future use.
-                        ok = scrapers::libretro_thumb::fetch_cover(
-                            thumbs_db, g.stem, dest);
-                        scrapers::libretro_thumb::fetch_title(
-                            thumbs_db, g.stem,
-                            scrapers::title_path(folder, g.stem));
-                        scrapers::libretro_thumb::fetch_screenshot(
-                            thumbs_db, g.stem,
-                            scrapers::snap_path(folder, g.stem));
-                        break;
-                    case Source::ScreenScraper:
-                        ok = scrapers::screenscraper::fetch_cover(
-                            folder, g.path, g.stem, dest);
-                        break;
-                    case Source::SteamGridDB:
-                        ok = scrapers::steamgriddb::fetch_cover(
-                            folder, g.stem, dest);
-                        break;
-                }
-                if (ok) m_hits++;
-                // Throttle between games. ScreenScraper's anonymous
-                // tier (the kFallbackDevid/password EmuDeck pair we
-                // ship until foyer's own creds land) caps at ~1
-                // req/s — the previous 50 ms gap meant a 22-game
-                // batch hit the rate-limit on game #3 and every
-                // subsequent jeuInfos call came back empty, so the
-                // whole batch reported zero hits. 1100 ms keeps us
-                // just below the SS bucket refill, and per-source
-                // overrides cover scrapers that don't rate-limit.
-                std::uint64_t gap_ns;
-                switch (src) {
-                    case Source::ScreenScraper:
-                        gap_ns = 1'100'000'000ULL;
-                        break;
-                    case Source::SteamGridDB:
-                        gap_ns =   500'000'000ULL;
-                        break;
-                    case Source::Libretro:
-                    default:
-                        gap_ns =    50'000'000ULL;
-                        break;
-                }
-                svcSleepThread(gap_ns);
-            }
-            char done[160];
-            std::snprintf(done, sizeof(done),
-                "Scrape %s done: %d hits / %d games",
-                short_name.c_str(), m_hits, m_done_ct);
-            w.set_status(done);
-        }, kScrapeStack);
+    char done[160];
+    std::snprintf(done, sizeof(done),
+        "Scrape %s done: %d hits / %d games",
+        short_name.c_str(), out.hits, out.done);
+    w.set_status(done);
+    return out;
+}
+
+bool run_one_scrape(std::string_view system_folder,
+                    std::string_view rom_path,
+                    std::string_view rom_stem,
+                    Worker& w) {
+    char banner[160];
+    std::snprintf(banner, sizeof(banner), "Rescraping %.*s…",
+        (int)rom_stem.size(), rom_stem.data());
+    w.set_status(banner);
+
+    const std::string folder{system_folder};
+    const std::string stem{rom_stem};
+
+    // Drop the cache marker so the next fetch actually re-pulls.
+    const auto bundle = scrapers::game_asset_dir(folder, stem);
+    ::unlink((bundle + "metadata.json").c_str());
+    ::unlink(scrapers::cover_path(folder, stem).c_str());
+
+    const auto dest = scrapers::cover_path(folder, stem);
+    const std::string path{rom_path};
+    const bool ok = scrapers::screenscraper::fetch_cover(
+        folder, path, stem, dest);
+
+    std::snprintf(banner, sizeof(banner),
+        ok ? "Rescraped %.*s" : "Rescrape failed for %.*s",
+        (int)stem.size(), stem.c_str());
+    w.set_status(banner);
+    return ok;
 }
 
 } // namespace foyer::library
