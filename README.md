@@ -146,13 +146,6 @@ phase-by-phase plan.
 └── system/<system>/                     # BIOS / firmware
 ```
 
-Legacy flat paths (`/foyer/cores/`, `/foyer/bezels/`, `/foyer/shaders/`,
-`/foyer/cheats/`) survive on disk for installs that predate the
-`/foyer/content/` reorg; the current install queue writes to
-`/foyer/content/*` exclusively, and a one-shot scrub in
-`self_update.cpp` cleans up the legacy `/foyer/content/bezels/
-default.png` shipped by older browsers.
-
 Bundled inside `foyer.nro` (`romfs:/`):
 
 ```
