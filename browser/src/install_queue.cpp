@@ -104,6 +104,29 @@ void ensure_timer_locked() {
 
 std::size_t enqueue(std::string tag, JobBody body) {
     std::unique_lock lk{g_mutex};
+
+    // Deduplicate by tag — if the same install is already running
+    // or queued, don't add a second copy. Reasons:
+    //   - User mashing "Tap to install" before the row label
+    //     refreshes shouldn't queue the same core twice.
+    //   - "Install all" + a single-row tap for one of the cores
+    //     within that batch should not run the same core twice.
+    // Active job tag lives in g_active_tag; pending tags walk
+    // g_queue. depth is reported as the existing position so the
+    // user sees the same "Queued — N ahead" they would have seen
+    // had they been the first to enqueue.
+    if (g_worker && g_active_tag == tag) {
+        brls::Application::notify(tag + " is already installing");
+        return g_queue.size() + 1;
+    }
+    for (std::size_t i = 0; i < g_queue.size(); ++i) {
+        if (g_queue[i].tag == tag) {
+            brls::Application::notify(
+                tag + " is already queued (#" + std::to_string(i + 1) + ")");
+            return g_queue.size() + (g_worker ? 1 : 0);
+        }
+    }
+
     g_queue.push_back({std::move(tag), std::move(body)});
     const std::size_t depth = g_queue.size() + (g_worker ? 1 : 0);
     if (!g_worker) {
