@@ -60,6 +60,11 @@ void poll_tick() {
     g_worker->finish();
     g_worker.reset();
     foyer::log::write("[install_queue] done tag=%s\n", g_active_tag.c_str());
+    // Explicit completion banner — the per-tick status notify
+    // only fires when set_status changes, so a fast install
+    // (cache hit, skip-by-version) easily slips past without
+    // visible feedback. Always toast on done.
+    brls::Application::notify("Installed " + g_active_tag);
     start_next_locked();
 }
 
@@ -117,6 +122,16 @@ void stop() {
 std::size_t pending() {
     std::unique_lock lk{g_mutex};
     return g_queue.size() + (g_worker ? 1 : 0);
+}
+
+Snapshot snapshot() {
+    std::unique_lock lk{g_mutex};
+    Snapshot s;
+    s.active_tag  = g_worker ? g_active_tag : std::string{};
+    s.last_status = g_worker ? g_last_status : std::string{};
+    s.pending_tags.reserve(g_queue.size());
+    for (const auto& j : g_queue) s.pending_tags.push_back(j.tag);
+    return s;
 }
 
 }  // namespace foyer::browser::install_queue

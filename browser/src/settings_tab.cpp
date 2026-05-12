@@ -665,7 +665,12 @@ FoyerBezelsTab::FoyerBezelsTab() {
                 const auto& entry = mf.packs[i];
                 auto* cell = new brls::DetailCell();
                 cell->title->setText(entry.name);
-                cell->detail->setText("Tap to install");
+                const auto have =
+                    ::foyer::library::installed_bezel_version(entry.name);
+                cell->detail->setText(
+                    have.empty()           ? "Tap to install" :
+                    have == entry.version  ? "Tap to re-install"
+                                           : "Tap to update");
                 cell->registerClickAction([entry, &mf, kick](brls::View*) {
                     ::foyer::library::BezelManifest filt{};
                     filt.version  = mf.version;
@@ -690,7 +695,12 @@ FoyerBezelsTab::FoyerBezelsTab() {
                 const auto& entry = mf.packs[i];
                 auto* cell = new brls::DetailCell();
                 cell->title->setText(entry.name);
-                cell->detail->setText("Tap to install");
+                const auto have =
+                    ::foyer::library::installed_bezel_version(entry.name);
+                cell->detail->setText(
+                    have.empty()           ? "Tap to install" :
+                    have == entry.version  ? "Tap to re-install"
+                                           : "Tap to update");
                 cell->registerClickAction([entry, &mf, kick](brls::View*) {
                     ::foyer::library::BezelManifest filt{};
                     filt.version  = mf.version;
@@ -756,7 +766,12 @@ FoyerShadersTab::FoyerShadersTab() {
             const auto& entry = mf.presets[i];
             auto* cell = new brls::DetailCell();
             cell->title->setText(entry.name);
-            cell->detail->setText("Tap to install");
+            const auto have =
+                ::foyer::library::installed_shader_version(entry.name);
+            cell->detail->setText(
+                have.empty()           ? "Tap to install" :
+                have == entry.version  ? "Tap to re-install"
+                                       : "Tap to update");
             cell->registerClickAction([entry, &mf, kick](brls::View*) {
                 ::foyer::library::ShaderManifest filt{};
                 filt.version = mf.version;
@@ -835,7 +850,12 @@ FoyerCheatsTab::FoyerCheatsTab() {
                 const auto& entry = mf.packs[i];
                 auto* cell = new brls::DetailCell();
                 cell->title->setText(entry.name);
-                cell->detail->setText("Tap to install");
+                const auto have =
+                    ::foyer::library::installed_cheat_version(entry.name);
+                cell->detail->setText(
+                    have.empty()           ? "Tap to install" :
+                    have == entry.version  ? "Tap to re-install"
+                                           : "Tap to update");
                 cell->registerClickAction([entry, &mf, kick](brls::View*) {
                     ::foyer::library::CheatManifest filt{};
                     filt.version = mf.version;
@@ -859,7 +879,12 @@ FoyerCheatsTab::FoyerCheatsTab() {
                 const auto& entry = mf.packs[i];
                 auto* cell = new brls::DetailCell();
                 cell->title->setText(entry.name);
-                cell->detail->setText("Tap to install");
+                const auto have =
+                    ::foyer::library::installed_cheat_version(entry.name);
+                cell->detail->setText(
+                    have.empty()           ? "Tap to install" :
+                    have == entry.version  ? "Tap to re-install"
+                                           : "Tap to update");
                 cell->registerClickAction([entry, &mf, kick](brls::View*) {
                     ::foyer::library::CheatManifest filt{};
                     filt.version = mf.version;

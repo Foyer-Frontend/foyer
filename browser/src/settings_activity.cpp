@@ -1,5 +1,7 @@
 #include "activity/settings_activity.hpp"
 
+#include "activity/download_queue_activity.hpp"
+
 #include <chrono>
 #include <ctime>
 #include <iomanip>
@@ -53,6 +55,20 @@ void SettingsActivity::onContentAvailable() {
                 brls::Application::popActivity();
                 return true;
             }, false, false, brls::SOUND_BACK);
+
+        // X / Y on any Settings tab opens the download queue
+        // overlay so the user can see what install_queue is
+        // currently working on without leaving Settings.
+        auto open_queue = [](brls::View*) {
+            brls::Application::pushActivity(
+                new DownloadQueueActivity(),
+                brls::TransitionAnimation::NONE);
+            return true;
+        };
+        content->registerAction("Downloads", brls::BUTTON_Y, open_queue,
+            false, false, brls::SOUND_CLICK);
+        content->registerAction("Downloads", brls::BUTTON_X, open_queue,
+            false, true, brls::SOUND_CLICK);
 
         // brls's AppletFrame footer (BottomBar) ships its own
         // time / battery / wifi cluster. Settings already shows

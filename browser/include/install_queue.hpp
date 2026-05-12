@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <string>
+#include <vector>
 
 namespace foyer::browser::install_queue {
 
@@ -32,5 +33,17 @@ void stop();
 // How many jobs are pending (including the active one). 0 if
 // idle.
 std::size_t pending();
+
+// Snapshot of the queue for the UI overlay. Active job at the
+// top (empty tag means idle), followed by pending tags in FIFO
+// order. last_status is the most recent set_status the active
+// worker published — typically "[N/M] core - installed" so the
+// overlay can parse progress from it.
+struct Snapshot {
+    std::string              active_tag;
+    std::string              last_status;
+    std::vector<std::string> pending_tags;
+};
+Snapshot snapshot();
 
 }  // namespace foyer::browser::install_queue
