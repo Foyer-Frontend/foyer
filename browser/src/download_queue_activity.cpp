@@ -1,6 +1,7 @@
 #include "activity/download_queue_activity.hpp"
 
 #include "install_queue.hpp"
+#include "net/http.hpp"
 
 #include <borealis/views/applet_frame.hpp>
 #include <borealis/views/cells/cell_detail.hpp>
@@ -8,6 +9,8 @@
 #include <borealis/views/progress_spinner.hpp>
 #include <borealis/views/scrolling_frame.hpp>
 
+#include <algorithm>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -68,6 +71,35 @@ brls::View* DownloadQueueActivity::createContentView() {
         m_active_detail->setFontSize(18.0f);
         m_active_detail->setMargins(2.0f, 0.0f, 0.0f, 0.0f);
         col->addView(m_active_detail);
+
+        // Real byte-progress bar — track + fill, same theme keys as
+        // the splash bar so light/dark themes both pick up the
+        // accent fill. Fed off foyer::net::current_download in
+        // refresh(); m_bar_pct tweens the width.
+        auto* track = new brls::Box();
+        track->setWidth(kBarTrackWidth);
+        track->setHeight(10.0f);
+        track->setCornerRadius(5.0f);
+        track->setBackgroundColor(
+            brls::Application::getTheme().getColor("foyer/splash_bar_track"));
+        track->setAxis(brls::Axis::ROW);
+        track->setMargins(8.0f, 0.0f, 4.0f, 0.0f);
+
+        m_bar_fill = new brls::Box();
+        m_bar_fill->setWidth(0.0f);
+        m_bar_fill->setHeight(10.0f);
+        m_bar_fill->setCornerRadius(5.0f);
+        m_bar_fill->setBackgroundColor(
+            brls::Application::getTheme().getColor("foyer/splash_bar_fill"));
+        track->addView(m_bar_fill);
+        col->addView(track);
+
+        m_bar_caption = new brls::Label();
+        m_bar_caption->setText("");
+        m_bar_caption->setFontSize(16.0f);
+        m_bar_caption->setTextColor(
+            brls::Application::getTheme().getColor("brls/text_disabled"));
+        col->addView(m_bar_caption);
 
         row->addView(col);
         host->addView(row);
@@ -147,22 +179,85 @@ void DownloadQueueActivity::refresh() {
             : brls::Visibility::VISIBLE);
     }
 
-    if (m_list) {
-        m_list->clearViews();
-        if (s.pending_tags.empty()) {
-            auto* none = new brls::DetailCell();
-            none->title->setText("Nothing queued");
-            none->detail->setText("");
-            m_list->addView(none);
-        } else {
-            std::size_t idx = 1;
-            for (const auto& tag : s.pending_tags) {
-                auto* cell = new brls::DetailCell();
-                cell->title->setText(tag);
-                cell->detail->setText("#" + std::to_string(idx++));
-                m_list->addView(cell);
+    // Byte progress bar — read net layer's live counters.
+    {
+        auto& dl = ::foyer::net::current_download();
+        const bool active = dl.active.load(std::memory_order_acquire);
+        const std::uint64_t now   = dl.now.load(std::memory_order_acquire);
+        const std::uint64_t total = dl.total.load(std::memory_order_acquire);
+        const float target = (active && total > 0)
+            ? std::min(1.0f, static_cast<float>(double(now) / double(total)))
+            : 0.0f;
+        if (!active) {
+            // Reset the animation snapshot the moment net goes idle
+            // so the next download starts the bar back at 0.
+            m_bar_target = 0.0f;
+            m_bar_pct.stop();
+            m_bar_pct.reset(0.0f);
+        } else if (target > m_bar_target + 0.005f) {
+            m_bar_target = target;
+            m_bar_pct.reset();
+            m_bar_pct.addStep(target, 200,
+                              brls::EasingFunction::quadraticOut);
+            m_bar_pct.start();
+        }
+        if (m_bar_fill) {
+            m_bar_fill->setWidth(kBarTrackWidth
+                * static_cast<float>(m_bar_pct));
+        }
+        if (m_bar_caption) {
+            if (active && total > 0) {
+                char buf[64];
+                std::snprintf(buf, sizeof(buf),
+                    "%.1f / %.1f MB   (%.0f%%)",
+                    double(now) / 1048576.0,
+                    double(total) / 1048576.0,
+                    double(static_cast<float>(m_bar_pct)) * 100.0);
+                m_bar_caption->setText(buf);
+            } else if (active) {
+                char buf[48];
+                std::snprintf(buf, sizeof(buf), "%.1f MB downloaded",
+                    double(now) / 1048576.0);
+                m_bar_caption->setText(buf);
+            } else {
+                m_bar_caption->setText("");
             }
         }
+    }
+
+    if (!m_list) return;
+
+    // Build a signature of the current pending state; skip mutation
+    // entirely when nothing changed. Tick fires twice a second, the
+    // list shifts only on enqueue/dequeue — most ticks are no-ops.
+    std::string sig;
+    sig.reserve(s.pending_tags.size() * 16);
+    for (const auto& t : s.pending_tags) { sig += t; sig.push_back('\x1f'); }
+    if (sig == m_pending_sig) return;
+    m_pending_sig = std::move(sig);
+
+    // Previous implementation used brls::DetailCell here — DetailCell
+    // is focusable, so brls's focus could land on a pending row, and
+    // the next tick's clearViews() would delete the focused view
+    // while brls still held it as the current-focus pointer. The
+    // next Application::frame() then crashed inside drawHighlight()
+    // dereferencing the freed cell's vtable (Atmosphère reported it
+    // as an Instruction Abort jumping to garbage). Plain Label
+    // widgets are never focusable, so clearing them is safe.
+    m_list->clearViews();
+    if (s.pending_tags.empty()) {
+        auto* none = new brls::Label();
+        none->setText("Nothing queued");
+        none->setFontSize(20.0f);
+        m_list->addView(none);
+        return;
+    }
+    std::size_t idx = 1;
+    for (const auto& tag : s.pending_tags) {
+        auto* row = new brls::Label();
+        row->setText("#" + std::to_string(idx++) + "   " + tag);
+        row->setFontSize(20.0f);
+        m_list->addView(row);
     }
 }
 
