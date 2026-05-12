@@ -109,8 +109,11 @@ phase-by-phase plan.
 ```
 /switch/foyer/foyer.nro                  # browser (install here)
 /foyer/
-├── cores/
-│   └── foyer-<core>.nro                 # downloaded by install queue
+├── content/                             # everything the install queue writes
+│   ├── cores/foyer-<core>.nro           # downloaded core players
+│   ├── bezels/<sys>.png                 # per-system bezel fallback
+│   ├── shaders/<preset>/                # libretro shader presets
+│   └── cheats/<sys>/                    # cheat packs
 ├── data/
 │   ├── first_run_complete               # marker — written by wizard's Finish
 │   ├── session.json                     # last-played, recent list
@@ -137,14 +140,18 @@ phase-by-phase plan.
 │   ├── covers/<sys>/<stem>.png          # legacy cover path (still read)
 │   ├── backgrounds/<sys>/<stem>.jpg     # legacy detail backdrop
 │   └── systems/<sys>.{png,jpg}          # per-system splash override
-├── bezels/<sys>.png                     # per-system fallback (default.png too)
-├── cheats/                              # cheat packs (installed from manifest)
-├── shaders/<preset>/                    # libretro shader presets
 ├── roms/<system>/<file.ext>             # rom root (configurable)
 ├── saves/<system>/                      # libretro SRAM
 ├── states/<system>/<stem>.<slot>.state  # save states (slots 1–9 + quick)
 └── system/<system>/                     # BIOS / firmware
 ```
+
+Legacy flat paths (`/foyer/cores/`, `/foyer/bezels/`, `/foyer/shaders/`,
+`/foyer/cheats/`) survive on disk for installs that predate the
+`/foyer/content/` reorg; the current install queue writes to
+`/foyer/content/*` exclusively, and a one-shot scrub in
+`self_update.cpp` cleans up the legacy `/foyer/content/bezels/
+default.png` shipped by older browsers.
 
 Bundled inside `foyer.nro` (`romfs:/`):
 
