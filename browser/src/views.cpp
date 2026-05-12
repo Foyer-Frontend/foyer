@@ -377,7 +377,7 @@ void draw_empty(NVGcontext* vg, float w, float h, const char* title, const char*
     nvgText(vg, w * 0.5f, h * 0.5f + 16, hint, nullptr);
 }
 
-// Sphaira-style persistent top bar. Drawn once per frame from draw() — view
+// HOS-style persistent top bar. Drawn once per frame from draw() — view
 // painters set their own title through this helper but no longer manage the
 // bar background or underline themselves.
 void draw_topbar(NVGcontext* vg, float w, const char* left, const char* right) {
@@ -406,7 +406,7 @@ void draw_topbar(NVGcontext* vg, float w, const char* left, const char* right) {
     }
 }
 
-// Sphaira-style persistent bottom bar with the context-aware button hints.
+// HOS-style persistent bottom bar with the context-aware button hints.
 void draw_bottombar(NVGcontext* vg, float w, float h, const char* hint) {
     const auto& th = theme();
 
@@ -3266,9 +3266,9 @@ void draw_chevron_right(NVGcontext* vg, float cx, float cy, float size, NVGcolor
     nvgStroke(vg);
 }
 
-// Active-row outline drawn in the accent gradient — sphaira / Tico cue that
-// "this is the focused element". Falls back to a flat accent when the theme
-// only carries one accent color.
+// Active-row outline drawn in the accent gradient — HOS-style focus cue
+// for "this is the focused element". Falls back to a flat accent when the
+// theme only carries one accent color.
 void draw_active_outline(NVGcontext* vg, float x, float y, float w, float h, float r,
                          NVGcolor a, NVGcolor b) {
     auto pat = nvgLinearGradient(vg, x, y, x + w, y, a, b);
@@ -6392,7 +6392,7 @@ void draw(NVGcontext* vg, float w, float h, const State& s, const Library& lib) 
         case View::Search:     draw_search     (vg, w, h, s, lib); break;
     }
 
-    // Sphaira-style persistent top + bottom bars, drawn after the view so
+    // HOS-style persistent top + bottom bars, drawn after the view so
     // their accent stays on top of any panel that bumped against the edge.
     using namespace foyer::ui::icons;
 

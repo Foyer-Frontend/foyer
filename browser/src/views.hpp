@@ -297,7 +297,7 @@ void update(State& s, const Library& lib,
             float w, float h);
 void draw  (NVGcontext* vg, float w, float h, const State& s, const Library& lib);
 
-// Vertical metrics for the persistent sphaira-style top + bottom bars.
+// Vertical metrics for the persistent HOS-style top + bottom bars.
 constexpr float kTopBarH    = 64.0f;
 constexpr float kBottomBarH = 56.0f;
 

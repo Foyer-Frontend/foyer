@@ -4,8 +4,8 @@
 // adds the NintendoExt shared font as a fallback so any nanovg text containing
 // these codepoints renders with the proper console-style icon.
 //
-// Codepoints reflect the layout used by hb-menu / sphaira / RetroArch on
-// Switch — they're stable across firmware versions for the buttons we need.
+// Codepoints come from Nintendo's NintendoExt shared font and are stable
+// across firmware versions for the buttons we need.
 
 namespace foyer::ui::icons {
 

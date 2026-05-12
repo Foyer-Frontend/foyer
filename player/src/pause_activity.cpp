@@ -132,8 +132,8 @@ brls::View* PauseActivity::createContentView() {
         [this, back](brls::View*) {
             if (m_on_quit) m_on_quit();
             // Chain-launch back to foyer.nro instead of dropping
-            // the user on sphaira / HOS. The browser stamped its
-            // own path as argv[2] when launching us.
+            // the user on the homebrew menu. The browser stamped
+            // its own path as argv[2] when launching us.
             if (!back.empty()) {
                 envSetNextLoad(back.c_str(), back.c_str());
             }

@@ -608,8 +608,9 @@ int main(int argc, char** argv) {
 
     // Chain back to the foyer browser. Resolution order:
     //   1. argv[2] passed by the browser (correct by construction)
-    //   2. /switch/foyer/foyer.nro (sphaira-style nested layout)
-    //   3. /switch/foyer.nro       (flat layout)
+    //   2. /switch/foyer/foyer.nro (nested install layout — the one
+    //      first-run docs recommend)
+    //   3. /switch/foyer.nro       (flat layout — legacy installs)
     auto exists = [](const std::string& sd_path) {
         struct stat st{};
         return ::stat(sd_path.c_str(), &st) == 0;

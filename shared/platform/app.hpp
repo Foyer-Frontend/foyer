@@ -76,7 +76,8 @@ struct App {
     float       scale()      const { return m_scale; }
 
 private:
-    // 16:9 logical UI canvas (matches sphaira/RetroArch layout).
+    // 16:9 logical UI canvas (1280×720, same convention as the brls
+    // demo + RetroArch's overlay coordinate space).
     static constexpr int kLogicalW = 1280;
     static constexpr int kLogicalH = 720;
 
