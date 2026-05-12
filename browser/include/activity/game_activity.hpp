@@ -54,7 +54,19 @@ private:
 
     void buildMetaPanel();
     void buildGallery();
+    void rebuildGalleryContent();
     void show_slide(int idx);
+
+public:
+    // Called from the rescrape worker's completion lambda (via
+    // brls::sync) so the live game-details view picks up the
+    // freshly downloaded metadata + screenshots WITHOUT needing
+    // the user to back out + re-enter. Re-reads metadata.json,
+    // rewrites the title / fanart / meta panel, and rescans the
+    // bundle dir for new screenshots. Gallery action handlers are
+    // registered exactly once in onContentAvailable so a refresh
+    // doesn't stack duplicate UP/DOWN bindings.
+    void refresh_from_disk();
 };
 
 }  // namespace foyer::browser

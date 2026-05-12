@@ -30,22 +30,47 @@
 #include <cstdio>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <set>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 using namespace brls::literals;
 
 namespace foyer::browser {
 
-InstallRefreshTab::InstallRefreshTab() = default;
+namespace {
+// Tombstone set: install_queue listeners run through brls::sync,
+// which defers them to the next UI tick. If the tab is destroyed
+// before that tick the captured `this` would be dangling.
+// Subscribing tab adds itself here on ctor and removes on dtor,
+// both on the UI thread — the deferred lambda gates its refresh
+// walk on this membership check.
+std::mutex                       g_alive_mu;
+std::unordered_set<const void*>  g_alive_tabs;
+
+bool tab_is_alive(const void* p) {
+    std::unique_lock lk{g_alive_mu};
+    return g_alive_tabs.count(p) > 0;
+}
+}  // namespace
+
+bool is_tab_alive(const void* p) { return tab_is_alive(p); }
+
+InstallRefreshTab::InstallRefreshTab() {
+    std::unique_lock lk{g_alive_mu};
+    g_alive_tabs.insert(this);
+}
 
 InstallRefreshTab::~InstallRefreshTab() {
     if (m_sub >= 0) {
         ::foyer::browser::install_queue::unsubscribe(m_sub);
         m_sub = -1;
     }
+    std::unique_lock lk{g_alive_mu};
+    g_alive_tabs.erase(this);
 }
 
 void InstallRefreshTab::add_refresher(std::function<void()> fn) {
@@ -56,12 +81,26 @@ void InstallRefreshTab::start_listening() {
     if (m_sub >= 0) return;
     m_sub = ::foyer::browser::install_queue::subscribe(
         [this](const std::string& /*tag*/) {
-            // install_queue fires listeners from its poll_tick which
-            // is already a brls UI-thread RepeatingTimer callback,
-            // so mutating cell text directly is safe. Listeners get
-            // dropped synchronously on unsubscribe in the dtor, so
-            // this `this` is always live when the lambda runs.
-            for (auto& r : m_refreshers) if (r) r();
+            // Defer the refresh through brls::sync so it lands on
+            // the NEXT UI frame instead of running inside
+            // install_queue::poll_tick's stack frame. Two reasons:
+            //  - The poll_tick path may have already spawned the
+            //    next queued worker + called brls::Application::
+            //    notify under the install_queue mutex; chaining a
+            //    view mutation onto that re-entry is fragile.
+            //  - Gives the dtor a chance to fire first if the tab
+            //    is being torn down by an activity pop happening
+            //    on the same tick. Once we unsubscribe in the
+            //    dtor, install_queue can't dispatch new listener
+            //    invocations — but a brls::sync lambda queued
+            //    BEFORE the unsubscribe can still fire later, so
+            //    we capture by raw `this` + check liveness via a
+            //    member-owned guard.
+            auto* self = this;
+            brls::sync([self]() {
+                if (!::foyer::browser::is_tab_alive(self)) return;
+                for (auto& r : self->m_refreshers) if (r) r();
+            });
         });
 }
 

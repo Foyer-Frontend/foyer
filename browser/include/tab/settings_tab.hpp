@@ -37,6 +37,10 @@ public:
     static brls::View* create();
 };
 
+// Liveness probe for install_queue listener deferred-fire path.
+// Defined in settings_tab.cpp alongside the tombstone set.
+bool is_tab_alive(const void* p);
+
 // Helper mixed into install-list tabs (cores/bezels/shaders/cheats)
 // so a finished install can refresh every "Tap to install" cell's
 // label in place. install_queue fires completion listeners on the

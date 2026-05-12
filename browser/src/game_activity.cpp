@@ -36,6 +36,14 @@ namespace {
 // instance instead of touching a half-finished Worker.
 std::unique_ptr<::foyer::library::Worker> g_rescrape_worker;
 
+// Live observer pointer + path. The rescrape worker's completion
+// lambda runs through brls::sync (UI thread) and checks these to
+// refresh the game-details view in place when the user is still
+// looking at it. Cleared in ~GameActivity so a popped-then-
+// finished scrape can't write into a dead view.
+GameActivity* g_live_activity = nullptr;
+std::string   g_live_game_path;
+
 // Clock task — same shape as Home/System.
 class ClockTask : public brls::RepeatingTask {
 public:
@@ -127,9 +135,16 @@ GameActivity::~GameActivity() {
         delete m_clockTask;
         m_clockTask = nullptr;
     }
+    if (g_live_activity == this) {
+        g_live_activity = nullptr;
+        g_live_game_path.clear();
+    }
 }
 
 void GameActivity::onContentAvailable() {
+    g_live_activity = this;
+    g_live_game_path = m_game_path;
+
     const auto bundle = ::foyer::scrapers::game_asset_dir(
         m_system_folder, m_game_stem);
 
@@ -266,10 +281,25 @@ void GameActivity::onContentAvailable() {
                         // brls's notification list which isn't
                         // thread-safe.
                         const std::string stem_done = stem_copy;
-                        brls::sync([stem_done, ok]() {
+                        const std::string path_done = path_copy;
+                        brls::sync([stem_done, path_done, ok]() {
                             brls::Application::notify(ok
                                 ? std::string("Rescraped ") + stem_done
                                 : std::string("Rescrape failed for ") + stem_done);
+                            // Refresh in place — if the user is
+                            // still on the game-details view for
+                            // this rom, swap in the freshly
+                            // scraped metadata + screenshots
+                            // without making them back out + re-
+                            // enter. Live observer is set in
+                            // onContentAvailable, cleared in dtor,
+                            // and only touched on the UI thread so
+                            // checking g_live_activity here is
+                            // safe.
+                            if (ok && g_live_activity
+                                && g_live_game_path == path_done) {
+                                g_live_activity->refresh_from_disk();
+                            }
                         });
                     }, 0x100000);
                 brls::Application::notify("Rescraping " + stem_copy + "…");
@@ -291,10 +321,13 @@ void GameActivity::onContentAvailable() {
     }
 }
 
-void GameActivity::buildGallery() {
+void GameActivity::rebuildGalleryContent() {
     if (!slide || !galleryHolder) return;
     const auto bundle = ::foyer::scrapers::game_asset_dir(
         m_system_folder, m_game_stem);
+
+    m_slides.clear();
+    m_slide_idx = 0;
 
     // Pull every screenshot-shaped file out of the bundle. Skip
     // box-2D / bezel / fanart / video — those serve different
@@ -324,7 +357,15 @@ void GameActivity::buildGallery() {
 
     if (!m_slides.empty()) {
         show_slide(0);
+    } else if (slideCaption) {
+        slideCaption->setText("");
     }
+}
+
+void GameActivity::buildGallery() {
+    if (!slide || !galleryHolder) return;
+
+    rebuildGalleryContent();
 
     // d-pad up / down on the focused gallery holder rotates the
     // current slide. Brls's default focus walking would jump out
@@ -465,6 +506,46 @@ void GameActivity::buildMetaPanel() {
         body->setTextColor(theme.getColor("brls/text"));
         metaHolder->addView(body);
     }
+}
+
+void GameActivity::refresh_from_disk() {
+    const auto bundle = ::foyer::scrapers::game_asset_dir(
+        m_system_folder, m_game_stem);
+
+    // Fanart may have just landed — re-set even if previous load
+    // returned a placeholder. brls::Image is tolerant of repeated
+    // setImageFromFile calls.
+    if (fanart) {
+        const std::string fart = bundle + "fanart.jpg";
+        struct stat st{};
+        if (::stat(fart.c_str(), &st) == 0 && st.st_size > 0) {
+            fanart->setImageFromFile(fart);
+        }
+    }
+
+    // Title — prefer scraped value, fall back to scan display, then stem.
+    if (gameTitle) {
+        std::string title = read_meta_field(bundle, "name");
+        if (title.empty()) {
+            if (const auto* sys = library_state::find_system(m_system_folder)) {
+                for (const auto& g : sys->games) {
+                    if (g.path == m_game_path) {
+                        title = g.display.empty() ? g.stem : g.display;
+                        break;
+                    }
+                }
+            }
+        }
+        if (title.empty()) title = m_game_stem;
+        gameTitle->setText(title);
+    }
+
+    if (metaHolder) {
+        metaHolder->clearViews();
+        buildMetaPanel();
+    }
+
+    rebuildGalleryContent();
 }
 
 }  // namespace foyer::browser
