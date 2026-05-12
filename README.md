@@ -4,6 +4,15 @@ Native libretro frontend for Nintendo Switch (CFW only). Browser NRO
 for picking systems and games; per-system player NROs that boot the
 ROM directly via libretro cores.
 
+> [!WARNING]
+> **Early development.** foyer is under active development; the
+> 0.6.x line is alpha-quality, not every libretro core in the
+> rotation has been fully exercised on hardware, and you should
+> expect bugs and the occasional crash. File issues with the
+> on-device log (Settings → About → Logs) and the Atmosphère
+> crash report when something goes wrong — they make root-causing
+> dramatically faster.
+
 **Current line:** 0.6.x — built on
 [borealis](https://github.com/XITRIX/borealis) (XITRIX/borealis,
 `moonlight_wiliwili` branch). Latest tag: **v0.6.37**. The Phase H
