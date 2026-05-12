@@ -118,8 +118,18 @@ void DownloadQueueActivity::onContentAvailable() {
     refresh();
 
     if (!m_poll) {
-        m_poll = new brls::RepeatingTask(500);
-        m_poll->setCallback([this]() { this->refresh(); });
+        // Custom RepeatingTask subclass — brls's RepeatingTask
+        // hides setCallback (private inheritance from
+        // RepeatingTimer); override run() instead.
+        class Tick : public brls::RepeatingTask {
+        public:
+            Tick(DownloadQueueActivity* host)
+                : brls::RepeatingTask(500), host(host) {}
+            void run() override { host->refresh(); }
+        private:
+            DownloadQueueActivity* host;
+        };
+        m_poll = new Tick(this);
         m_poll->start();
     }
 }
