@@ -484,7 +484,15 @@ FoyerCoresTab::FoyerCoresTab() {
                     w.set_status("Starting core install…");
                     ::foyer::library::install_cores(filt,
                         [&w](const ::foyer::library::InstallProgress& p) {
+                            // Started fires BEFORE the download, so report
+                            // "downloading" rather than the catch-all "FAILED"
+                            // the prior switch used — Started was unmatched
+                            // and fell through to the failure label, which
+                            // made the first toast for every core read
+                            // "[1/1] fceumm - FAILED" right as the download
+                            // kicked off.
                             const char* verb =
+                                p.action == ::foyer::library::InstallAction::Started   ? "downloading" :
                                 p.action == ::foyer::library::InstallAction::Skipped   ? "skipped" :
                                 p.action == ::foyer::library::InstallAction::Updated   ? "updated" :
                                 p.action == ::foyer::library::InstallAction::Installed ? "installed"

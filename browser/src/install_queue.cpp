@@ -30,7 +30,7 @@ std::mutex                                       g_listeners_mu;
 std::vector<std::pair<int, CompletionListener>>  g_listeners;
 int                                              g_next_listener_id = 1;
 
-void fire_completion(const std::string& tag) {
+[[maybe_unused]] void fire_completion(const std::string& tag) {
     // Snapshot listeners under lock so a listener that calls
     // unsubscribe() doesn't invalidate the iterator we're walking.
     std::vector<std::pair<int, CompletionListener>> copy;
@@ -82,13 +82,14 @@ void poll_tick() {
     // (cache hit, skip-by-version) easily slips past without
     // visible feedback. Always toast on done.
     brls::Application::notify("Installed " + g_active_tag);
-    const std::string finished_tag = g_active_tag;
     start_next_locked();
-    // Drop the install_queue lock before firing listeners — they
-    // touch view state and may take their own locks; holding ours
-    // across UI work invites deadlock with subscribe/unsubscribe.
-    lk.unlock();
-    fire_completion(finished_tag);
+    // NOTE: completion listeners were temporarily disabled — when
+    // the deferred brls::sync path was active the user hit a
+    // brls::fatal during install downloads (vtable corruption in
+    // some brls XML attribute setter, root not yet pinned).
+    // Until that's understood we keep the queue's own toasts
+    // ("Installed <tag>") and skip the per-cell live refresh.
+    // Cells refresh on tab switch as before.
 }
 
 void ensure_timer_locked() {

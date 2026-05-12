@@ -76,9 +76,21 @@ void SplashActivity::tick() {
     if (bar_fill) {
         const int done  = m_progress_done.load(std::memory_order_acquire);
         const int total = m_progress_total.load(std::memory_order_acquire);
-        const float pct = total > 0
+        const float target = total > 0
             ? std::min(1.0f, static_cast<float>(done) / static_cast<float>(total))
             : 0.0f;
+        // Kick a new tween step whenever the worker advances past
+        // the prior target. Animatable::reset() drops any queued
+        // steps but keeps the current value; addStep + start then
+        // glide from there. Easing matches brls's own slider feel.
+        if (target > m_anim_target + 0.001f) {
+            m_anim_target = target;
+            m_anim_pct.reset();
+            m_anim_pct.addStep(target, kStepDurationMs,
+                               brls::EasingFunction::quadraticOut);
+            m_anim_pct.start();
+        }
+        const float pct = static_cast<float>(m_anim_pct);
         bar_fill->setWidth(kBarTrackWidth * pct);
     }
 
