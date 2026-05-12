@@ -144,6 +144,8 @@ void write_locked() {
     out << "    \"scrub_extracted_days\":    "
         << g_config.scrub_extracted_days << ",\n";
     out << "    \"mtp_autostart\":     " << bstr(g_config.mtp_autostart) << ",\n";
+    out << "    \"mtp_expose_roms\":   " << bstr(g_config.mtp_expose_roms) << ",\n";
+    out << "    \"mtp_expose_logs\":   " << bstr(g_config.mtp_expose_logs) << ",\n";
     out << "    \"debug_log\":         " << bstr(g_config.debug_log) << ",\n";
     out << "    \"cores_manifest_url\": \"" << g_config.cores_manifest_url << "\",\n";
     out << "    \"foyer_manifest_url\": \"" << g_config.foyer_manifest_url << "\",\n";
@@ -288,6 +290,8 @@ void load_locked() {
         g_config.language = yyjson_get_str(v);
     }
     load_bool("mtp_autostart",    g_config.mtp_autostart);
+    load_bool("mtp_expose_roms",  g_config.mtp_expose_roms);
+    load_bool("mtp_expose_logs",  g_config.mtp_expose_logs);
     load_bool("debug_log",        g_config.debug_log);
     if (auto* v = yyjson_obj_get(root, "cores_manifest_url");
         v && yyjson_is_str(v)) {
@@ -479,6 +483,8 @@ void set_bool(std::string_view key, bool value) {
     else if (key == "action_row_dock")  g_config.action_row_dock  = value;
     else if (key == "hide_empty_systems") g_config.hide_empty_systems = value;
     else if (key == "mtp_autostart")    g_config.mtp_autostart    = value;
+    else if (key == "mtp_expose_roms")  g_config.mtp_expose_roms  = value;
+    else if (key == "mtp_expose_logs")  g_config.mtp_expose_logs  = value;
     else if (key == "debug_log")        g_config.debug_log        = value;
     else return;
     write_locked();

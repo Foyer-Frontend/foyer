@@ -4,6 +4,7 @@
 #include "activity/wizard_activity.hpp"
 #include "library_state.hpp"
 #include "i18n/i18n.hpp"
+#include "mtp.hpp"
 #include "library/config.hpp"
 #include "library/bezel_installer.hpp"
 #include "library/cheat_installer.hpp"
@@ -69,12 +70,48 @@ InstallRefreshTab::~InstallRefreshTab() {
         ::foyer::browser::install_queue::unsubscribe(m_sub);
         m_sub = -1;
     }
+    if (m_poll) {
+        m_poll->stop();
+        delete m_poll;
+        m_poll = nullptr;
+    }
     std::unique_lock lk{g_alive_mu};
     g_alive_tabs.erase(this);
 }
 
 void InstallRefreshTab::add_refresher(std::function<void()> fn) {
     m_refreshers.push_back(std::move(fn));
+}
+
+void InstallRefreshTab::refresh_labels() {
+    for (auto& r : m_refreshers) if (r) r();
+}
+
+void InstallRefreshTab::willAppear(bool resetState) {
+    brls::Box::willAppear(resetState);
+    refresh_labels();
+
+    // Keep refreshing while the user is still on the tab so a
+    // download that finishes mid-view flips its row label without
+    // requiring a tab switch. brls::RepeatingTask runs on the UI
+    // thread, so the cell mutations are safe.
+    if (!m_poll) {
+        class TabPoll : public brls::RepeatingTask {
+        public:
+            explicit TabPoll(InstallRefreshTab* h)
+                : brls::RepeatingTask(2000), host(h) {}
+            void run() override { host->refresh_labels(); }
+        private:
+            InstallRefreshTab* host;
+        };
+        m_poll = new TabPoll(this);
+    }
+    m_poll->start();
+}
+
+void InstallRefreshTab::willDisappear(bool resetState) {
+    if (m_poll) m_poll->stop();
+    brls::Box::willDisappear(resetState);
 }
 
 void InstallRefreshTab::start_listening() {
@@ -447,6 +484,43 @@ FoyerLibraryTab::FoyerLibraryTab() {
         return true;
     });
     host->addView(rescan);
+
+    host->addView([]() { auto* h = new brls::Header(); h->setTitle("USB (MTP)"); return h; }());
+
+    // Restart helper — libhaze::Initialize is rejected if it's
+    // already running, so flipping a mount on requires stopping
+    // first. mtp_stop is a no-op when nothing is running.
+    auto restart_mtp = []() {
+        ::foyer::browser::mtp_stop();
+        const auto& cfg = ::foyer::library::config();
+        if (cfg.mtp_expose_roms || cfg.mtp_expose_logs) {
+            ::foyer::browser::mtp_start();
+            brls::Application::notify("MTP server restarted");
+        } else {
+            brls::Application::notify("MTP server stopped");
+        }
+    };
+
+    {
+        auto* cell = new brls::BooleanCell();
+        cell->init("Expose roms (/foyer/roms)",
+            ::foyer::library::config().mtp_expose_roms,
+            [restart_mtp](bool v) {
+                ::foyer::library::set_bool("mtp_expose_roms", v);
+                restart_mtp();
+            });
+        host->addView(cell);
+    }
+    {
+        auto* cell = new brls::BooleanCell();
+        cell->init("Expose logs (/foyer/data/logs)",
+            ::foyer::library::config().mtp_expose_logs,
+            [restart_mtp](bool v) {
+                ::foyer::library::set_bool("mtp_expose_logs", v);
+                restart_mtp();
+            });
+        host->addView(cell);
+    }
 
     wrap_with_scroll(host, this);
 }

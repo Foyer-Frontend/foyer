@@ -143,6 +143,14 @@ struct Config {
     bool         mtp_autostart     = false;
     bool         debug_log         = false;
 
+    // libhaze MTP exposure toggles. mtp_expose_roms drives the
+    // /foyer/roms mount; mtp_expose_logs adds a second mount over
+    // /foyer/data/logs so the user can pull crash + session logs
+    // off the SD without unmounting the card. Both default off —
+    // MTP only spins up when at least one is on.
+    bool         mtp_expose_roms   = true;
+    bool         mtp_expose_logs   = false;
+
     // Where Settings → Updates → Install/update cores reads its manifest.
     // Defaults to the foyer-frontend release; override for forks running
     // their own cores release.

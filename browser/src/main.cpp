@@ -21,6 +21,7 @@
 #include "hos_status.hpp"
 #include "library_state.hpp"
 #include "manifest_cache.hpp"
+#include "mtp.hpp"
 #include "self_update.hpp"
 #include "theme_watcher.hpp"
 #include "update_check.hpp"
@@ -165,6 +166,14 @@ int main(int argc, char* argv[])
     // hitch.
     foyer::browser::library_state::rescan();
     foyer::log::write("[boot] library scan done\n");
+
+    // libhaze MTP — auto-spin on boot when either mount toggle is on.
+    // The user can flip the toggles later in Settings → Library to
+    // start/stop the server without rebooting.
+    if (foyer::library::config().mtp_expose_roms
+        || foyer::library::config().mtp_expose_logs) {
+        foyer::browser::mtp_start();
+    }
 
     if (!::foyer::browser::first_run::is_complete()) {
         foyer::log::write("[boot] first-run marker missing — wizard\n");

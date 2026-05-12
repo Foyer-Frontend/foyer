@@ -60,9 +60,30 @@ protected:
     // ctor once all add_refresher() calls have landed.
     void start_listening();
 
+    // brls hook — TabFrame calls willAppear when a tab becomes the
+    // visible one. We pump every refresher there so a tab switched
+    // INTO right after an install completed shows the fresh
+    // "Tap to re-install" label without the user having to scroll
+    // off-row and back. Cheaper than a global completion listener,
+    // and avoids the use-after-free that the earlier subscribe-and-
+    // refresh-anywhere path hit when an install lands while a
+    // different activity is on top.
+    void willAppear(bool resetState) override;
+    void willDisappear(bool resetState) override;
+
+    // Walk every refresher closure (cells re-read their installed-
+    // version sidecar and update the title). Called from
+    // willAppear + the per-tab RepeatingTask.
+    void refresh_labels();
+
 private:
     int                                m_sub = -1;
     std::vector<std::function<void()>> m_refreshers;
+    // 2 s refresh tick — only runs while the tab is the visible
+    // one in the TabFrame. Picks up cell-label changes while the
+    // user is still looking at the tab (the previous
+    // willAppear-only refresh required leaving + re-entering).
+    brls::RepeatingTask*               m_poll = nullptr;
 };
 
 class FoyerCoresTab : public InstallRefreshTab {

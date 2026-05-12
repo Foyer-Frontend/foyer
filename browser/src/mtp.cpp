@@ -43,10 +43,13 @@ const char* basename_view(const char* path) {
 }
 
 // Forwards every libhaze filesystem call through the SD card's fsFs* API
-// after rewriting the path so the host sees us as if `/foyer/roms` were
-// the root of the volume.
+// after rewriting the path so the host sees us as if the configured
+// `m_root` were the root of the volume. Used for both the rom-drop
+// mount (/foyer/roms) and the logs mount (/foyer/data/logs) — same
+// rewriting logic, only the root + display label differ.
 struct FsRomRoot final : haze::FileSystemProxyImpl {
-    explicit FsRomRoot(std::string root) : m_root(std::move(root)) {
+    FsRomRoot(std::string root, std::string display)
+        : m_root(std::move(root)), m_display(std::move(display)) {
         if (auto* sdmc = fsdevGetDeviceFileSystem("sdmc")) {
             m_fs = *sdmc;
         } else {
@@ -55,7 +58,7 @@ struct FsRomRoot final : haze::FileSystemProxyImpl {
     }
 
     const char* GetName() const override        { return ""; }
-    const char* GetDisplayName() const override { return "Foyer Roms"; }
+    const char* GetDisplayName() const override { return m_display.c_str(); }
 
     // libhaze hands us paths starting with "/" relative to the volume root.
     // Prepend rom_root so they land under the right SD subtree.
@@ -129,6 +132,7 @@ struct FsRomRoot final : haze::FileSystemProxyImpl {
 
     FsFileSystem m_fs{};
     std::string  m_root;
+    std::string  m_display;
 };
 
 void haze_callback(const haze::CallbackData* data) {
@@ -205,20 +209,37 @@ void haze_callback(const haze::CallbackData* data) {
 bool mtp_start() {
     if (g_running.load()) return true;
 
-    auto root = library::config().rom_root;
-    if (root.empty()) root = "/foyer/roms";
-    // libhaze wants a trailing-slash-free root because we always prepend "/".
-    if (root.size() > 1 && root.back() == '/') root.pop_back();
-
+    const auto& cfg = library::config();
     haze::FsEntries entries;
-    entries.emplace_back(std::make_shared<FsRomRoot>(root));
+
+    if (cfg.mtp_expose_roms) {
+        auto root = cfg.rom_root;
+        if (root.empty()) root = "/foyer/roms";
+        if (root.size() > 1 && root.back() == '/') root.pop_back();
+        entries.emplace_back(std::make_shared<FsRomRoot>(root, "Foyer Roms"));
+        foyer::log::write("[mtp] mount: roms -> %s\n", root.c_str());
+    }
+    if (cfg.mtp_expose_logs) {
+        // Logs always live under /foyer/data/logs regardless of
+        // rom_root override — the directory is foyer-internal,
+        // not user-configurable.
+        const std::string logs = "/foyer/data/logs";
+        entries.emplace_back(std::make_shared<FsRomRoot>(logs, "Foyer Logs"));
+        foyer::log::write("[mtp] mount: logs -> %s\n", logs.c_str());
+    }
+
+    if (entries.empty()) {
+        foyer::log::write("[mtp] no mounts enabled — skipping init\n");
+        return false;
+    }
 
     if (!haze::Initialize(haze_callback, 0x2C, 2, entries)) {
         foyer::log::write("[mtp] haze::Initialize failed\n");
         return false;
     }
     g_running = true;
-    foyer::log::write("[mtp] roms over USB started, root=%s\n", root.c_str());
+    foyer::log::write("[mtp] started (%zu mount%s)\n",
+        entries.size(), entries.size() == 1 ? "" : "s");
     return true;
 }
 
