@@ -26,26 +26,59 @@ struct SystemMap {
 };
 
 // Mapping from foyer's folder names to ScreenScraper system IDs. List is
-// expanded as new cores land.
+// expanded as new cores land. IDs cross-checked against api.screenscraper.fr's
+// systemesListe.php (use the "name_eu" / "name_us" field for confirmation).
 constexpr SystemMap kMap[] = {
-    { "nes",          3   },
-    { "snes",         4   },
-    { "gb",           9   },
-    { "gbc",          10  },
-    { "gba",          12  },
-    { "n64",          14  },
-    { "nds",          15  },
-    { "gc",           13  },
-    { "genesis",      1   },
-    { "megadrive",    1   },
-    { "mastersystem", 2   },
-    { "gamegear",     21  },
-    { "saturn",       22  },
-    { "dc",           23  },
-    { "psx",          57  },
-    { "psp",          61  },
-    { "ngp",          25  },
-    { "ngpc",         82  },
+    { "nes",             3   },
+    { "snes",            4   },
+    { "gb",              9   },
+    { "gbc",             10  },
+    { "gba",             12  },
+    { "n64",             14  },
+    { "nds",             15  },
+    { "gc",              13  },
+    { "genesis",         1   },
+    { "megadrive",       1   },
+    { "mastersystem",    2   },
+    { "gamegear",        21  },
+    { "saturn",          22  },
+    { "dc",              23  },
+    { "psx",             57  },
+    { "psp",             61  },
+    { "ngp",             25  },
+    { "ngpc",            82  },
+    { "atari2600",       26  },
+    { "atari5200",       40  },
+    { "atari7800",       41  },
+    { "lynx",            28  },
+    { "jaguar",          27  },
+    { "virtualboy",      11  },
+    { "wonderswan",      45  },
+    { "wonderswancolor", 46  },
+    { "supergrafx",      105 },
+    { "pcengine",        31  },
+    { "tg16",            31  },
+    { "pcenginecd",      114 },
+    { "32x",             19  },
+    { "segacd",          20  },
+    { "3do",             29  },
+    { "neogeo",          142 },
+    { "colecovision",    48  },
+    { "amiga",           64  },
+    { "amiga600",        64  },
+    { "amiga1200",       64  },
+    { "amigacd32",       130 },
+    { "c64",             66  },
+    { "msx",             113 },
+    { "zxspectrum",      76  },
+    { "gw",              52  },
+    { "pokemini",        211 },
+    { "intellivision",   115 },
+    { "vectrex",         102 },
+    { "scummvm",         123 },
+    { "dos",             135 },
+    { "atarist",         42  },
+    { "channelf",        80  },
 };
 
 constexpr const char* kSoftname = "foyer";
@@ -139,6 +172,21 @@ bool fetch_cover(std::string_view system_folder,
     auto* response = yyjson_obj_get(root, "response");
     auto* jeu      = response ? yyjson_obj_get(response, "jeu") : nullptr;
     auto* medias   = jeu ? yyjson_obj_get(jeu, "medias") : nullptr;
+
+    // When jeu/medias come back missing, SS hands us either an
+    // empty response (no rom match) or an error response (rate
+    // limit, bad creds). Surface the response body's first
+    // 160 chars so log readers can tell the two cases apart —
+    // "Erreur :" prefix from SS means throttled / auth, while a
+    // valid 200 with no jeu means "we have no entry for this
+    // crc+romnom". Without this we previously logged nothing
+    // and the user saw a generic "no hits".
+    if (!jeu) {
+        std::string snippet{resp.body.data(),
+            std::min<std::size_t>(resp.body.size(), 160)};
+        foyer::log::write("[ss] no jeu for stem=%.*s body=%s\n",
+            (int)rom_stem.size(), rom_stem.data(), snippet.c_str());
+    }
 
     // For each media kind we want, walk the medias array and pick
     // the best-region entry. Returns {url, region} or empty url.

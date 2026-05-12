@@ -104,13 +104,29 @@ bool ScrapeJob::start(const System& sys, Source src) {
                         break;
                 }
                 if (ok) m_hits++;
-                // Brief yield between games — gives the deko3d /
-                // sdmc fs threads a chance to drain queued ops
-                // before the next jeuInfos + media-stream burst.
-                // 50 ms is enough on hardware to clear the watchdog
-                // pressure without slowing the scrape meaningfully
-                // (a single jeuInfos round-trip dwarfs it).
-                svcSleepThread(50'000'000ULL);
+                // Throttle between games. ScreenScraper's anonymous
+                // tier (the kFallbackDevid/password EmuDeck pair we
+                // ship until foyer's own creds land) caps at ~1
+                // req/s — the previous 50 ms gap meant a 22-game
+                // batch hit the rate-limit on game #3 and every
+                // subsequent jeuInfos call came back empty, so the
+                // whole batch reported zero hits. 1100 ms keeps us
+                // just below the SS bucket refill, and per-source
+                // overrides cover scrapers that don't rate-limit.
+                std::uint64_t gap_ns;
+                switch (src) {
+                    case Source::ScreenScraper:
+                        gap_ns = 1'100'000'000ULL;
+                        break;
+                    case Source::SteamGridDB:
+                        gap_ns =   500'000'000ULL;
+                        break;
+                    case Source::Libretro:
+                    default:
+                        gap_ns =    50'000'000ULL;
+                        break;
+                }
+                svcSleepThread(gap_ns);
             }
             char done[160];
             std::snprintf(done, sizeof(done),
