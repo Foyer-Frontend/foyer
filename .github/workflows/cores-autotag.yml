@@ -1,0 +1,50 @@
+name: Dispatch cores rebuild
+
+# Any commit on main that touches the shared library or per-player binary
+# code feeds into every foyer-<core>.nro built by foyer-cores. Fire a
+# repository_dispatch at foyer-cores so its build-cores workflow can
+# compute today's CalVer tag (YYYY.MM.DD[.NN]), force-rebuild the matrix,
+# and publish a fresh release. The tag-naming + release logic all lives in
+# foyer-cores's `plan` + `release` jobs — this workflow is just the
+# trigger.
+#
+# Setup (one time): add a fine-grained PAT to foyer's repo secrets as
+# CORES_DISPATCH_TOKEN with "Contents: read" + "Actions: read+write" on
+# foyer-frontend/foyer-cores (classic PATs need `repo` scope).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'shared/**'
+      - 'player/**'
+  workflow_dispatch:
+
+# Serialize so a burst of shared/ commits doesn't queue 5 redundant
+# matrix runs. cancel-in-progress=false because each commit is still a
+# distinct snapshot the matrix should publish.
+concurrency:
+  group: cores-autotag
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send repository_dispatch to foyer-cores
+        env:
+          GH_TOKEN: ${{ secrets.CORES_DISPATCH_TOKEN }}
+        run: |
+          set -e
+          if [ -z "$GH_TOKEN" ]; then
+            echo "CORES_DISPATCH_TOKEN secret missing — see workflow comment for setup" >&2
+            exit 1
+          fi
+          gh api repos/Foyer-Frontend/foyer-cores/dispatches \
+            -f event_type=foyer-source-change \
+            -f client_payload[foyer_sha]="${{ github.sha }}" \
+            -f client_payload[reason]="foyer ${{ github.sha }} touched shared/ or player/"
+          echo "Dispatched cores rebuild for foyer ${{ github.sha }}"
