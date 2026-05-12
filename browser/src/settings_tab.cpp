@@ -39,6 +39,32 @@ using namespace brls::literals;
 
 namespace foyer::browser {
 
+InstallRefreshTab::InstallRefreshTab() = default;
+
+InstallRefreshTab::~InstallRefreshTab() {
+    if (m_sub >= 0) {
+        ::foyer::browser::install_queue::unsubscribe(m_sub);
+        m_sub = -1;
+    }
+}
+
+void InstallRefreshTab::add_refresher(std::function<void()> fn) {
+    m_refreshers.push_back(std::move(fn));
+}
+
+void InstallRefreshTab::start_listening() {
+    if (m_sub >= 0) return;
+    m_sub = ::foyer::browser::install_queue::subscribe(
+        [this](const std::string& /*tag*/) {
+            // install_queue fires listeners from its poll_tick which
+            // is already a brls UI-thread RepeatingTimer callback,
+            // so mutating cell text directly is safe. Listeners get
+            // dropped synchronously on unsubscribe in the dtor, so
+            // this `this` is always live when the lambda runs.
+            for (auto& r : m_refreshers) if (r) r();
+        });
+}
+
 namespace {
 
 // Mirror brls's bundled settings.xml: outer tab Box keeps its
@@ -493,13 +519,20 @@ FoyerCoresTab::FoyerCoresTab() {
                 const auto* entry = find_manifest(cd->name);
                 ::foyer::library::CoreManifestEntry copy = *entry;
                 const std::string label{cd->display_name};
-                const auto [detail, force] = label_for(copy);
                 auto* cell = new brls::DetailCell();
                 cell->title->setText(label);
-                cell->detail->setText(detail);
+                {
+                    const auto [detail, force] = label_for(copy);
+                    cell->detail->setText(detail);
+                }
+                add_refresher([cell, copy, label_for]() {
+                    const auto [detail, force] = label_for(copy);
+                    cell->detail->setText(detail);
+                });
                 cell->registerClickAction(
-                    [copy, mf_version = mf.version, kick_install, force]
+                    [copy, mf_version = mf.version, kick_install, label_for]
                     (brls::View*) {
+                        const auto [detail, force] = label_for(copy);
                         ::foyer::library::CoreManifest filt{};
                         filt.version = mf_version;
                         filt.cores.push_back(copy);
@@ -523,13 +556,20 @@ FoyerCoresTab::FoyerCoresTab() {
             }());
             for (const auto* e : orphans) {
                 ::foyer::library::CoreManifestEntry copy = *e;
-                const auto [detail, force] = label_for(copy);
                 auto* cell = new brls::DetailCell();
                 cell->title->setText(copy.name);
-                cell->detail->setText(detail);
+                {
+                    const auto [detail, force] = label_for(copy);
+                    cell->detail->setText(detail);
+                }
+                add_refresher([cell, copy, label_for]() {
+                    const auto [detail, force] = label_for(copy);
+                    cell->detail->setText(detail);
+                });
                 cell->registerClickAction(
-                    [copy, mf_version = mf.version, kick_install, force]
+                    [copy, mf_version = mf.version, kick_install, label_for]
                     (brls::View*) {
+                        const auto [detail, force] = label_for(copy);
                         ::foyer::library::CoreManifest filt{};
                         filt.version = mf_version;
                         filt.cores.push_back(copy);
@@ -541,6 +581,7 @@ FoyerCoresTab::FoyerCoresTab() {
         }
     }
 
+    start_listening();
     wrap_with_scroll(host, this);
 }
 brls::View* FoyerCoresTab::create() { return new FoyerCoresTab(); }
@@ -665,12 +706,18 @@ FoyerBezelsTab::FoyerBezelsTab() {
                 const auto& entry = mf.packs[i];
                 auto* cell = new brls::DetailCell();
                 cell->title->setText(entry.name);
-                const auto have =
-                    ::foyer::library::installed_bezel_version(entry.name);
-                cell->detail->setText(
-                    have.empty()           ? "Tap to install" :
-                    have == entry.version  ? "Tap to re-install"
+                auto bezel_label = [](const ::foyer::library::BezelManifestEntry& e) {
+                    const auto have =
+                        ::foyer::library::installed_bezel_version(e.name);
+                    return std::string(
+                        have.empty()       ? "Tap to install" :
+                        have == e.version  ? "Tap to re-install"
                                            : "Tap to update");
+                };
+                cell->detail->setText(bezel_label(entry));
+                add_refresher([cell, entry, bezel_label]() {
+                    cell->detail->setText(bezel_label(entry));
+                });
                 cell->registerClickAction([entry, &mf, kick](brls::View*) {
                     ::foyer::library::BezelManifest filt{};
                     filt.version  = mf.version;
@@ -695,12 +742,18 @@ FoyerBezelsTab::FoyerBezelsTab() {
                 const auto& entry = mf.packs[i];
                 auto* cell = new brls::DetailCell();
                 cell->title->setText(entry.name);
-                const auto have =
-                    ::foyer::library::installed_bezel_version(entry.name);
-                cell->detail->setText(
-                    have.empty()           ? "Tap to install" :
-                    have == entry.version  ? "Tap to re-install"
+                auto bezel_label = [](const ::foyer::library::BezelManifestEntry& e) {
+                    const auto have =
+                        ::foyer::library::installed_bezel_version(e.name);
+                    return std::string(
+                        have.empty()       ? "Tap to install" :
+                        have == e.version  ? "Tap to re-install"
                                            : "Tap to update");
+                };
+                cell->detail->setText(bezel_label(entry));
+                add_refresher([cell, entry, bezel_label]() {
+                    cell->detail->setText(bezel_label(entry));
+                });
                 cell->registerClickAction([entry, &mf, kick](brls::View*) {
                     ::foyer::library::BezelManifest filt{};
                     filt.version  = mf.version;
@@ -713,6 +766,7 @@ FoyerBezelsTab::FoyerBezelsTab() {
             }
         }
     }
+    start_listening();
     wrap_with_scroll(host, this);
 }
 brls::View* FoyerBezelsTab::create() { return new FoyerBezelsTab(); }
@@ -766,12 +820,18 @@ FoyerShadersTab::FoyerShadersTab() {
             const auto& entry = mf.presets[i];
             auto* cell = new brls::DetailCell();
             cell->title->setText(entry.name);
-            const auto have =
-                ::foyer::library::installed_shader_version(entry.name);
-            cell->detail->setText(
-                have.empty()           ? "Tap to install" :
-                have == entry.version  ? "Tap to re-install"
+            auto shader_label = [](const ::foyer::library::ShaderManifestEntry& e) {
+                const auto have =
+                    ::foyer::library::installed_shader_version(e.name);
+                return std::string(
+                    have.empty()       ? "Tap to install" :
+                    have == e.version  ? "Tap to re-install"
                                        : "Tap to update");
+            };
+            cell->detail->setText(shader_label(entry));
+            add_refresher([cell, entry, shader_label]() {
+                cell->detail->setText(shader_label(entry));
+            });
             cell->registerClickAction([entry, &mf, kick](brls::View*) {
                 ::foyer::library::ShaderManifest filt{};
                 filt.version = mf.version;
@@ -782,6 +842,7 @@ FoyerShadersTab::FoyerShadersTab() {
             host->addView(cell);
         }
     }
+    start_listening();
     wrap_with_scroll(host, this);
 }
 brls::View* FoyerShadersTab::create() { return new FoyerShadersTab(); }
@@ -850,12 +911,18 @@ FoyerCheatsTab::FoyerCheatsTab() {
                 const auto& entry = mf.packs[i];
                 auto* cell = new brls::DetailCell();
                 cell->title->setText(entry.name);
-                const auto have =
-                    ::foyer::library::installed_cheat_version(entry.name);
-                cell->detail->setText(
-                    have.empty()           ? "Tap to install" :
-                    have == entry.version  ? "Tap to re-install"
+                auto cheat_label = [](const ::foyer::library::CheatManifestEntry& e) {
+                    const auto have =
+                        ::foyer::library::installed_cheat_version(e.name);
+                    return std::string(
+                        have.empty()       ? "Tap to install" :
+                        have == e.version  ? "Tap to re-install"
                                            : "Tap to update");
+                };
+                cell->detail->setText(cheat_label(entry));
+                add_refresher([cell, entry, cheat_label]() {
+                    cell->detail->setText(cheat_label(entry));
+                });
                 cell->registerClickAction([entry, &mf, kick](brls::View*) {
                     ::foyer::library::CheatManifest filt{};
                     filt.version = mf.version;
@@ -879,12 +946,18 @@ FoyerCheatsTab::FoyerCheatsTab() {
                 const auto& entry = mf.packs[i];
                 auto* cell = new brls::DetailCell();
                 cell->title->setText(entry.name);
-                const auto have =
-                    ::foyer::library::installed_cheat_version(entry.name);
-                cell->detail->setText(
-                    have.empty()           ? "Tap to install" :
-                    have == entry.version  ? "Tap to re-install"
+                auto cheat_label = [](const ::foyer::library::CheatManifestEntry& e) {
+                    const auto have =
+                        ::foyer::library::installed_cheat_version(e.name);
+                    return std::string(
+                        have.empty()       ? "Tap to install" :
+                        have == e.version  ? "Tap to re-install"
                                            : "Tap to update");
+                };
+                cell->detail->setText(cheat_label(entry));
+                add_refresher([cell, entry, cheat_label]() {
+                    cell->detail->setText(cheat_label(entry));
+                });
                 cell->registerClickAction([entry, &mf, kick](brls::View*) {
                     ::foyer::library::CheatManifest filt{};
                     filt.version = mf.version;
@@ -896,6 +969,7 @@ FoyerCheatsTab::FoyerCheatsTab() {
             }
         }
     }
+    start_listening();
     wrap_with_scroll(host, this);
 }
 brls::View* FoyerCheatsTab::create() { return new FoyerCheatsTab(); }
@@ -910,16 +984,60 @@ FoyerUpdatesTab::FoyerUpdatesTab() {
 
     host->addView([]() { auto* h = new brls::Header(); h->setTitle("Updates"); return h; }());
 
-    auto* check = new brls::DetailCell();
-    check->title->setText("Check for updates");
-    check->detail->setText("Prompt if newer");
-    check->registerClickAction([](brls::View*) {
-        if (!::foyer::browser::update_check::kick(/*verbose=*/true)) {
-            brls::Application::notify("Update check already running");
-        }
-        return true;
-    });
-    host->addView(check);
+    // 4 separate buttons so users can poll just the bucket they care
+    // about. Foyer check pops the download prompt; content checks just
+    // toast a count summary.
+    {
+        auto* c = new brls::DetailCell();
+        c->title->setText("Check for foyer updates");
+        c->detail->setText("App self-update");
+        c->registerClickAction([](brls::View*) {
+            if (!::foyer::browser::update_check::kick(/*verbose=*/true)) {
+                brls::Application::notify("Update check already running");
+            }
+            return true;
+        });
+        host->addView(c);
+    }
+    {
+        auto* c = new brls::DetailCell();
+        c->title->setText("Check for cores updates");
+        c->detail->setText("Compare installed cores vs manifest");
+        c->registerClickAction([](brls::View*) {
+            if (!::foyer::browser::update_check::kick_content(
+                    ::foyer::browser::update_check::Section::Cores)) {
+                brls::Application::notify("Content check already running");
+            }
+            return true;
+        });
+        host->addView(c);
+    }
+    {
+        auto* c = new brls::DetailCell();
+        c->title->setText("Check for bezels updates");
+        c->detail->setText("Compare installed bezel packs vs manifest");
+        c->registerClickAction([](brls::View*) {
+            if (!::foyer::browser::update_check::kick_content(
+                    ::foyer::browser::update_check::Section::Bezels)) {
+                brls::Application::notify("Content check already running");
+            }
+            return true;
+        });
+        host->addView(c);
+    }
+    {
+        auto* c = new brls::DetailCell();
+        c->title->setText("Check for cheats updates");
+        c->detail->setText("Compare installed cheat packs vs manifest");
+        c->registerClickAction([](brls::View*) {
+            if (!::foyer::browser::update_check::kick_content(
+                    ::foyer::browser::update_check::Section::Cheats)) {
+                brls::Application::notify("Content check already running");
+            }
+            return true;
+        });
+        host->addView(c);
+    }
 
     wrap_with_scroll(host, this);
 }

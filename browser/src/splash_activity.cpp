@@ -10,12 +10,9 @@ namespace foyer::browser {
 
 namespace {
 
-// Polls the Worker once per tick and copies its status snapshot
-// into the splash label. Owned + cancelled by SplashActivity's
-// destructor.
 class SplashTick : public brls::RepeatingTask {
 public:
-    SplashTick(SplashActivity* host) : brls::RepeatingTask(200), m_host(host) {}
+    SplashTick(SplashActivity* host) : brls::RepeatingTask(100), m_host(host) {}
     void run() override {
         if (m_host) m_host->tick();
     }
@@ -42,20 +39,25 @@ void SplashActivity::onContentAvailable() {
 
     foyer::log::write("[splash] kicking worker\n");
     m_worker = std::make_unique<::foyer::library::Worker>();
-    // Library scan + manifest prefetch already happened in main()
-    // before this activity was pushed. The splash now exists purely
-    // to cover the brief boot-state hitch — the worker just sleeps
-    // a moment so the user actually sees the foyer brand.
-    m_worker->start([](::foyer::library::Worker& w) {
-        w.set_status("Loading…");
-        // Prefetch the cores/bezels/shaders manifests so the
-        // Settings → Cores tab has data on first open. First-run
-        // wizard path runs its own prefetch in main(); this covers
-        // every other boot.
-        ::foyer::browser::manifest_cache::prefetch();
-        // 600 ms floor so the brand registers even when the
-        // prefetch returns from cache instantly.
-        svcSleepThread(600'000'000ULL);
+    SplashActivity* self = this;
+    m_worker->start([self](::foyer::library::Worker& w) {
+        w.set_status("Starting…");
+        self->m_progress_done.store(0, std::memory_order_release);
+        self->m_progress_total.store(4, std::memory_order_release);
+
+        ::foyer::browser::manifest_cache::prefetch(
+            [self, &w](int done, int total, const char* label) {
+                self->m_progress_done.store(done, std::memory_order_release);
+                self->m_progress_total.store(total, std::memory_order_release);
+                w.set_status(label);
+            });
+
+        // 400 ms floor so a fully-cached prefetch still gives the
+        // brand half a second of screen time.
+        svcSleepThread(400'000'000ULL);
+        self->m_progress_done.store(
+            self->m_progress_total.load(std::memory_order_acquire),
+            std::memory_order_release);
         w.set_status("Ready");
     });
 
@@ -71,19 +73,24 @@ void SplashActivity::tick() {
         if (!snap.empty()) status->setText(snap);
     }
 
+    if (bar_fill) {
+        const int done  = m_progress_done.load(std::memory_order_acquire);
+        const int total = m_progress_total.load(std::memory_order_acquire);
+        const float pct = total > 0
+            ? std::min(1.0f, static_cast<float>(done) / static_cast<float>(total))
+            : 0.0f;
+        bar_fill->setWidth(kBarTrackWidth * pct);
+    }
+
     if (m_worker->done() && !m_handed_off) {
         m_handed_off = true;
-        // Defer the handoff to the next main-loop iteration via
-        // brls::sync. Calling handoff() inline would delete this
-        // RepeatingTask + the SplashActivity while we're still
-        // inside SplashTick::run() — classic use-after-free.
         SplashActivity* self = this;
         brls::sync([self]() { self->handoff(); });
     }
 }
 
 void SplashActivity::handoff() {
-    foyer::log::write("[splash] handoff — pushing Home, popping self\n");
+    foyer::log::write("[splash] handoff — pushing Home\n");
     m_worker->finish();
 
     if (m_tick) {
@@ -92,16 +99,6 @@ void SplashActivity::handoff() {
         m_tick = nullptr;
     }
 
-    // Push HomeActivity on top of the splash. brls's
-    // popActivity always pops the TOP of the stack, so
-    // popping here would just pop the Home we just pushed —
-    // that's why the prior implementation left the user stuck
-    // on the spinner. Instead, leave Splash dormant in the
-    // stack below Home. brls walks top-down and stops at the
-    // first non-translucent activity, so the splash never
-    // paints again. HomeActivity's quit drain calls
-    // Application::quit() rather than popActivity, so the
-    // user never falls back to the splash.
     brls::Application::pushActivity(
         new ::foyer::browser::HomeActivity(),
         brls::TransitionAnimation::NONE);

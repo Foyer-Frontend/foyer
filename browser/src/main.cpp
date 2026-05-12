@@ -82,6 +82,23 @@ int main(int argc, char* argv[])
     }
     foyer::log::write("[boot] brls init ok\n");
 
+    // Register foyer-specific theme colors before any XML inflates.
+    // Splash references these for the bg overlay + custom progress bar.
+    // Dark overlay is heavier so the pixel-art bg dims toward the
+    // brand panel; light overlay is gentle so colors still pop.
+    brls::Theme::getDarkTheme().addColor("foyer/splash_overlay",
+        nvgRGBA(15, 18, 30, 190));
+    brls::Theme::getLightTheme().addColor("foyer/splash_overlay",
+        nvgRGBA(245, 248, 255, 140));
+    brls::Theme::getDarkTheme().addColor("foyer/splash_bar_track",
+        nvgRGBA(255, 255, 255, 50));
+    brls::Theme::getLightTheme().addColor("foyer/splash_bar_track",
+        nvgRGBA(0, 0, 0, 50));
+    brls::Theme::getDarkTheme().addColor("foyer/splash_bar_fill",
+        nvgRGBA(0, 200, 255, 255));
+    brls::Theme::getLightTheme().addColor("foyer/splash_bar_fill",
+        nvgRGBA(0, 130, 220, 255));
+
     // brls now owns the romfs fd. Safe to swap the staged-update file in.
     foyer::browser::self_update::apply_staged_if_present();
     foyer::browser::self_update::scrub_legacy_default_bezel();
@@ -151,7 +168,7 @@ int main(int argc, char* argv[])
 
     if (!::foyer::browser::first_run::is_complete()) {
         foyer::log::write("[boot] first-run marker missing — wizard\n");
-        ::foyer::browser::manifest_cache::prefetch();
+        ::foyer::browser::manifest_cache::prefetch({});
         foyer::log::write("[boot] pushing HomeActivity\n");
         brls::Application::pushActivity(new ::foyer::browser::HomeActivity());
         brls::Application::pushActivity(new ::foyer::browser::WizardActivity());

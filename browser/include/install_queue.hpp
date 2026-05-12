@@ -46,4 +46,14 @@ struct Snapshot {
 };
 Snapshot snapshot();
 
+// Subscribe to job-completion events. The listener fires on the UI
+// thread (from poll_tick) right after the install_queue's
+// "Installed <tag>" toast, so Settings tabs can refresh "Tap to
+// install" → "Tap to re-install" cells without waiting for the
+// user to leave and re-enter the tab. Caller MUST unsubscribe in
+// its destructor; the registry persists across tab inflates.
+using CompletionListener = std::function<void(const std::string& tag)>;
+int  subscribe(CompletionListener cb);
+void unsubscribe(int id);
+
 }  // namespace foyer::browser::install_queue

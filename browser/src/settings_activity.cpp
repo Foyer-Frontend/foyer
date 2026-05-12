@@ -56,19 +56,16 @@ void SettingsActivity::onContentAvailable() {
                 return true;
             }, false, false, brls::SOUND_BACK);
 
-        // X / Y on any Settings tab opens the download queue
-        // overlay so the user can see what install_queue is
-        // currently working on without leaving Settings.
-        auto open_queue = [](brls::View*) {
-            brls::Application::pushActivity(
-                new DownloadQueueActivity(),
-                brls::TransitionAnimation::NONE);
-            return true;
-        };
-        content->registerAction("Downloads", brls::BUTTON_Y, open_queue,
-            false, false, brls::SOUND_CLICK);
-        content->registerAction("Downloads", brls::BUTTON_X, open_queue,
-            false, true, brls::SOUND_CLICK);
+        // Y on any Settings tab opens the download queue overlay.
+        // (X was a duplicate binding — dropped per user request so
+        // only one shortcut surfaces in the hint bar.)
+        content->registerAction("Downloads", brls::BUTTON_Y,
+            [](brls::View*) {
+                brls::Application::pushActivity(
+                    new DownloadQueueActivity(),
+                    brls::TransitionAnimation::NONE);
+                return true;
+            }, false, false, brls::SOUND_CLICK);
 
         // brls's AppletFrame footer (BottomBar) ships its own
         // time / battery / wifi cluster. Settings already shows

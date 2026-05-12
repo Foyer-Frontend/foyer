@@ -26,6 +26,23 @@ std::string                                      g_active_tag;
 std::string                                      g_last_status;
 brls::RepeatingTimer*                            g_timer = nullptr;
 
+std::mutex                                       g_listeners_mu;
+std::vector<std::pair<int, CompletionListener>>  g_listeners;
+int                                              g_next_listener_id = 1;
+
+void fire_completion(const std::string& tag) {
+    // Snapshot listeners under lock so a listener that calls
+    // unsubscribe() doesn't invalidate the iterator we're walking.
+    std::vector<std::pair<int, CompletionListener>> copy;
+    {
+        std::unique_lock lk{g_listeners_mu};
+        copy = g_listeners;
+    }
+    for (auto& [_, cb] : copy) {
+        if (cb) cb(tag);
+    }
+}
+
 void start_next_locked() {
     // Called with g_mutex held. Pop the front job and spin up a
     // Worker that runs its body. The poll timer below picks up
@@ -65,7 +82,13 @@ void poll_tick() {
     // (cache hit, skip-by-version) easily slips past without
     // visible feedback. Always toast on done.
     brls::Application::notify("Installed " + g_active_tag);
+    const std::string finished_tag = g_active_tag;
     start_next_locked();
+    // Drop the install_queue lock before firing listeners — they
+    // touch view state and may take their own locks; holding ours
+    // across UI work invites deadlock with subscribe/unsubscribe.
+    lk.unlock();
+    fire_completion(finished_tag);
 }
 
 void ensure_timer_locked() {
@@ -122,6 +145,20 @@ void stop() {
 std::size_t pending() {
     std::unique_lock lk{g_mutex};
     return g_queue.size() + (g_worker ? 1 : 0);
+}
+
+int subscribe(CompletionListener cb) {
+    std::unique_lock lk{g_listeners_mu};
+    int id = g_next_listener_id++;
+    g_listeners.emplace_back(id, std::move(cb));
+    return id;
+}
+
+void unsubscribe(int id) {
+    std::unique_lock lk{g_listeners_mu};
+    for (auto it = g_listeners.begin(); it != g_listeners.end(); ++it) {
+        if (it->first == id) { g_listeners.erase(it); return; }
+    }
 }
 
 Snapshot snapshot() {

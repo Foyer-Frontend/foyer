@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(foyer
-    VERSION 0.6.35
+    VERSION 0.6.36
     LANGUAGES C CXX
 )
 
@@ -149,6 +149,15 @@ if (BUILD_BROWSER OR PLAYER_BRLS)
         GIT_SHALLOW    TRUE
         SOURCE_SUBDIR  library)
     FetchContent_MakeAvailable(borealis)
+
+    # Carousel-style horizontal wrap: foyer wants left↔right edges to
+    # wrap on every horizontal Box. brls upstream hard-stops at edges;
+    # we patch box.cpp in place after populate. The script is
+    # idempotent + leaves a sentinel so re-configures don't restack.
+    execute_process(
+        COMMAND ${CMAKE_COMMAND}
+            -DBOX_CPP=${borealis_SOURCE_DIR}/library/lib/core/box.cpp
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patch_brls_wraparound.cmake)
 
     # devkitPro's portlibs/switch/include is the canonical location for
     # switch-glm, switch-glfw, EGL, etc. The Switch.cmake toolchain

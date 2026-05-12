@@ -1,9 +1,9 @@
 <!--
-    foyer Splash — shown at boot while the heavy work (library scan,
-    optional manifest prefetch) runs on a background Worker. The
-    SplashActivity polls the Worker once per tick, updates the status
-    label, and transitions to HomeActivity (+ Wizard if first-run)
-    when the Worker reports done.
+    foyer Splash — pixel-art background + theme-aware overlay so
+    boot is on-brand instead of a flat panel. The SplashActivity
+    fills the ProgressBar fill (id=foyer/splash_bar_fill) as the
+    worker advances through manifest steps, and writes per-step
+    text into id=foyer/splash_status.
 -->
 <brls:Box
     width="auto"
@@ -21,20 +21,51 @@
         width="1280"
         height="720"
         scalingType="fill"
-        image="@res/splash.jpg" />
+        image="@res/splash_bg.png" />
+
+    <!--
+        Theme-aware dim. Both dark and light theme variants of
+        @theme/brls/background are translucent enough at 65% to let
+        the pixel-art read through, while ensuring the brand label
+        and bar stay legible.
+    -->
+    <brls:Rectangle
+        positionType="absolute"
+        positionTop="0"
+        positionLeft="0"
+        width="1280"
+        height="720"
+        color="@theme/foyer/splash_overlay" />
 
     <brls:Label
         text="foyer"
         width="auto"
         height="auto"
-        fontSize="64"
-        marginBottom="24"
+        fontSize="72"
+        marginBottom="32"
         textColor="@theme/brls/text" />
 
-    <brls:ProgressSpinner
-        width="80"
-        height="80"
-        marginBottom="24" />
+    <!--
+        ProgressBar (manually constructed — brls only ships
+        ProgressSpinner). Track is a fixed-width Box; the inner
+        fill widens as the splash worker reports progress.
+    -->
+    <brls:Box
+        width="520"
+        height="14"
+        cornerRadius="7"
+        backgroundColor="@theme/foyer/splash_bar_track"
+        axis="row"
+        alignItems="center"
+        marginBottom="20">
+
+        <brls:Box
+            id="foyer/splash_bar_fill"
+            width="0"
+            height="14"
+            cornerRadius="7"
+            backgroundColor="@theme/foyer/splash_bar_fill" />
+    </brls:Box>
 
     <brls:Label
         id="foyer/splash_status"

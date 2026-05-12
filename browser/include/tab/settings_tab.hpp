@@ -2,6 +2,10 @@
 
 #include <borealis.hpp>
 
+#include <functional>
+#include <string>
+#include <vector>
+
 namespace foyer::browser {
 
 // Six tab content classes used by xml/tabs/foyer_settings.xml.
@@ -33,7 +37,31 @@ public:
     static brls::View* create();
 };
 
-class FoyerCoresTab : public brls::Box {
+// Helper mixed into install-list tabs (cores/bezels/shaders/cheats)
+// so a finished install can refresh every "Tap to install" cell's
+// label in place. install_queue fires completion listeners on the
+// UI thread; each tab subscribes once in its ctor and unsubscribes
+// in its dtor.
+class InstallRefreshTab : public brls::Box {
+public:
+    InstallRefreshTab();
+    ~InstallRefreshTab() override;
+
+protected:
+    // Each cell-builder calls this with a closure that re-evaluates
+    // the row's label (Tap to install / re-install / update).
+    void add_refresher(std::function<void()> fn);
+
+    // Subscribes to install_queue. Call at the end of the tab's
+    // ctor once all add_refresher() calls have landed.
+    void start_listening();
+
+private:
+    int                                m_sub = -1;
+    std::vector<std::function<void()>> m_refreshers;
+};
+
+class FoyerCoresTab : public InstallRefreshTab {
 public:
     FoyerCoresTab();
     static brls::View* create();
@@ -45,19 +73,19 @@ public:
     static brls::View* create();
 };
 
-class FoyerBezelsTab : public brls::Box {
+class FoyerBezelsTab : public InstallRefreshTab {
 public:
     FoyerBezelsTab();
     static brls::View* create();
 };
 
-class FoyerShadersTab : public brls::Box {
+class FoyerShadersTab : public InstallRefreshTab {
 public:
     FoyerShadersTab();
     static brls::View* create();
 };
 
-class FoyerCheatsTab : public brls::Box {
+class FoyerCheatsTab : public InstallRefreshTab {
 public:
     FoyerCheatsTab();
     static brls::View* create();

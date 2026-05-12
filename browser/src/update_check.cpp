@@ -25,6 +25,7 @@ std::unique_ptr<::foyer::library::Worker>         g_aux_job;
 brls::RepeatingTimer*                             g_poll = nullptr;
 brls::RepeatingTimer*                             g_aux_poll = nullptr;
 bool                                              g_verbose = false;
+Section                                           g_aux_section = Section::Cores;
 
 // brls::RepeatingTimer::onUpdate writes `this->progress = 0` AFTER
 // invoking the callback. Deleting the timer from inside its own
@@ -57,15 +58,7 @@ void prompt_restart() {
         // hits EEXIST even after unlink+rename (filesystem
         // cache lag), so the prior strategy of rename-then-
         // chain-launch silently fell back to the OLD canonical
-        // nro on those failures — which is exactly what the
-        // user reported (downloaded 0.6.22, restart booted
-        // 0.6.21 again).
-        //
-        // Loading .new directly works because detect_paths()
-        // strips the ".new" suffix off argv[0] for path bookkeeping;
-        // apply_staged_if_present on the next boot then promotes
-        // the .new file to canonical with the filesystem in a
-        // clean state.
+        // nro on those failures.
         const std::string& staged =
             ::foyer::browser::self_update::nro_new_path();
         const std::string& canonical =
@@ -119,54 +112,13 @@ void prompt_download(const std::string& version) {
     dlg->open();
 }
 
-// Verbose-only second pass: refresh the cores/bezels/shaders/cheats
-// manifests in case they advanced since boot, then run the pending-
-// updates aggregator over installed sidecars. Toasts a summary —
-// boot path stays silent and never reaches this.
-void kick_aux_check() {
-    if (g_aux_job && g_aux_job->active() && !g_aux_job->done()) return;
-    if (g_aux_job) {
-        if (g_aux_job->done()) g_aux_job->finish();
-        g_aux_job.reset();
+const char* section_label(Section s) {
+    switch (s) {
+        case Section::Cores:  return "cores";
+        case Section::Bezels: return "bezels";
+        case Section::Cheats: return "cheats";
     }
-
-    g_aux_job = std::make_unique<::foyer::library::Worker>();
-    g_aux_job->start([](::foyer::library::Worker& w) {
-        w.set_status("Refreshing manifests…");
-        ::foyer::browser::manifest_cache::prefetch();
-    });
-
-    if (g_aux_poll) cleanup_aux_poll();
-    g_aux_poll = new brls::RepeatingTimer();
-    g_aux_poll->setPeriod(500);
-    g_aux_poll->setCallback([]() {
-        if (!g_aux_job || !g_aux_job->done()) return;
-        g_aux_job->finish();
-        cleanup_aux_poll();
-
-        // Aggregate over freshly-fetched manifests + on-disk sidecars.
-        ::foyer::library::FoyerManifest empty_foyer{};
-        const auto buckets = ::foyer::library::compute_pending_updates(
-            empty_foyer,
-            FOYER_VERSION,
-            ::foyer::browser::manifest_cache::cores(),
-            ::foyer::browser::manifest_cache::bezels(),
-            ::foyer::browser::manifest_cache::cheats());
-        g_aux_job.reset();
-
-        const std::size_t c = buckets.cores.size();
-        const std::size_t b = buckets.bezels.size();
-        const std::size_t k = buckets.cheats.size();
-        if (c == 0 && b == 0 && k == 0) {
-            brls::Application::notify("Content up to date");
-        } else {
-            brls::Application::notify(
-                "Updates — cores " + std::to_string(c)
-                + ", bezels " + std::to_string(b)
-                + ", cheats " + std::to_string(k));
-        }
-    });
-    g_aux_poll->start();
+    return "?";
 }
 
 }  // namespace
@@ -185,8 +137,8 @@ bool kick(bool verbose) {
         g_job.reset();
         return false;
     }
-    if (verbose) brls::Application::notify("Checking for updates…");
-    foyer::log::write("[update] check kicked (verbose=%d)\n", (int)verbose);
+    if (verbose) brls::Application::notify("Checking for foyer updates…");
+    foyer::log::write("[update] foyer check kicked (verbose=%d)\n", (int)verbose);
 
     if (g_poll) cleanup_poll();
     g_poll = new brls::RepeatingTimer();
@@ -211,13 +163,77 @@ bool kick(bool verbose) {
             brls::Application::notify(
                 "Foyer up to date (v" + std::string(FOYER_VERSION) + ")");
         }
-        // Verbose path also surveys aux content (cores/bezels/cheats)
-        // so the user gets a full picture from one button. Boot path
-        // stays silent — content updates aren't urgent enough to
-        // warrant a launch-time prompt.
-        if (g_verbose) kick_aux_check();
     });
     g_poll->start();
+    return true;
+}
+
+bool kick_content(Section s) {
+    if (g_aux_job && g_aux_job->active() && !g_aux_job->done()) return false;
+    if (g_aux_job) {
+        if (g_aux_job->done()) g_aux_job->finish();
+        g_aux_job.reset();
+    }
+
+    g_aux_section = s;
+    const char* lbl = section_label(s);
+
+    g_aux_job = std::make_unique<::foyer::library::Worker>();
+    g_aux_job->start([s](::foyer::library::Worker& w) {
+        const auto& cfg = ::foyer::library::config();
+        switch (s) {
+            case Section::Cores:
+                w.set_status("Refreshing cores manifest…");
+                ::foyer::browser::manifest_cache::prefetch_cores();
+                break;
+            case Section::Bezels:
+                w.set_status("Refreshing bezels manifest…");
+                ::foyer::browser::manifest_cache::prefetch_bezels();
+                break;
+            case Section::Cheats:
+                w.set_status("Refreshing cheats manifest…");
+                ::foyer::browser::manifest_cache::prefetch_cheats();
+                break;
+        }
+        (void)cfg;
+    });
+
+    brls::Application::notify(std::string("Checking for ") + lbl + " updates…");
+    foyer::log::write("[update] %s content check kicked\n", lbl);
+
+    if (g_aux_poll) cleanup_aux_poll();
+    g_aux_poll = new brls::RepeatingTimer();
+    g_aux_poll->setPeriod(500);
+    g_aux_poll->setCallback([]() {
+        if (!g_aux_job || !g_aux_job->done()) return;
+        g_aux_job->finish();
+        cleanup_aux_poll();
+
+        ::foyer::library::FoyerManifest empty_foyer{};
+        const auto buckets = ::foyer::library::compute_pending_updates(
+            empty_foyer,
+            FOYER_VERSION,
+            ::foyer::browser::manifest_cache::cores(),
+            ::foyer::browser::manifest_cache::bezels(),
+            ::foyer::browser::manifest_cache::cheats());
+        g_aux_job.reset();
+
+        std::size_t n = 0;
+        switch (g_aux_section) {
+            case Section::Cores:  n = buckets.cores.size();  break;
+            case Section::Bezels: n = buckets.bezels.size(); break;
+            case Section::Cheats: n = buckets.cheats.size(); break;
+        }
+        const char* lbl = section_label(g_aux_section);
+        if (n == 0) {
+            brls::Application::notify(std::string("All ") + lbl + " up to date");
+        } else {
+            brls::Application::notify(
+                std::to_string(n) + " " + lbl + " update"
+                + (n == 1 ? "" : "s") + " available");
+        }
+    });
+    g_aux_poll->start();
     return true;
 }
 
