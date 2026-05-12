@@ -47,6 +47,7 @@ constexpr SystemMap kMap[] = {
     { "psp",             61  },
     { "ngp",             25  },
     { "ngpc",            82  },
+    { "__switch",        225 },  // ScreenScraper "Nintendo Switch"
     { "atari2600",       26  },
     { "atari5200",       40  },
     { "atari7800",       41  },
