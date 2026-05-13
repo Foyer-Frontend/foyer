@@ -77,9 +77,10 @@ const char* section_label(Section s) {
 
 void prompt_restart() {
     auto* dlg = new brls::Dialog(
-        "Update downloaded. Restart foyer now to install it?");
+        "Update downloaded. Quit foyer now and relaunch from the "
+        "forwarder to boot the new version?");
     dlg->addButton("Later", []() {});
-    dlg->addButton("Restart", []() {
+    dlg->addButton("Quit", []() {
         // Tear down every long-lived RepeatingTask/Timer BEFORE
         // we touch the filesystem or chain-launch. brls's quit
         // drain otherwise lets these tick into already-freed
@@ -100,17 +101,21 @@ void prompt_restart() {
         // running from (same-path chain-launch avoids any
         // hbloader unmap/remap transition for the next NRO load).
         ::foyer::browser::self_update::apply_staged_if_present();
-        const std::string& path =
-            ::foyer::browser::self_update::nro_path();
+        // Switchfin pattern: rename + quit WITHOUT envSetNextLoad.
+        // The user's hbloader auto-detects "sentinel argv + path
+        // == default" on exit and takes the selfExit() branch
+        // (skips the unmap block entirely, exits the process via
+        // appletOE.Exit). The forwarder title-takeover process
+        // then ends; user relaunches via Home, hbloader loads
+        // the freshly-renamed canonical foyer.nro from disk.
+        // Trying to envSetNextLoad here forces hbloader through
+        // the unmap path which trips MAKERESULT(347, 26) for
+        // large NROs and crashes — confirmed by the v0.6.62/63
+        // user crash report (same-path chain-launch still goes
+        // through unmap).
         foyer::log::write(
-            "[update] restart accepted — envSetNextLoad(%s)\n",
-            path.c_str());
-        if (R_FAILED(envSetNextLoad(path.c_str(), path.c_str()))) {
-            foyer::log::write(
-                "[update] envSetNextLoad(%s) failed; quitting to "
-                "homebrew menu — user must relaunch foyer manually\n",
-                path.c_str());
-        }
+            "[update] restart accepted — quitting; "
+            "relaunch foyer from the forwarder to boot the new build\n");
         brls::Application::quit();
     });
     dlg->open();

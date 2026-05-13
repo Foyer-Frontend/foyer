@@ -130,7 +130,12 @@ set(_play_needle "//    // Load the sound if needed
 //    if (PLSR_RC_FAILED(rc))
 //    {
 //        Logger::error(\"Unable to play sound {}: {:#x}\", sound, rc);
-//        return false;")
+//        return false;
+//    }
+//
+//    return true;
+    return false;
+}")
 
 set(_play_replacement "    if (this->sounds[sound] == PLSR_PLAYER_INVALID_SOUND)
     {
@@ -142,8 +147,15 @@ set(_play_replacement "    if (this->sounds[sound] == PLSR_PLAYER_INVALID_SOUND)
     PLSR_RC rc = plsrPlayerPlay(this->sounds[sound]);
     if (PLSR_RC_FAILED(rc))
     {
-        Logger::error(\"Unable to play sound {}: {:#x}\", sound, rc);
-        return false;")
+        // (int)sound: brls::Sound is a plain enum that newer fmt
+        // refuses to format without explicit conversion. Cast to
+        // int so {} resolves to the integral formatter.
+        Logger::error(\"Unable to play sound {}: {:#x}\", (int)sound, rc);
+        return false;
+    }
+
+    return true;
+}")
 
 string(FIND "${_content}" "${_play_needle}" _play_idx)
 if(NOT _play_idx EQUAL -1)
