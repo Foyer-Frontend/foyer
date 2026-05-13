@@ -35,6 +35,8 @@ SplashActivity::~SplashActivity() {
 }
 
 void SplashActivity::onContentAvailable() {
+    if (build) build->setText(FOYER_DISPLAY_VERSION);
+
     if (m_worker) return;
 
     foyer::log::write("[splash] kicking worker\n");

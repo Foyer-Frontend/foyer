@@ -75,4 +75,20 @@
         fontSize="22"
         textColor="@theme/brls/text" />
 
+    <!--
+        Build label pinned to the bottom-right corner. Populated at
+        runtime from FOYER_DISPLAY_VERSION (version + short git
+        commit). Single point of presence so the user can quickly
+        confirm which build is running while crashes are being
+        diagnosed.
+    -->
+    <brls:Label
+        id="foyer/splash_build"
+        text=""
+        positionType="absolute"
+        positionRight="20"
+        positionBottom="14"
+        fontSize="16"
+        textColor="@theme/brls/text_disabled" />
+
 </brls:Box>

@@ -27,6 +27,7 @@ public:
     void onContentAvailable() override;
 
     BRLS_BIND(brls::Label, status,   "foyer/splash_status");
+    BRLS_BIND(brls::Label, build,    "foyer/splash_build");
     BRLS_BIND(brls::Box,   bar_fill, "foyer/splash_bar_fill");
 
     void tick();

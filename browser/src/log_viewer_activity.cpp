@@ -176,10 +176,26 @@ brls::View* LogContentsActivity::createContentView() {
             std::ostringstream ss;
             for (const auto& l : chunk) ss << l << '\n';
             chunk.clear();
+            // Each chunk is wrapped in a focusable Box with the
+            // highlight + outline suppressed. brls's ScrollingFrame
+            // moves contentOffsetY whenever focus jumps to a child
+            // that's outside the visible viewport, so DPAD up/down
+            // walks chunk-by-chunk and the scrollbar follows. Plain
+            // Labels are non-focusable, which is why the previous
+            // log-viewer build only scrolled with touch — there was
+            // nothing for the focus walk to hop between.
+            auto* wrap = new brls::Box();
+            wrap->setAxis(brls::Axis::COLUMN);
+            wrap->setAlignItems(brls::AlignItems::STRETCH);
+            wrap->setFocusable(true);
+            wrap->setHideHighlight(true);
+            wrap->setHideHighlightBackground(true);
+            wrap->setHideHighlightBorder(true);
             auto* lbl = new brls::Label();
             lbl->setText(ss.str());
             lbl->setFontSize(18.0f);
-            host->addView(lbl);
+            wrap->addView(lbl);
+            host->addView(wrap);
         };
 
         while (std::getline(in, line)) {
@@ -192,7 +208,7 @@ brls::View* LogContentsActivity::createContentView() {
     auto* scroll = new brls::ScrollingFrame();
     scroll->setAxis(brls::Axis::COLUMN);
     scroll->setAlignItems(brls::AlignItems::STRETCH);
-    scroll->setScrollingBehavior(brls::ScrollingBehavior::CENTERED);
+    scroll->setScrollingBehavior(brls::ScrollingBehavior::NATURAL);
     scroll->setGrow(1.0f);
     scroll->setContentView(host);
 
