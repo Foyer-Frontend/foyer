@@ -65,23 +65,31 @@ void apply_staged_if_present() {
         return;
     }
 
-    // FAT/exFAT rename doesn't honour POSIX "atomic replace": when
-    // the destination exists it returns EEXIST. Try direct rename
-    // first, then unlink-then-rename on failure. v0.6.23 shipped
-    // this and worked end-to-end (browser self-update + core
-    // chain-launch); v0.6.24 swapped to "chain-launch .new directly"
-    // which avoided the FAT rename but introduced a hbloader
-    // unmap/remap transition that triggers a partial-unmap bug for
-    // larger NROs. v0.6.59 reverts the strategy back to v0.6.23.
+    // HOS keeps the running NRO file pinned via its open romfs fd
+    // — unlink/rename returns EEXIST (errno=17) or EIO (errno=5)
+    // while that fd is held. romfsExit() releases it. The running
+    // code stays mapped in memory; only the on-disk directory
+    // entry becomes mutable. This is the switchfin pattern (see
+    // dragonflylee/switchfin@app/src/utils/version.cpp).
+    //
+    // After romfsExit any further romfs read returns failure, but
+    // we're seconds away from Application::quit so that's fine —
+    // the next frame is the last frame, brls draws once with no
+    // texture refresh and the process exits.
+    const Result rc_rfsexit = romfsExit();
+    foyer::log::write("[self_update] romfsExit rc=0x%x\n", (unsigned)rc_rfsexit);
+
+    // Now FAT lets us delete the canonical and drop the .new in
+    // its place. The two-step (remove + rename) is the only form
+    // libnx newlib's FAT supports — there's no atomic-replace
+    // rename on Switch.
+    ::unlink(g_path.c_str());
     if (::rename(g_path_new.c_str(), g_path.c_str()) != 0) {
-        ::unlink(g_path.c_str());
-        if (::rename(g_path_new.c_str(), g_path.c_str()) != 0) {
-            foyer::log::write(
-                "[self_update] rename of staged nro failed errno=%d "
-                "(leaving %s in place for the next attempt)\n",
-                errno, g_path_new.c_str());
-            return;  // do NOT unlink .new on failure
-        }
+        foyer::log::write(
+            "[self_update] rename of staged nro failed errno=%d "
+            "(leaving %s in place for the next attempt)\n",
+            errno, g_path_new.c_str());
+        return;  // do NOT unlink .new on failure
     }
     foyer::log::write("[self_update] applied staged nro -> %s\n",
         g_path.c_str());

@@ -81,23 +81,24 @@ void prompt_restart() {
     dlg->addButton("Later", []() {});
     dlg->addButton("Restart", []() {
         // Tear down every long-lived RepeatingTask/Timer BEFORE
-        // envSetNextLoad + Application::quit. brls's quit drain
-        // otherwise lets these tick into already-freed Theme /
-        // Application state.
+        // we touch the filesystem or chain-launch. brls's quit
+        // drain otherwise lets these tick into already-freed
+        // Theme / Application state.
         ::foyer::browser::install_queue::stop();
         ::foyer::browser::theme_watcher::stop();
 
-        // v0.6.23 design — restored in v0.6.59 after v0.6.24's
-        // "chain-launch .new directly" flow exposed a hbloader
-        // unmap bug for large NROs:
-        //   1. Rename foyer.nro.new → foyer.nro in process
-        //      (apply_staged_if_present handles EEXIST via
-        //      unlink-then-rename fallback).
-        //   2. envSetNextLoad with the CANONICAL path.
-        //   3. quit.
-        // Because hbloader chain-launches the same path it was
-        // already running from, there's no unmap/remap transition
-        // and the partial-unmap bug doesn't get exercised.
+        // Promotion pattern lifted from switchfin's updater
+        // (dragonflylee/switchfin@app/src/utils/version.cpp).
+        // HOS won't let us unlink/rename foyer.nro while it's
+        // mapped — the open romfs fd inside our own process
+        // keeps the file locked. romfsExit() releases that fd;
+        // the running code stays valid in memory but the file
+        // on disk becomes unlink-able. THEN we
+        // remove(canonical) + rename(.new -> canonical).
+        // After that, envSetNextLoad to the canonical path so
+        // hbloader chain-launches the same path it was already
+        // running from (same-path chain-launch avoids any
+        // hbloader unmap/remap transition for the next NRO load).
         ::foyer::browser::self_update::apply_staged_if_present();
         const std::string& path =
             ::foyer::browser::self_update::nro_path();
