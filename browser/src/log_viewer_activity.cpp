@@ -20,13 +20,14 @@ namespace foyer::browser {
 
 namespace {
 
-constexpr const char* kLogDir = "/foyer/data/logs";
+constexpr const char* kLogDir    = "/foyer/data/logs";
+constexpr const char* kCrashDir  = "/atmosphere/crash_reports";
 constexpr std::size_t kChunkLines = 80;
 constexpr std::size_t kMaxBytes   = 4 * 1024 * 1024;
 
-std::vector<std::string> list_logs() {
+std::vector<std::string> list_dir_logs(const char* dir) {
     std::vector<std::string> names;
-    DIR* d = ::opendir(kLogDir);
+    DIR* d = ::opendir(dir);
     if (!d) return names;
     while (auto* ent = ::readdir(d)) {
         if (ent->d_name[0] == '.') continue;
@@ -39,6 +40,9 @@ std::vector<std::string> list_logs() {
     std::sort(names.begin(), names.end(), std::greater<>{});
     return names;
 }
+
+std::vector<std::string> list_logs()    { return list_dir_logs(kLogDir);   }
+std::vector<std::string> list_crashes() { return list_dir_logs(kCrashDir); }
 
 std::string format_size(std::size_t bytes) {
     char buf[32];
@@ -81,15 +85,18 @@ brls::View* LogListActivity::createContentView() {
         host->addView(h);
     }
 
-    const auto names = list_logs();
-    if (names.empty()) {
-        auto* none = new brls::Label();
-        none->setText("No log files yet.");
-        none->setFontSize(20.0f);
-        host->addView(none);
-    } else {
+    auto add_log_section = [&](const char* dir,
+                                const std::vector<std::string>& names,
+                                const char* empty_msg) {
+        if (names.empty()) {
+            auto* none = new brls::Label();
+            none->setText(empty_msg);
+            none->setFontSize(20.0f);
+            host->addView(none);
+            return;
+        }
         for (const auto& nm : names) {
-            const std::string full = std::string{kLogDir} + "/" + nm;
+            const std::string full = std::string{dir} + "/" + nm;
             struct stat st{};
             std::string detail;
             if (::stat(full.c_str(), &st) == 0) {
@@ -105,7 +112,20 @@ brls::View* LogListActivity::createContentView() {
             });
             host->addView(cell);
         }
+    };
+
+    add_log_section(kLogDir, list_logs(), "No log files yet.");
+
+    {
+        auto* spacer = new brls::Box();
+        spacer->setHeight(12.0f);
+        host->addView(spacer);
+        auto* h = new brls::Header();
+        h->setTitle("Atmosphère crash reports");
+        host->addView(h);
     }
+    add_log_section(kCrashDir, list_crashes(),
+        "No crash reports under /atmosphere/crash_reports.");
 
     auto* scroll = new brls::ScrollingFrame();
     scroll->setAxis(brls::Axis::COLUMN);
