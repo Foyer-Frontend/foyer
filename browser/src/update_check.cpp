@@ -87,29 +87,28 @@ void prompt_restart() {
         ::foyer::browser::install_queue::stop();
         ::foyer::browser::theme_watcher::stop();
 
-        // Chain-launch the staged .new file directly. The earlier
-        // v0.6.51-v0.6.55 attempts to promote the .new into the
-        // canonical path IN-PROCESS hit EIO every time because HOS
-        // hard-locks the running NRO — neither unlink nor
-        // fopen("wb") on /switch/foyer.nro succeeds while foyer is
-        // alive. Fall back to the original v0.6.30 design: load
-        // .new via envSetNextLoad; the .new-running foyer's
-        // apply_staged_if_present (at next-boot) copies .new into
-        // the canonical path, where canonical is now unlocked
-        // because .new (not canonical) is the running process.
-        const std::string& staged =
-            ::foyer::browser::self_update::nro_new_path();
-        const std::string& canonical =
+        // v0.6.23 design — restored in v0.6.59 after v0.6.24's
+        // "chain-launch .new directly" flow exposed a hbloader
+        // unmap bug for large NROs:
+        //   1. Rename foyer.nro.new → foyer.nro in process
+        //      (apply_staged_if_present handles EEXIST via
+        //      unlink-then-rename fallback).
+        //   2. envSetNextLoad with the CANONICAL path.
+        //   3. quit.
+        // Because hbloader chain-launches the same path it was
+        // already running from, there's no unmap/remap transition
+        // and the partial-unmap bug doesn't get exercised.
+        ::foyer::browser::self_update::apply_staged_if_present();
+        const std::string& path =
             ::foyer::browser::self_update::nro_path();
-        const std::string& target = !staged.empty() ? staged : canonical;
         foyer::log::write(
             "[update] restart accepted — envSetNextLoad(%s)\n",
-            target.c_str());
-        if (R_FAILED(envSetNextLoad(target.c_str(), target.c_str()))) {
+            path.c_str());
+        if (R_FAILED(envSetNextLoad(path.c_str(), path.c_str()))) {
             foyer::log::write(
                 "[update] envSetNextLoad(%s) failed; quitting to "
                 "homebrew menu — user must relaunch foyer manually\n",
-                target.c_str());
+                path.c_str());
         }
         brls::Application::quit();
     });
