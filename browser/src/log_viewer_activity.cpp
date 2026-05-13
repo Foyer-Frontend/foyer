@@ -85,8 +85,15 @@ brls::View* LogListActivity::createContentView() {
         host->addView(h);
     }
 
+    // Cap each section so the ScrollingFrame doesn't try to lay
+    // out hundreds of DetailCells (the prior unbounded version
+    // crashed brls when the foyer/data/logs dir filled up — every
+    // session writes a fresh log, the dir can carry 50+ entries on
+    // a busy dev rotation).
+    constexpr std::size_t kMaxRows = 30;
+
     auto add_log_section = [&](const char* dir,
-                                const std::vector<std::string>& names,
+                                std::vector<std::string> names,
                                 const char* empty_msg) {
         if (names.empty()) {
             auto* none = new brls::Label();
@@ -95,6 +102,8 @@ brls::View* LogListActivity::createContentView() {
             host->addView(none);
             return;
         }
+        const bool truncated = names.size() > kMaxRows;
+        if (truncated) names.resize(kMaxRows);
         for (const auto& nm : names) {
             const std::string full = std::string{dir} + "/" + nm;
             struct stat st{};
@@ -112,18 +121,22 @@ brls::View* LogListActivity::createContentView() {
             });
             host->addView(cell);
         }
+        if (truncated) {
+            auto* more = new brls::Label();
+            more->setText(std::string{"…"} + std::to_string(kMaxRows)
+                + " most recent shown");
+            more->setFontSize(16.0f);
+            host->addView(more);
+        }
     };
 
     add_log_section(kLogDir, list_logs(), "No log files yet.");
 
-    {
-        auto* spacer = new brls::Box();
-        spacer->setHeight(12.0f);
-        host->addView(spacer);
-        auto* h = new brls::Header();
-        h->setTitle("Atmosphère crash reports");
-        host->addView(h);
-    }
+    auto* h2 = new brls::Header();
+    h2->setTitle("Atmosphère crash reports");
+    h2->setMargins(16.0f, 0.0f, 0.0f, 0.0f);
+    host->addView(h2);
+
     add_log_section(kCrashDir, list_crashes(),
         "No crash reports under /atmosphere/crash_reports.");
 
@@ -207,14 +220,22 @@ brls::View* LogContentsActivity::createContentView() {
             auto* wrap = new brls::Box();
             wrap->setAxis(brls::Axis::COLUMN);
             wrap->setAlignItems(brls::AlignItems::STRETCH);
-            wrap->setFocusable(true);
-            wrap->setHideHighlight(true);
-            wrap->setHideHighlightBackground(true);
-            wrap->setHideHighlightBorder(true);
+            wrap->setWidth(10000.0f);
             auto* lbl = new brls::Label();
             lbl->setText(ss.str());
             lbl->setFontSize(18.0f);
             wrap->addView(lbl);
+            // Focus + highlight suppression have to happen AFTER
+            // children are added so brls computes the focus rect
+            // off a populated Box. The earlier order (setFocusable
+            // before addView) had brls building a focus shape
+            // around an empty 0×0 Box, then trying to draw the
+            // highlight outline on it — that drew a degenerate
+            // rect that asserted inside nanovg on next frame.
+            wrap->setFocusable(true);
+            wrap->setHideHighlight(true);
+            wrap->setHideHighlightBackground(true);
+            wrap->setHideHighlightBorder(true);
             host->addView(wrap);
         };
 
