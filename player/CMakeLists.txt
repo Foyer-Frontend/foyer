@@ -134,7 +134,14 @@ set_target_properties(${_player} PROPERTIES
 target_compile_options(${_player} PRIVATE
     --embed-dir=${FOYER_EMBED_DIR})
 
-file(COPY ${CMAKE_SOURCE_DIR}/assets/romfs/ DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/romfs)
+# systems/ + themes/ are browser-only art — they live in the
+# downloadable foyer-assets.zip now. Exclude them from player NROs
+# so each foyer-<core>.nro stays small.
+file(REMOVE_RECURSE ${CMAKE_CURRENT_BINARY_DIR}/romfs)
+file(COPY ${CMAKE_SOURCE_DIR}/assets/romfs/
+     DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/romfs
+     PATTERN "systems" EXCLUDE
+     PATTERN "themes"  EXCLUDE)
 # PLAYER_BRLS depends on brls's bundled i18n / fonts / material
 # / XML cells under romfs:/. Without those, Application::init's
 # i18n loader fails to find romfs:/i18n/<locale>/brls.json, the

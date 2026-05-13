@@ -1,5 +1,6 @@
 #include "manifest_cache.hpp"
 
+#include "library/asset_pack.hpp"
 #include "library/config.hpp"
 #include "platform/log.hpp"
 
@@ -45,16 +46,28 @@ void prefetch_cheats() {
 }
 
 void prefetch(std::function<void(int, int, const char*)> on_step) {
-    constexpr int kTotal = 4;
-    if (on_step) on_step(0, kTotal, "Fetching cores manifest…");
+    // 5 logical steps when the asset pack is missing (first run on a
+    // fresh device); 4 once it's installed. We always advertise 5 so
+    // the bar geometry is stable run-to-run.
+    constexpr int kTotal = 5;
+    if (!::foyer::library::asset_pack_present()) {
+        if (on_step) on_step(0, kTotal, "Downloading artwork pack…");
+        const auto& cfg = ::foyer::library::config();
+        ::foyer::library::install_asset_pack(
+            cfg.foyer_assets_url,
+            [on_step](const ::foyer::library::AssetPackProgress& p) {
+                if (on_step) on_step(0, kTotal, p.phase.c_str());
+            });
+    }
+    if (on_step) on_step(1, kTotal, "Fetching cores manifest…");
     prefetch_cores();
-    if (on_step) on_step(1, kTotal, "Fetching bezels manifest…");
+    if (on_step) on_step(2, kTotal, "Fetching bezels manifest…");
     prefetch_bezels();
-    if (on_step) on_step(2, kTotal, "Fetching shaders manifest…");
+    if (on_step) on_step(3, kTotal, "Fetching shaders manifest…");
     prefetch_shaders();
-    if (on_step) on_step(3, kTotal, "Fetching cheats manifest…");
+    if (on_step) on_step(4, kTotal, "Fetching cheats manifest…");
     prefetch_cheats();
-    if (on_step) on_step(4, kTotal, "Ready");
+    if (on_step) on_step(5, kTotal, "Ready");
 }
 
 const ::foyer::library::CoreManifest&   cores()   { return g_cores; }

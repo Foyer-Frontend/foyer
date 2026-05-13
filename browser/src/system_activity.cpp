@@ -9,6 +9,7 @@
 #include "activity/per_system_activity.hpp"
 #include "library_state.hpp"
 #include "library/per_game.hpp"
+#include "library/asset_pack.hpp"
 #include "library/config.hpp"
 #include "library/scrape_job.hpp"
 #include "library/system_db.hpp"
@@ -177,11 +178,13 @@ public:
         this->addView(m_img);
 
         // Always start with the splash so first-frame paint is
-        // instant. The splash file is 49 unique PNGs already in
-        // the romfs cache — brls dedupes by path.
-        m_img->setImageFromRes(
-            "themes/foyer/systems/" + art_dir_for(system_folder)
-            + "/splash.png");
+        // instant. Art now lives on SD (downloaded asset pack);
+        // setImageFromFile silently no-ops when the file isn't
+        // present, which is fine while the first-run pack is
+        // still downloading.
+        m_img->setImageFromFile(
+            ::foyer::library::asset_system_splash(
+                art_dir_for(system_folder)));
         fit_to_bottom();
 
         // Resolve the cover candidate path. Probe in this order:
@@ -397,8 +400,8 @@ void SystemActivity::onContentAvailable() {
 
     // Backdrop — same per-system art as Home shows on tile focus.
     if (backdrop) {
-        backdrop->setImageFromRes(
-            "themes/foyer/systems/" + art_dir_for(m_folder) + "/background.jpg");
+        backdrop->setImageFromFile(
+            ::foyer::library::asset_system_background(art_dir_for(m_folder)));
     }
 
     if (clock && !m_clockTask) {
@@ -549,15 +552,14 @@ void SystemActivity::buildLogo() {
     // so the user requested separate dark / light PNGs.)
     const bool dark =
         brls::Application::getThemeVariant() == brls::ThemeVariant::DARK;
-    const std::string variant = dark ? "logo_dark.png" : "logo_light.png";
 
     auto* logo = new brls::Image();
     logo->setWidth(kLogoW);
     logo->setHeight(kLogoH);
     logo->setScalingType(brls::ImageScalingType::FIT);
     logoHolder->addView(logo);
-    logo->setImageFromRes(
-        "themes/foyer/systems/" + art_dir_for(m_folder) + "/" + variant);
+    logo->setImageFromFile(
+        ::foyer::library::asset_system_logo(art_dir_for(m_folder), dark));
 }
 
 void SystemActivity::buildActionRow() {
@@ -735,8 +737,8 @@ void SystemActivity::onTileFocused(int idx) {
     if (::stat(fanart.c_str(), &st) == 0 && st.st_size > 0) {
         backdrop->setImageFromFile(fanart);
     } else {
-        backdrop->setImageFromRes(
-            "themes/foyer/systems/" + art_dir_for(m_folder) + "/background.jpg");
+        backdrop->setImageFromFile(
+            ::foyer::library::asset_system_background(art_dir_for(m_folder)));
     }
 }
 

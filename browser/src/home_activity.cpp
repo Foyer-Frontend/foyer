@@ -8,6 +8,7 @@
 #include "update_check.hpp"
 
 #include "hos_status.hpp"
+#include "library/asset_pack.hpp"
 #include "library/config.hpp"
 #include "library_state.hpp"
 #include "library/system_db.hpp"
@@ -65,10 +66,10 @@ public:
         img->setScalingType(brls::ImageScalingType::FILL);
         this->addView(img);
         const std::string path =
-            "themes/foyer/systems/" + art_dir_for(folder) + "/splash.png";
+            ::foyer::library::asset_system_splash(art_dir_for(folder));
         foyer::log::write("[home] tile %.*s splash=%s\n",
             (int)folder.size(), folder.data(), path.c_str());
-        img->setImageFromRes(path);
+        img->setImageFromFile(path);
 
         // Translucent count banner overlaid along the bottom edge.
         m_banner = new brls::Box();
@@ -281,9 +282,8 @@ void HomeActivity::onSystemFocused(std::string_view folder,
                                    std::string_view /*display_name*/)
 {
     if (backdrop) {
-        const std::string bg =
-            "themes/foyer/systems/" + art_dir_for(folder) + "/background.jpg";
-        backdrop->setImageFromRes(bg);
+        backdrop->setImageFromFile(
+            ::foyer::library::asset_system_background(art_dir_for(folder)));
     }
 }
 

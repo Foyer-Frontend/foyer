@@ -184,6 +184,13 @@ struct Config {
     std::string  bezels_manifest_url =
         "https://github.com/foyer-frontend/foyer-bezels/releases/latest/download/manifest.json";
 
+    // Direct URL of the foyer-assets.zip published alongside foyer.nro on
+    // every foyer release. The zip carries the systems/ + themes/ art
+    // that used to ship inside foyer.nro's romfs; first-run download
+    // keeps the binary under the hbloader chain-launch unmap threshold.
+    std::string  foyer_assets_url =
+        "https://github.com/foyer-frontend/foyer/releases/latest/download/foyer-assets.zip";
+
     // Per-system core override. Stored flat to keep the header light; the
     // list is short (≤20 systems) so linear lookup is fine.
     struct PerSystemCore { std::string folder; std::string core; };

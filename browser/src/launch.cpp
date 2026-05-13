@@ -174,15 +174,6 @@ bool launch_game(const library::System& sys, const library::Game& game,
             browser_self_path().c_str(), shader.c_str(), runahead);
     }
 
-    // Release the browser's open romfs fd so hbloader's unmap of
-    // our NRO's segments doesn't fight with HOS still treating
-    // the file as "in use" — same trick switchfin's updater uses
-    // before its rename. Foyer is about to quit anyway; any
-    // subsequent brls romfs read just fails harmlessly and the
-    // process exits.
-    const Result rc_rfsexit = romfsExit();
-    foyer::log::write("[launch] romfsExit rc=0x%x\n", (unsigned)rc_rfsexit);
-
     if (R_FAILED(envSetNextLoad(sd_nro.c_str(), argv))) {
         foyer::log::write("[launch] envSetNextLoad failed\n");
         return false;

@@ -51,22 +51,56 @@ jobs:
       - name: Trust the workspace inside container
         run: git config --global --add safe.directory '*'
 
+      # Browser-side ccache layered on top of the image-baked
+      # /opt/ccache (borealis + foyer_shared warmed at image build
+      # time). Cache key includes shared/ + browser/ so a browser
+      # edit doesn't poison cores' shared TU hashes.
+      - name: Restore release ccache
+        uses: actions/cache@v4
+        with:
+          path: /opt/ccache
+          key: ccache-release-${{ hashFiles('CMakeLists.txt', 'shared/**', 'browser/**') }}
+          restore-keys: |
+            ccache-release-
+
+      - name: Configure ccache
+        run: |
+          ccache --max-size=500M
+          ccache --zero-stats
+          echo "CCACHE_COMPILERCHECK=content"  >> "$GITHUB_ENV"
+          echo "CCACHE_DIR=/opt/ccache"        >> "$GITHUB_ENV"
+          echo "CCACHE_SLOPPINESS=time_macros,include_file_mtime,include_file_ctime,file_macro" >> "$GITHUB_ENV"
+
       - name: Configure
         env:
           DEVKITPRO: /opt/devkitpro
-        run: cmake --preset Release
+        run: |
+          cmake --preset Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build
         # Cap parallelism to runner cores. Borealis + vendored fmt
         # parallel-compile aggressively; unbounded -j on a 2-core
         # ubuntu-latest container has OOM'd before.
-        run: cmake --build --preset Release -j $(nproc)
+        run: |
+          cmake --build --preset Release -j $(nproc)
+          ccache --show-stats | head -8 || true
 
       - name: Stage release artefacts
         run: |
           mkdir -p out
           cp build/Release/foyer.nro out/foyer.nro
           ( cd out && sha256sum foyer.nro > foyer.nro.sha256 )
+
+          # Asset pack — systems/ + themes/ art that used to ship
+          # inside foyer.nro's romfs. ~46 MB total. Stripping it out
+          # of the binary keeps foyer.nro small enough for hbloader's
+          # chain-launch unmap path; the browser downloads this zip
+          # into /foyer/data/assets/ on first run.
+          ( cd assets/romfs && zip -r9 "$GITHUB_WORKSPACE/out/foyer-assets.zip" \
+              systems themes >/dev/null )
+          ( cd out && sha256sum foyer-assets.zip > foyer-assets.zip.sha256 )
 
           # foyer-manifest.json is what foyer's in-app update flow
           # polls. Tag-only — workflow_dispatch runs leave it
@@ -96,5 +130,7 @@ jobs:
             out/foyer.nro
             out/foyer.nro.sha256
             out/foyer-manifest.json
+            out/foyer-assets.zip
+            out/foyer-assets.zip.sha256
           generate_release_notes: true
           fail_on_unmatched_files: true

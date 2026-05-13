@@ -45,7 +45,7 @@ void SplashActivity::onContentAvailable() {
     m_worker->start([self](::foyer::library::Worker& w) {
         w.set_status("Starting…");
         self->m_progress_done.store(0, std::memory_order_release);
-        self->m_progress_total.store(4, std::memory_order_release);
+        self->m_progress_total.store(5, std::memory_order_release);
 
         ::foyer::browser::manifest_cache::prefetch(
             [self, &w](int done, int total, const char* label) {

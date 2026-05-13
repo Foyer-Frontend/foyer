@@ -24,6 +24,7 @@ add_library(foyer_shared STATIC
     library/core_installer.cpp
     library/core_install_job.cpp
     library/shader_installer.cpp
+    library/asset_pack.cpp
     library/cheat_installer.cpp
     library/bezel_installer.cpp
     library/foyer_updater.cpp

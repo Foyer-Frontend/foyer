@@ -86,10 +86,24 @@ set_target_properties(foyer PROPERTIES
 target_compile_options(foyer PRIVATE
     --embed-dir=${FOYER_EMBED_DIR})
 
-# Bundle assets into a romfs section. We ship our own /themes, /splash,
-# etc. AS WELL AS borealis's resources/ tree (font, theme XML, i18n yaml,
-# material symbols, icons) flattened into romfs:/.
-file(COPY ${CMAKE_SOURCE_DIR}/assets/romfs/ DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/romfs)
+# Bundle assets into a romfs section. We ship borealis's resources/
+# tree (font, theme XML, i18n yaml, material symbols, icons) flattened
+# into romfs:/, plus the small foyer-side bits (xml/, i18n/, img/,
+# bezels/, splash_bg.png) — but NOT systems/ + themes/. Those used to
+# be 46 MB of splash + background art shipped in-binary; foyer.nro
+# sat at ~54 MB and tripped the hbloader unmap rejection
+# (MAKERESULT(347, 26)) when chain-launching cores. Art now ships as
+# a separately-released foyer-assets.zip that the browser downloads
+# into /foyer/data/assets/ on first run (see shared/library/asset_pack).
+# Purge stale staging from prior configures — without this, switching
+# from a build that bundled systems/themes (everything ≤ v0.6.65) to
+# one that excludes them leaves the old art in romfs and the nro
+# stays at 54 MB.
+file(REMOVE_RECURSE ${CMAKE_CURRENT_BINARY_DIR}/romfs)
+file(COPY ${CMAKE_SOURCE_DIR}/assets/romfs/
+     DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/romfs
+     PATTERN "systems" EXCLUDE
+     PATTERN "themes"  EXCLUDE)
 file(COPY ${borealis_SOURCE_DIR}/resources/ DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/romfs)
 
 # brls's nanovg-deko3d backend reads its rendering shaders from
