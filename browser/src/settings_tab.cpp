@@ -1,5 +1,6 @@
 #include "tab/settings_tab.hpp"
 
+#include "activity/log_viewer_activity.hpp"
 #include "activity/settings_activity.hpp"
 #include "activity/wizard_activity.hpp"
 #include "library_state.hpp"
@@ -1181,7 +1182,12 @@ FoyerAboutTab::FoyerAboutTab() {
 
     auto* logs = new brls::DetailCell();
     logs->title->setText("Logs");
-    logs->detail->setText("/foyer/data/logs/");
+    logs->detail->setText("Tap to view");
+    logs->registerClickAction([](brls::View*) {
+        brls::Application::pushActivity(
+            new ::foyer::browser::LogListActivity());
+        return true;
+    });
     host->addView(logs);
 
     auto* config_path = new brls::DetailCell();
