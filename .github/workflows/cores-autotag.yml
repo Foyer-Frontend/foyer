@@ -34,8 +34,15 @@ on:
       - 'shared/library/worker.*'
       - 'shared/library/game_meta.*'
       - 'shared/CMakeLists.txt'
-      - 'CMakeLists.txt'
-      - 'CMakePresets.json'
+      # CMakeLists.txt + CMakePresets.json deliberately NOT in this
+      # filter. Every version bump touches CMakeLists.txt (and the
+      # tag push that follows immediately re-runs release.yml AND
+      # would re-fire this workflow → 2 cores rebuilds per tag for
+      # zero player-side change). FOYER_VERSION is the only cmake-
+      # define baked into the player, and a stale version-string
+      # in player logs is a cosmetic cost we accept to avoid the
+      # cores-rebuild storm. Real shared/libretro / player/** /
+      # shared/platform changes still trigger.
   workflow_dispatch:
 
 # Serialize so a burst of shared/ commits doesn't queue 5 redundant
