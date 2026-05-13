@@ -60,7 +60,22 @@ void start_next_locked() {
     g_worker->start([body = std::move(body)](::foyer::library::Worker& w) {
         body(w);
     });
-    brls::Application::notify("Installing " + g_active_tag);
+    // Tag-aware verb so scrape / update-check / rescrape jobs
+    // don't toast "Installing Scrape NES" or similar awkward
+    // prose. Tags that start with a verb (Scrape, Rescrape, Check)
+    // are echoed as-is; install jobs get the implicit
+    // "Installing <tag>".
+    {
+        const std::string& t = g_active_tag;
+        std::string starting;
+        if (t.rfind("Scrape ", 0) == 0)        starting = "Scraping " + t.substr(7) + "…";
+        else if (t.rfind("Rescrape ", 0) == 0) starting = "Rescraping " + t.substr(9) + "…";
+        else if (t.rfind("Check ", 0) == 0)    starting = t + "…";
+        else if (t == "foyer "                 // foyer-update check
+              || t.rfind("foyer ", 0) == 0)    starting = "Downloading " + t + "…";
+        else                                   starting = "Installing " + t;
+        brls::Application::notify(starting);
+    }
     foyer::log::write("[install_queue] start tag=%s (depth=%zu)\n",
         g_active_tag.c_str(), g_queue.size());
 }
@@ -81,7 +96,16 @@ void poll_tick() {
     // only fires when set_status changes, so a fast install
     // (cache hit, skip-by-version) easily slips past without
     // visible feedback. Always toast on done.
-    brls::Application::notify("Installed " + g_active_tag);
+    {
+        const std::string& t = g_active_tag;
+        std::string done_msg;
+        if (t.rfind("Scrape ", 0) == 0)        done_msg = "Scraped " + t.substr(7);
+        else if (t.rfind("Rescrape ", 0) == 0) done_msg = "Rescraped " + t.substr(9);
+        else if (t.rfind("Check ", 0) == 0)    done_msg = t + " done";
+        else if (t.rfind("foyer ", 0) == 0)    done_msg = t + " downloaded";
+        else                                   done_msg = "Installed " + t;
+        brls::Application::notify(done_msg);
+    }
     start_next_locked();
     // NOTE: completion listeners were temporarily disabled — when
     // the deferred brls::sync path was active the user hit a

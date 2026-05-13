@@ -106,6 +106,27 @@ void prompt_restart() {
         if (!staged.empty() && !canonical.empty()) {
             struct stat st{};
             if (::stat(staged.c_str(), &st) == 0 && st.st_size > 1024 * 1024) {
+                // Try fopen("wb") on the canonical path directly.
+                // HOS may report the running NRO as in-use, in which
+                // case the first fopen returns NULL — that path
+                // matched the user-reported "manual rename still
+                // needed" symptom on v0.6.53. Strategy now:
+                //   1. unlink canonical first (FAT allows even on
+                //      mapped files since hbloader closed the fd
+                //      after reading; only the directory entry is
+                //      removed, the in-memory pages stay valid).
+                //   2. fopen("wb") creates a fresh canonical file
+                //      with the .new bytes. The running process's
+                //      mapping is unaffected; it lives until quit.
+                // If unlink fails we still try copy_file as before
+                // for a partial chance at success on filesystems
+                // that allow truncate-in-place.
+                if (::unlink(canonical.c_str()) != 0) {
+                    foyer::log::write(
+                        "[update] pre-promote unlink(%s) failed errno=%d "
+                        "— attempting truncate-in-place\n",
+                        canonical.c_str(), errno);
+                }
                 promoted = copy_file(staged.c_str(), canonical.c_str());
                 if (promoted) {
                     foyer::log::write(
