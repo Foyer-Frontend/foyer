@@ -178,10 +178,20 @@ std::vector<std::uint64_t> live_app_ids() {
     constexpr s32 kPageSize = 32;
     NsApplicationRecord page[kPageSize]{};
     s32 offset = 0;
+    int rc_first = 0;
+    s32 total_read = 0;
     while (true) {
         s32 read = 0;
-        if (R_FAILED(nsListApplicationRecord(page, kPageSize, offset, &read))) break;
+        const Result rc = nsListApplicationRecord(page, kPageSize, offset, &read);
+        if (offset == 0) rc_first = (int)rc;
+        if (R_FAILED(rc)) {
+            foyer::log::write(
+                "[switch_titles] nsListApplicationRecord offset=%d rc=0x%x\n",
+                (int)offset, (unsigned)rc);
+            break;
+        }
         if (read <= 0) break;
+        total_read += read;
         for (s32 i = 0; i < read; i++) {
             if (page[i].application_id != 0)
                 ids.push_back(page[i].application_id);
@@ -189,6 +199,22 @@ std::vector<std::uint64_t> live_app_ids() {
         offset += read;
         if (read < kPageSize) break;
     }
+    // Probe AppletType so the log explains a 0-record result.
+    // hbloader's default AppletType_LibraryApplet has nsListApplicationRecord
+    // service-gated to zero records on most firmwares — user has to
+    // launch foyer in "application" mode (forwarder / title-takeover)
+    // for the Switch tile to fill in.
+    const AppletType at = appletGetAppletType();
+    const char* at_name =
+        at == AppletType_Application       ? "Application"        :
+        at == AppletType_SystemApplication ? "SystemApplication"  :
+        at == AppletType_LibraryApplet     ? "LibraryApplet"      :
+        at == AppletType_OverlayApplet     ? "OverlayApplet"      :
+        at == AppletType_SystemApplet      ? "SystemApplet"       :
+                                             "Other";
+    foyer::log::write(
+        "[switch_titles] applet=%s rc_first=0x%x records=%d ids=%zu\n",
+        at_name, (unsigned)rc_first, (int)total_read, ids.size());
     return ids;
 }
 
