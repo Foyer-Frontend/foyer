@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(foyer
-    VERSION 0.6.60
+    VERSION 0.6.61
     LANGUAGES C CXX
 )
 
@@ -14,19 +14,7 @@ option(BUILD_PLAYER  "Build per-core player nros"      OFF)
 # nanovg-deko3d window loop (foyer_render) with brls + an
 # EmulatorActivity that hosts a custom EmulatorView. Off by default
 # until the pause overlay + bezel + shader paths are reskinned.
-# Phase H (PLAYER_BRLS=ON) blocked on a latent hbloader bug: the
-# 3-call partial svcUnmapProcessCodeMemory in nx-hbloader (and
-# sphaira's bundled fork) doesn't match the single atomic
-# svcMapProcessCodeMemory used to map, and the kernel rejects
-# partial unmaps. The bug was dormant when player NROs were the
-# small ~10MB nanovg-built blobs; brls bumps every player to
-# ~54MB+ with ~8.5MB .bss, which exposed the kernel rejection
-# path. Until forwarder NSPs ship with a patched hbloader (atomic
-# unmap), default back to OFF so the legacy nanovg-deko3d player
-# shell handles chain-launch — that path worked end-to-end up to
-# 0.6.28. Phase H stays available via -DPLAYER_BRLS=ON for users
-# on a patched hbl.
-option(PLAYER_BRLS   "Build per-core players on borealis (Phase H)" OFF)
+option(PLAYER_BRLS   "Build per-core players on borealis (Phase H)" ON)
 # FOYER_CORE = single core name (legacy single-build presets).
 set(FOYER_CORE  "" CACHE STRING
     "Single libretro core to build (e.g. fceumm). Used by Player-* presets.")
