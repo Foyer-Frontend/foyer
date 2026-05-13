@@ -134,7 +134,17 @@ set_target_properties(${_player} PROPERTIES
 target_compile_options(${_player} PRIVATE
     --embed-dir=${FOYER_EMBED_DIR})
 
-file(COPY ${CMAKE_SOURCE_DIR}/assets/romfs DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+file(COPY ${CMAKE_SOURCE_DIR}/assets/romfs/ DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/romfs)
+# PLAYER_BRLS depends on brls's bundled i18n / fonts / material
+# / XML cells under romfs:/. Without those, Application::init's
+# i18n loader fails to find romfs:/i18n/<locale>/brls.json, the
+# nlohmann::json parse throws, and (with -fno-exceptions) the
+# player diagAbortWithResults at startup — that was the
+# "all cores crash on launch" report. Same pattern the browser
+# uses (browser/CMakeLists.txt), kept in sync.
+if (PLAYER_BRLS)
+    file(COPY ${borealis_SOURCE_DIR}/resources/ DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/romfs)
+endif()
 dkp_add_asset_target(${_romfs} ${CMAKE_CURRENT_BINARY_DIR}/romfs)
 dkp_install_assets(${_romfs}
     DESTINATION shaders
