@@ -2,6 +2,7 @@
 
 #include "activity/home_activity.hpp"
 #include "manifest_cache.hpp"
+#include "net/http.hpp"
 #include "platform/log.hpp"
 
 #include <switch.h>
@@ -78,9 +79,29 @@ void SplashActivity::tick() {
     if (bar_fill) {
         const int done  = m_progress_done.load(std::memory_order_acquire);
         const int total = m_progress_total.load(std::memory_order_acquire);
-        const float target = total > 0
+        float target = total > 0
             ? std::min(1.0f, static_cast<float>(done) / static_cast<float>(total))
             : 0.0f;
+
+        // If a streaming download is in flight (asset pack on first
+        // run is the only one that hits this on the splash), drive
+        // the bar from libcurl's byte counter so it moves smoothly
+        // through the current step instead of sitting at done/total
+        // for the full 30 s pull. The byte fraction is mapped into
+        // the slice [done/total .. (done+1)/total] so the bar never
+        // jumps backward when the step completes.
+        auto& ds = ::foyer::net::current_download();
+        if (ds.active.load(std::memory_order_acquire) && total > 0) {
+            const auto now_b = ds.now.load(std::memory_order_acquire);
+            const auto tot_b = ds.total.load(std::memory_order_acquire);
+            if (tot_b > 0) {
+                const float frac = std::min(1.0f,
+                    static_cast<float>(now_b) / static_cast<float>(tot_b));
+                const float step_lo = static_cast<float>(done)     / total;
+                const float step_hi = static_cast<float>(done + 1) / total;
+                target = std::max(target, step_lo + (step_hi - step_lo) * frac);
+            }
+        }
         // Kick a new tween step whenever the worker advances past
         // the prior target. Animatable::reset() drops any queued
         // steps but keeps the current value; addStep + start then
