@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(foyer
-    VERSION 0.6.63
+    VERSION 0.6.64
     LANGUAGES C CXX
 )
 
@@ -158,6 +158,16 @@ if (BUILD_BROWSER OR PLAYER_BRLS)
         COMMAND ${CMAKE_COMMAND}
             -DBOX_CPP=${borealis_SOURCE_DIR}/library/lib/core/box.cpp
             -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patch_brls_wraparound.cmake)
+
+    # Re-enable the SwitchAudioPlayer code XITRIX commented out so
+    # brls's UI sounds (focus / click / back) actually play through
+    # libpulsar + qlaunch's BFSAR. Safe to apply even on builds that
+    # can't access qlaunch romfs — the init returns early and the
+    # play() short-circuits.
+    execute_process(
+        COMMAND ${CMAKE_COMMAND}
+            -DAUDIO_CPP=${borealis_SOURCE_DIR}/library/lib/platforms/switch/switch_audio.cpp
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patch_brls_audio.cmake)
 
     # devkitPro's portlibs/switch/include is the canonical location for
     # switch-glm, switch-glfw, EGL, etc. The Switch.cmake toolchain
