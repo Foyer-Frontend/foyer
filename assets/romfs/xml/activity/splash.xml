@@ -89,6 +89,6 @@
         positionRight="20"
         positionBottom="14"
         fontSize="16"
-        textColor="@theme/brls/text_disabled" />
+        textColor="@theme/brls/text" />
 
 </brls:Box>

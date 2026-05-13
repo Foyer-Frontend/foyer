@@ -3,6 +3,13 @@
 #include "install_queue.hpp"
 #include "manifest_cache.hpp"
 #include "self_update.hpp"
+#include "theme_watcher.hpp"
+
+#include <cerrno>
+#include <cstdio>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <vector>
 
 #include "library/config.hpp"
 #include "library/foyer_updater.hpp"
@@ -30,32 +37,101 @@ const char* section_label(Section s) {
     return "?";
 }
 
+// Copy bytes from one file to another. fopen("wb") truncates the
+// destination in place, which is what we want even when the
+// destination is the running .nro on FAT/exFAT (rename hits EEXIST
+// and the unlink-then-rename fallback was destructive — the
+// running process keeps a mapping to the old bytes until exit, but
+// the file ON DISK gets the new contents and next boot reads
+// those).
+bool copy_file(const char* from, const char* to) {
+    FILE* src = std::fopen(from, "rb");
+    if (!src) {
+        foyer::log::write(
+            "[update] copy: fopen(%s, rb) failed errno=%d\n", from, errno);
+        return false;
+    }
+    FILE* dst = std::fopen(to, "wb");
+    if (!dst) {
+        foyer::log::write(
+            "[update] copy: fopen(%s, wb) failed errno=%d\n", to, errno);
+        std::fclose(src);
+        return false;
+    }
+    std::vector<unsigned char> buf(64 * 1024);
+    bool ok = true;
+    for (;;) {
+        const std::size_t n = std::fread(buf.data(), 1, buf.size(), src);
+        if (n == 0) break;
+        if (std::fwrite(buf.data(), 1, n, dst) != n) {
+            foyer::log::write(
+                "[update] copy: fwrite short on %s\n", to);
+            ok = false;
+            break;
+        }
+    }
+    std::fclose(dst);
+    std::fclose(src);
+    return ok;
+}
+
 void prompt_restart() {
     auto* dlg = new brls::Dialog(
         "Update downloaded. Restart foyer now to install it?");
     dlg->addButton("Later", []() {});
     dlg->addButton("Restart", []() {
-        // Tear down install_queue BEFORE calling envSetNextLoad +
-        // quit. The queue's RepeatingTimer would otherwise tick
-        // once more during brls's quit drain and try to operate
-        // on torn-down state — that race was a strong candidate
-        // for the user-reported "Restart crashes foyer" report
-        // after the self-update path moved through install_queue
-        // in 0.6.43.
+        // Tear down every long-lived RepeatingTask/Timer BEFORE
+        // envSetNextLoad + Application::quit. brls's quit drain
+        // otherwise lets these tick into already-freed Theme /
+        // Application state.
         ::foyer::browser::install_queue::stop();
+        ::foyer::browser::theme_watcher::stop();
 
-        // Chain-launch the staged .new file directly. FAT/exFAT
-        // rename of a still-mapped running .nro intermittently
-        // hits EEXIST even after unlink+rename, so we use the
-        // .new path explicitly here.
         const std::string& staged =
             ::foyer::browser::self_update::nro_new_path();
         const std::string& canonical =
             ::foyer::browser::self_update::nro_path();
-        const std::string& target = !staged.empty() ? staged : canonical;
+
+        // Promote the staged .new into the canonical .nro IN
+        // PROCESS, then chain-launch the canonical path. Avoids the
+        // prior approach of chain-launching the .new file directly,
+        // which left the .new sentinel around — when the .new boot
+        // didn't make it through apply_staged_if_present (crash,
+        // power loss, hbloader path quirk), the user kept booting
+        // the OLD .nro because the canonical file was never
+        // promoted. Doing the byte-copy here means the next boot
+        // reads the new build from the canonical path even if
+        // anything later in this restart chain fails.
+        bool promoted = false;
+        if (!staged.empty() && !canonical.empty()) {
+            struct stat st{};
+            if (::stat(staged.c_str(), &st) == 0 && st.st_size > 1024 * 1024) {
+                promoted = copy_file(staged.c_str(), canonical.c_str());
+                if (promoted) {
+                    foyer::log::write(
+                        "[update] promoted staged nro -> %s (%lld bytes)\n",
+                        canonical.c_str(), (long long)st.st_size);
+                    // Best-effort sentinel removal; FAT may
+                    // refuse if the running process still has
+                    // the .new mapped, in which case the next
+                    // boot's apply_staged_if_present hits the
+                    // size-floor check and unlinks it.
+                    if (::unlink(staged.c_str()) != 0) {
+                        foyer::log::write(
+                            "[update] unlink(%s) failed errno=%d "
+                            "(will retry on next boot)\n",
+                            staged.c_str(), errno);
+                    }
+                }
+            }
+        }
+
+        const std::string& target =
+            promoted ? canonical
+                     : (!staged.empty() ? staged : canonical);
         foyer::log::write(
-            "[update] restart accepted — envSetNextLoad(%s)\n",
-            target.c_str());
+            "[update] restart accepted — envSetNextLoad(%s) promoted=%d\n",
+            target.c_str(), (int)promoted);
         if (R_FAILED(envSetNextLoad(target.c_str(), target.c_str()))) {
             foyer::log::write(
                 "[update] envSetNextLoad(%s) failed; quitting to "
