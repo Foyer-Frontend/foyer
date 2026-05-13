@@ -11,6 +11,8 @@
 #include <string>
 #include <string_view>
 
+#include <sys/stat.h>
+
 #include <switch.h>
 #include <haze.h>
 
@@ -48,8 +50,9 @@ const char* basename_view(const char* path) {
 // mount (/foyer/roms) and the logs mount (/foyer/data/logs) — same
 // rewriting logic, only the root + display label differ.
 struct FsRomRoot final : haze::FileSystemProxyImpl {
-    FsRomRoot(std::string root, std::string display)
-        : m_root(std::move(root)), m_display(std::move(display)) {
+    FsRomRoot(std::string root, std::string display, std::string name)
+        : m_root(std::move(root)), m_display(std::move(display)),
+          m_name(std::move(name)) {
         if (auto* sdmc = fsdevGetDeviceFileSystem("sdmc")) {
             m_fs = *sdmc;
         } else {
@@ -57,7 +60,12 @@ struct FsRomRoot final : haze::FileSystemProxyImpl {
         }
     }
 
-    const char* GetName() const override        { return ""; }
+    // libhaze uses GetName as the internal id per storage. Two
+    // mounts with the same empty string here caused MTP to mis-
+    // enumerate the second storage (libmtp returned "could not
+    // get object handles" on the Logs mount when both Roms and
+    // Logs were enabled). Each FsRomRoot now ships a unique id.
+    const char* GetName() const override        { return m_name.c_str(); }
     const char* GetDisplayName() const override { return m_display.c_str(); }
 
     // libhaze hands us paths starting with "/" relative to the volume root.
@@ -133,6 +141,7 @@ struct FsRomRoot final : haze::FileSystemProxyImpl {
     FsFileSystem m_fs{};
     std::string  m_root;
     std::string  m_display;
+    std::string  m_name;
 };
 
 void haze_callback(const haze::CallbackData* data) {
@@ -216,7 +225,7 @@ bool mtp_start() {
         auto root = cfg.rom_root;
         if (root.empty()) root = "/foyer/roms";
         if (root.size() > 1 && root.back() == '/') root.pop_back();
-        entries.emplace_back(std::make_shared<FsRomRoot>(root, "Foyer Roms"));
+        entries.emplace_back(std::make_shared<FsRomRoot>(root, "Foyer Roms", "foyer-roms"));
         foyer::log::write("[mtp] mount: roms -> %s\n", root.c_str());
     }
     if (cfg.mtp_expose_logs) {
@@ -224,7 +233,15 @@ bool mtp_start() {
         // rom_root override — the directory is foyer-internal,
         // not user-configurable.
         const std::string logs = "/foyer/data/logs";
-        entries.emplace_back(std::make_shared<FsRomRoot>(logs, "Foyer Logs"));
+        // Make sure the directory exists before libhaze tries to
+        // enumerate it. On a fresh install with logging never yet
+        // initialised, mounting an absent path makes libmtp's
+        // GetObjectHandles return "could not get object handles"
+        // on the host side. mkdir's failure (EEXIST) is fine.
+        ::mkdir("/foyer",            0755);
+        ::mkdir("/foyer/data",       0755);
+        ::mkdir(logs.c_str(),        0755);
+        entries.emplace_back(std::make_shared<FsRomRoot>(logs, "Foyer Logs", "foyer-logs"));
         foyer::log::write("[mtp] mount: logs -> %s\n", logs.c_str());
     }
 
