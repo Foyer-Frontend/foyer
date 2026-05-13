@@ -4,6 +4,7 @@
 #include "activity/settings_activity.hpp"
 #include "activity/system_activity.hpp"
 #include "install_queue.hpp"
+#include "mtp.hpp"
 #include "theme_watcher.hpp"
 #include "update_check.hpp"
 
@@ -247,6 +248,14 @@ void HomeActivity::onContentAvailable() {
                     theme_watcher::stop();
                     update_check::stop();
                     install_queue::stop();
+                    // libhaze holds USB DMA buffers in foyer's
+                    // heap region; leaving them resident at quit
+                    // races hbloader's selfExit unmap and can
+                    // surface as MAKERESULT(347, 26) on the way
+                    // out. Same fix as launch_game / self-update.
+                    if (::foyer::browser::mtp_running()) {
+                        ::foyer::browser::mtp_stop();
+                    }
                     brls::Application::quit();
                 });
                 dlg->open();
