@@ -35,6 +35,15 @@ void prompt_restart() {
         "Update downloaded. Restart foyer now to install it?");
     dlg->addButton("Later", []() {});
     dlg->addButton("Restart", []() {
+        // Tear down install_queue BEFORE calling envSetNextLoad +
+        // quit. The queue's RepeatingTimer would otherwise tick
+        // once more during brls's quit drain and try to operate
+        // on torn-down state — that race was a strong candidate
+        // for the user-reported "Restart crashes foyer" report
+        // after the self-update path moved through install_queue
+        // in 0.6.43.
+        ::foyer::browser::install_queue::stop();
+
         // Chain-launch the staged .new file directly. FAT/exFAT
         // rename of a still-mapped running .nro intermittently
         // hits EEXIST even after unlink+rename, so we use the
@@ -44,6 +53,9 @@ void prompt_restart() {
         const std::string& canonical =
             ::foyer::browser::self_update::nro_path();
         const std::string& target = !staged.empty() ? staged : canonical;
+        foyer::log::write(
+            "[update] restart accepted — envSetNextLoad(%s)\n",
+            target.c_str());
         if (R_FAILED(envSetNextLoad(target.c_str(), target.c_str()))) {
             foyer::log::write(
                 "[update] envSetNextLoad(%s) failed; quitting to "
