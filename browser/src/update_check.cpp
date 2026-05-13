@@ -77,10 +77,9 @@ const char* section_label(Section s) {
 
 void prompt_restart() {
     auto* dlg = new brls::Dialog(
-        "Update downloaded. Quit foyer now and relaunch from the "
-        "forwarder to boot the new version?");
+        "Update downloaded. Restart foyer now?");
     dlg->addButton("Later", []() {});
-    dlg->addButton("Quit", []() {
+    dlg->addButton("Restart", []() {
         // Tear down every long-lived RepeatingTask/Timer BEFORE
         // we touch the filesystem or chain-launch. brls's quit
         // drain otherwise lets these tick into already-freed
@@ -101,21 +100,27 @@ void prompt_restart() {
         // running from (same-path chain-launch avoids any
         // hbloader unmap/remap transition for the next NRO load).
         ::foyer::browser::self_update::apply_staged_if_present();
-        // Switchfin pattern: rename + quit WITHOUT envSetNextLoad.
-        // The user's hbloader auto-detects "sentinel argv + path
-        // == default" on exit and takes the selfExit() branch
-        // (skips the unmap block entirely, exits the process via
-        // appletOE.Exit). The forwarder title-takeover process
-        // then ends; user relaunches via Home, hbloader loads
-        // the freshly-renamed canonical foyer.nro from disk.
-        // Trying to envSetNextLoad here forces hbloader through
-        // the unmap path which trips MAKERESULT(347, 26) for
-        // large NROs and crashes — confirmed by the v0.6.62/63
-        // user crash report (same-path chain-launch still goes
-        // through unmap).
-        foyer::log::write(
-            "[update] restart accepted — quitting; "
-            "relaunch foyer from the forwarder to boot the new build\n");
+
+        // Chain-launch the freshly-renamed foyer.nro. The v0.6.62/63
+        // crash that forced us to drop envSetNextLoad was the
+        // hbloader unmap rejection for 54 MB foyer.nro — that's
+        // gone in v0.6.66 (asset pack moved out → nro is 8 MB,
+        // well under any unmap threshold), so the chain-launch
+        // path is safe again. argv[0] is the canonical sdmc:
+        // path so hbloader loads exactly the file we just renamed.
+        const std::string sd_self =
+            std::string{"sdmc:"} + ::foyer::browser::self_update::nro_path();
+        char argv[512];
+        std::snprintf(argv, sizeof(argv), "\"%s\"", sd_self.c_str());
+        if (R_FAILED(envSetNextLoad(sd_self.c_str(), argv))) {
+            foyer::log::write(
+                "[update] envSetNextLoad failed — quitting to "
+                "the forwarder; relaunch manually\n");
+        } else {
+            foyer::log::write(
+                "[update] chain-launching new foyer at %s\n",
+                sd_self.c_str());
+        }
         brls::Application::quit();
     });
     dlg->open();
