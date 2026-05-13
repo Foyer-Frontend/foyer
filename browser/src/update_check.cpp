@@ -44,7 +44,7 @@ const char* section_label(Section s) {
 // running process keeps a mapping to the old bytes until exit, but
 // the file ON DISK gets the new contents and next boot reads
 // those).
-bool copy_file(const char* from, const char* to) {
+[[maybe_unused]] bool copy_file(const char* from, const char* to) {
     FILE* src = std::fopen(from, "rb");
     if (!src) {
         foyer::log::write(
@@ -87,72 +87,24 @@ void prompt_restart() {
         ::foyer::browser::install_queue::stop();
         ::foyer::browser::theme_watcher::stop();
 
+        // Chain-launch the staged .new file directly. The earlier
+        // v0.6.51-v0.6.55 attempts to promote the .new into the
+        // canonical path IN-PROCESS hit EIO every time because HOS
+        // hard-locks the running NRO — neither unlink nor
+        // fopen("wb") on /switch/foyer.nro succeeds while foyer is
+        // alive. Fall back to the original v0.6.30 design: load
+        // .new via envSetNextLoad; the .new-running foyer's
+        // apply_staged_if_present (at next-boot) copies .new into
+        // the canonical path, where canonical is now unlocked
+        // because .new (not canonical) is the running process.
         const std::string& staged =
             ::foyer::browser::self_update::nro_new_path();
         const std::string& canonical =
             ::foyer::browser::self_update::nro_path();
-
-        // Promote the staged .new into the canonical .nro IN
-        // PROCESS, then chain-launch the canonical path. Avoids the
-        // prior approach of chain-launching the .new file directly,
-        // which left the .new sentinel around — when the .new boot
-        // didn't make it through apply_staged_if_present (crash,
-        // power loss, hbloader path quirk), the user kept booting
-        // the OLD .nro because the canonical file was never
-        // promoted. Doing the byte-copy here means the next boot
-        // reads the new build from the canonical path even if
-        // anything later in this restart chain fails.
-        bool promoted = false;
-        if (!staged.empty() && !canonical.empty()) {
-            struct stat st{};
-            if (::stat(staged.c_str(), &st) == 0 && st.st_size > 1024 * 1024) {
-                // Try fopen("wb") on the canonical path directly.
-                // HOS may report the running NRO as in-use, in which
-                // case the first fopen returns NULL — that path
-                // matched the user-reported "manual rename still
-                // needed" symptom on v0.6.53. Strategy now:
-                //   1. unlink canonical first (FAT allows even on
-                //      mapped files since hbloader closed the fd
-                //      after reading; only the directory entry is
-                //      removed, the in-memory pages stay valid).
-                //   2. fopen("wb") creates a fresh canonical file
-                //      with the .new bytes. The running process's
-                //      mapping is unaffected; it lives until quit.
-                // If unlink fails we still try copy_file as before
-                // for a partial chance at success on filesystems
-                // that allow truncate-in-place.
-                if (::unlink(canonical.c_str()) != 0) {
-                    foyer::log::write(
-                        "[update] pre-promote unlink(%s) failed errno=%d "
-                        "— attempting truncate-in-place\n",
-                        canonical.c_str(), errno);
-                }
-                promoted = copy_file(staged.c_str(), canonical.c_str());
-                if (promoted) {
-                    foyer::log::write(
-                        "[update] promoted staged nro -> %s (%lld bytes)\n",
-                        canonical.c_str(), (long long)st.st_size);
-                    // Best-effort sentinel removal; FAT may
-                    // refuse if the running process still has
-                    // the .new mapped, in which case the next
-                    // boot's apply_staged_if_present hits the
-                    // size-floor check and unlinks it.
-                    if (::unlink(staged.c_str()) != 0) {
-                        foyer::log::write(
-                            "[update] unlink(%s) failed errno=%d "
-                            "(will retry on next boot)\n",
-                            staged.c_str(), errno);
-                    }
-                }
-            }
-        }
-
-        const std::string& target =
-            promoted ? canonical
-                     : (!staged.empty() ? staged : canonical);
+        const std::string& target = !staged.empty() ? staged : canonical;
         foyer::log::write(
-            "[update] restart accepted — envSetNextLoad(%s) promoted=%d\n",
-            target.c_str(), (int)promoted);
+            "[update] restart accepted — envSetNextLoad(%s)\n",
+            target.c_str());
         if (R_FAILED(envSetNextLoad(target.c_str(), target.c_str()))) {
             foyer::log::write(
                 "[update] envSetNextLoad(%s) failed; quitting to "
