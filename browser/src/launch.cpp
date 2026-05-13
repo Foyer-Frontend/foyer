@@ -4,6 +4,7 @@
 #include "library/switch_titles.hpp"
 #include "library/system_db.hpp"
 #include "library/per_game.hpp"
+#include "mtp.hpp"
 #include "platform/log.hpp"
 
 #include <cstdio>
@@ -172,6 +173,20 @@ bool launch_game(const library::System& sys, const library::Game& game,
             "\"%s\" \"%s\" \"%s\" \"shader=%s\" \"runahead=%d\"",
             sd_nro.c_str(), sd_rom.c_str(),
             browser_self_path().c_str(), shader.c_str(), runahead);
+    }
+
+    // Stop libhaze before chain-launch. Bisection (v0.6.41 worked,
+    // v0.6.42 broke) pinned the regression to the MTP integration:
+    // libhaze keeps USB DMA buffers + worker threads alive that hold
+    // kernel resources in the heap-backed region foyer was mapped
+    // into. When hbloader then tries to svcUnmapProcessCodeMemory
+    // the .data+.bss segment, the kernel sees the destination
+    // CodeData range as no-longer-uniform and rejects with
+    // MAKERESULT(Module_HomebrewLoader, 26). Tearing haze down here
+    // releases the USB resources so hbloader's unmap succeeds.
+    if (::foyer::browser::mtp_running()) {
+        foyer::log::write("[launch] stopping MTP before chain-launch\n");
+        ::foyer::browser::mtp_stop();
     }
 
     if (R_FAILED(envSetNextLoad(sd_nro.c_str(), argv))) {

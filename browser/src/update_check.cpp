@@ -1,6 +1,7 @@
 #include "update_check.hpp"
 
 #include "install_queue.hpp"
+#include "mtp.hpp"
 #include "manifest_cache.hpp"
 #include "self_update.hpp"
 #include "theme_watcher.hpp"
@@ -86,6 +87,13 @@ void prompt_restart() {
         // Theme / Application state.
         ::foyer::browser::install_queue::stop();
         ::foyer::browser::theme_watcher::stop();
+        // libhaze (MTP) holds USB DMA buffers in the heap region
+        // that hbloader needs to unmap on chain-launch; without
+        // this stop, the unmap fails with MAKERESULT(347, 26).
+        // Same bisection result as launch_game in launch.cpp.
+        if (::foyer::browser::mtp_running()) {
+            ::foyer::browser::mtp_stop();
+        }
 
         // Promotion pattern lifted from switchfin's updater
         // (dragonflylee/switchfin@app/src/utils/version.cpp).
