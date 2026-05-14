@@ -169,20 +169,13 @@ int main(int argc, char* argv[])
     // relaunching foyer.
     foyer::browser::theme_watcher::start();
 
-    // Library scan synchronous — fast on the cache fast-path. Done
-    // before pushing Home so the tile game-count banners have real
-    // values to display. The splash overlay below covers any visible
-    // hitch.
-    // Enumerate installed Switch titles BEFORE the library scan so
-    // the __switch virtual system gets populated on first pass.
-    // Subsequent boots fast-path off the on-disk NACP cache; only
-    // newly installed apps hit the slow nsGetApplicationControlData
-    // path.
-    foyer::library::load_switch_titles();
-    foyer::log::write("[boot] switch titles enumerated\n");
-
-    foyer::browser::library_state::rescan();
-    foyer::log::write("[boot] library scan done\n");
+    // Library scan + Switch title enumeration moved into the splash
+    // worker (see SplashActivity::onContentAvailable). Doing them
+    // here blocks the main thread before mainLoop runs — with ~200
+    // installed titles, that's seconds of black screen on first boot
+    // because nsGetApplicationControlData is a slow IPC per title.
+    // The splash now owns the wait; main thread renders the brand
+    // immediately.
 
     // libhaze MTP — auto-spin on boot when either mount toggle is on.
     // The user can flip the toggles later in Settings → Library to

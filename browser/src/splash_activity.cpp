@@ -1,12 +1,14 @@
 #include "activity/splash_activity.hpp"
 
 #include "activity/home_activity.hpp"
+#include "library_state.hpp"
 #include "manifest_cache.hpp"
 #include "net/http.hpp"
 #include "platform/log.hpp"
 #include "update_check.hpp"
 
 #include "library/config.hpp"
+#include "library/switch_titles.hpp"
 
 #include <condition_variable>
 #include <mutex>
@@ -53,6 +55,24 @@ void SplashActivity::onContentAvailable() {
         w.set_status("Starting…");
         self->m_progress_done.store(0, std::memory_order_release);
         self->m_progress_total.store(5, std::memory_order_release);
+
+        // Switch title enumeration + library scan — moved here from
+        // main() so the main thread reaches brls::Application::mainLoop
+        // immediately and the splash actually renders. On first boot
+        // after the v0.6.71 NS init fix, this runs ~200
+        // nsGetApplicationControlData IPCs which can take 5–10 s; the
+        // splash bar advances through manifest steps while it works.
+        w.set_status("Reading installed Switch titles…");
+        foyer::library::load_switch_titles(
+            [&w](int idx, int total) {
+                if (total <= 0) return;
+                char buf[64];
+                std::snprintf(buf, sizeof(buf),
+                    "Reading Switch titles %d / %d…", idx, total);
+                w.set_status(buf);
+            });
+        w.set_status("Scanning library…");
+        ::foyer::browser::library_state::rescan();
 
         ::foyer::browser::manifest_cache::prefetch(
             [self, &w](int done, int total, const char* label) {
