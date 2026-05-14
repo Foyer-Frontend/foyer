@@ -654,6 +654,13 @@ void SystemActivity::populateCarousel() {
     // rom path's parent folder.
     const bool is_virtual = m_folder.rfind("__", 0) == 0;
     auto system_of_game = [](const std::string& rom_path) {
+        // Switch installed-title pseudo-paths don't have a folder
+        // parent on disk — they're "switch://<hex>". The Switch
+        // virtual system owns all of them; route every "switch://"
+        // tile back to __switch so find_system + box dims resolve.
+        if (rom_path.rfind("switch://", 0) == 0) {
+            return std::string{"__switch"};
+        }
         const auto sl = rom_path.find_last_of('/');
         if (sl == std::string::npos) return std::string{};
         const auto upper = rom_path.substr(0, sl);
