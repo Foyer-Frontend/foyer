@@ -233,12 +233,31 @@ std::vector<std::uint64_t> live_app_ids() {
 
 bool fetch_nacp(std::uint64_t app_id, CachedEntry& out) {
     ControlBuf buf;
-    if (!fetch_control(app_id, buf)) return false;
+    if (!fetch_control(app_id, buf)) {
+        foyer::log::write(
+            "[switch_titles] %016lx: nsGetApplicationControlData FAILED\n",
+            (unsigned long)app_id);
+        return false;
+    }
     out.application_id = app_id;
-    if (auto* lang = nacp_pick_language(&buf.data.nacp)) {
+    const auto* lang = nacp_pick_language(&buf.data.nacp);
+    if (lang) {
         out.name.assign(lang->name);
         out.author.assign(lang->author);
     }
+    // Diagnostic: log id + name bytes so a user-shared log tells us
+    // whether NACPs are returning empty names, Japanese-only slots,
+    // or single-character placeholders. Format: hex id, byte length,
+    // first 3 bytes as hex, then the name itself (UTF-8). Helps
+    // catch CJK-font-fallback issues vs real empty-name cases.
+    const auto& n = out.name;
+    foyer::log::write(
+        "[switch_titles] %016lx filled=%zu name_bytes=%zu name_hex=%02x%02x%02x name=%s\n",
+        (unsigned long)app_id, buf.filled, n.size(),
+        n.size() > 0 ? (unsigned char)n[0] : 0,
+        n.size() > 1 ? (unsigned char)n[1] : 0,
+        n.size() > 2 ? (unsigned char)n[2] : 0,
+        n.empty() ? "(empty)" : n.c_str());
     const std::size_t icon_off = sizeof(NacpStruct);
     if (buf.filled > icon_off) {
         const auto* icon_p = reinterpret_cast<const std::uint8_t*>(&buf.data) + icon_off;
