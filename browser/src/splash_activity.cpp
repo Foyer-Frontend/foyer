@@ -61,16 +61,23 @@ void SplashActivity::onContentAvailable() {
         // immediately and the splash actually renders. On first boot
         // after the v0.6.71 NS init fix, this runs ~200
         // nsGetApplicationControlData IPCs which can take 5–10 s; the
-        // splash bar advances through manifest steps while it works.
+        // sub-step counters below give the bar per-title motion so
+        // the user doesn't stare at "0%" for the whole scan.
         w.set_status("Reading installed Switch titles…");
+        // Treat the title scan as step 0 of the total; bar slice
+        // [0..1/total] tracks idx/total within the scan.
         foyer::library::load_switch_titles(
-            [&w](int idx, int total) {
+            [self, &w](int idx, int total) {
                 if (total <= 0) return;
+                self->m_sub_total.store(total, std::memory_order_release);
+                self->m_sub_done.store(idx, std::memory_order_release);
                 char buf[64];
                 std::snprintf(buf, sizeof(buf),
                     "Reading Switch titles %d / %d…", idx, total);
                 w.set_status(buf);
             });
+        self->m_sub_total.store(0, std::memory_order_release);
+        self->m_sub_done.store(0, std::memory_order_release);
         w.set_status("Scanning library…");
         ::foyer::browser::library_state::rescan();
 
@@ -136,12 +143,9 @@ void SplashActivity::tick() {
             ? std::min(1.0f, static_cast<float>(done) / static_cast<float>(total))
             : 0.0f;
 
-        // If a streaming download is in flight (asset pack on first
-        // run is the only one that hits this on the splash), drive
-        // the bar from libcurl's byte counter so it moves smoothly
-        // through the current step instead of sitting at done/total
-        // for the full 30 s pull. The byte fraction is mapped into
-        // the slice [done/total .. (done+1)/total] so the bar never
+        // Streaming download (asset pack) — drive bar from libcurl's
+        // byte counter so 30 s pulls don't sit at done/total for the
+        // duration. Mapped into the current step's slice so it never
         // jumps backward when the step completes.
         auto& ds = ::foyer::net::current_download();
         if (ds.active.load(std::memory_order_acquire) && total > 0) {
@@ -154,6 +158,20 @@ void SplashActivity::tick() {
                 const float step_hi = static_cast<float>(done + 1) / total;
                 target = std::max(target, step_lo + (step_hi - step_lo) * frac);
             }
+        }
+
+        // Per-item sub-step (Switch title NACP fetch — 200 items × ~50ms
+        // each on first boot). Same slice math as the byte-progress
+        // branch above; either branch can win but neither can drag the
+        // bar backward thanks to the std::max.
+        const int sub_total = m_sub_total.load(std::memory_order_acquire);
+        const int sub_done  = m_sub_done.load(std::memory_order_acquire);
+        if (sub_total > 0 && total > 0) {
+            const float frac = std::min(1.0f,
+                static_cast<float>(sub_done) / static_cast<float>(sub_total));
+            const float step_lo = static_cast<float>(done)     / total;
+            const float step_hi = static_cast<float>(done + 1) / total;
+            target = std::max(target, step_lo + (step_hi - step_lo) * frac);
         }
         // Kick a new tween step whenever the worker advances past
         // the prior target. Animatable::reset() drops any queued

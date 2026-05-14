@@ -44,6 +44,14 @@ private:
     // glides between manifest steps instead of snapping.
     std::atomic<int> m_progress_done{0};
     std::atomic<int> m_progress_total{4};
+    // Sub-step counters for slow per-item work (Switch title NACP
+    // fetches in particular — a fresh device with ~200 installed
+    // titles spends 5–10 s here). When `m_sub_total > 0` the tick
+    // maps m_sub_done/m_sub_total into the slice of the bar owned
+    // by the current step, so the bar moves per title instead of
+    // sitting at done/total for the full scan.
+    std::atomic<int> m_sub_done{0};
+    std::atomic<int> m_sub_total{0};
     brls::Animatable m_anim_pct{0.0f};
     float            m_anim_target = 0.0f;
     static constexpr float kBarTrackWidth = 520.0f;

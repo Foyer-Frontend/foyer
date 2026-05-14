@@ -136,21 +136,41 @@ bool fetch_cover(std::string_view system_folder,
         return false;
     }
 
-    char crchex[16];
-    const auto crc = crc32_file(rom_path);
-    std::snprintf(crchex, sizeof(crchex), "%08x", crc);
+    // Installed Switch titles have a "switch://<hex>" pseudo-path
+    // and no rom file on disk — there's nothing to CRC, and SS's
+    // jeuInfos.php returns "no jeu" when given a synthetic CRC.
+    // Route those through jeuRecherche.php (fuzzy name match) with
+    // the NACP-decoded title as the search term. The first result
+    // is what we want — SS already ranks by best match.
+    const bool is_switch_virtual = rom_path.rfind("switch://", 0) == 0;
 
-    // Build the jeuInfos URL. We pass user creds when available — they
-    // give a higher API quota.
-    std::string url =
-        std::string{"https://api.screenscraper.fr/api2/jeuInfos.php?"}
-        + "devid="       + foyer::net::url_encode(devid)
-        + "&devpassword="+ foyer::net::url_encode(devpassword)
-        + "&softname="   + foyer::net::url_encode(kSoftname)
-        + "&output=json"
-        + "&systemeid="  + std::to_string(system_id)
-        + "&crc="        + crchex
-        + "&romnom="     + foyer::net::url_encode(std::string{rom_stem});
+    std::string url;
+    if (is_switch_virtual) {
+        url =
+            std::string{"https://api.screenscraper.fr/api2/jeuRecherche.php?"}
+            + "devid="       + foyer::net::url_encode(devid)
+            + "&devpassword="+ foyer::net::url_encode(devpassword)
+            + "&softname="   + foyer::net::url_encode(kSoftname)
+            + "&output=json"
+            + "&systemeid="  + std::to_string(system_id)
+            + "&recherche="  + foyer::net::url_encode(std::string{rom_stem});
+    } else {
+        char crchex[16];
+        const auto crc = crc32_file(rom_path);
+        std::snprintf(crchex, sizeof(crchex), "%08x", crc);
+
+        // jeuInfos for everything else — we have a rom file on disk
+        // so the CRC + romnom path is the most accurate match.
+        url =
+            std::string{"https://api.screenscraper.fr/api2/jeuInfos.php?"}
+            + "devid="       + foyer::net::url_encode(devid)
+            + "&devpassword="+ foyer::net::url_encode(devpassword)
+            + "&softname="   + foyer::net::url_encode(kSoftname)
+            + "&output=json"
+            + "&systemeid="  + std::to_string(system_id)
+            + "&crc="        + crchex
+            + "&romnom="     + foyer::net::url_encode(std::string{rom_stem});
+    }
     if (a.user_ready()) {
         url += "&ssid="       + foyer::net::url_encode(a.ssid);
         url += "&sspassword=" + foyer::net::url_encode(a.sspassword);
@@ -171,7 +191,17 @@ bool fetch_cover(std::string_view system_folder,
 
     auto* root = yyjson_doc_get_root(doc);
     auto* response = yyjson_obj_get(root, "response");
-    auto* jeu      = response ? yyjson_obj_get(response, "jeu") : nullptr;
+    // jeuInfos returns response.jeu (single); jeuRecherche returns
+    // response.jeux (array). For the Switch virtual path we take
+    // the first jeux entry — SS ranks by relevance so [0] is the
+    // top match for the title name we searched on.
+    auto* jeu = response ? yyjson_obj_get(response, "jeu") : nullptr;
+    if (!jeu && response) {
+        auto* jeux = yyjson_obj_get(response, "jeux");
+        if (jeux && yyjson_is_arr(jeux) && yyjson_arr_size(jeux) > 0) {
+            jeu = yyjson_arr_get(jeux, 0);
+        }
+    }
     auto* medias   = jeu ? yyjson_obj_get(jeu, "medias") : nullptr;
 
     // When jeu/medias come back missing, SS hands us either an
@@ -339,7 +369,8 @@ bool fetch_cover(std::string_view system_folder,
     }
 
     if (image_url.empty()) {
-        foyer::log::write("[ss] no media url in response (crc=%s)\n", crchex);
+        foyer::log::write("[ss] no media url in response (stem=%.*s)\n",
+            (int)rom_stem.size(), rom_stem.data());
         return any_meta; // metadata-only success still counts as a hit
     }
 
@@ -347,7 +378,8 @@ bool fetch_cover(std::string_view system_folder,
     if (!foyer::net::get_to_file(image_url, dest_png)) {
         return false;
     }
-    foyer::log::write("[ss] saved %s (crc=%s)\n", dest_png.c_str(), crchex);
+    foyer::log::write("[ss] saved %s (stem=%.*s)\n",
+        dest_png.c_str(), (int)rom_stem.size(), rom_stem.data());
 
     // Save the same box-2D into the per-game asset bundle dir
     // alongside the other media we're about to fetch. The bundle
