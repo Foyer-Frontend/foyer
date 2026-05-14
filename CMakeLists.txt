@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(foyer
-    VERSION 0.6.81
+    VERSION 0.6.82
     LANGUAGES C CXX
 )
 
@@ -159,16 +159,16 @@ if (BUILD_BROWSER OR PLAYER_BRLS)
             -DBOX_CPP=${borealis_SOURCE_DIR}/library/lib/core/box.cpp
             -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patch_brls_wraparound.cmake)
 
-    # SwitchAudioPlayer (libpulsar + qlaunch BFSAR) — re-enabled.
-    # When PLAYER_BRLS=ON, pulsar's plsrPlayerInit grabs audren before
-    # the libretro AudioSink runs. shared/libretro/audio.cpp now
-    # tolerates "audrenInitialize already-initialized" rc and shares
-    # the renderer instance with pulsar, so cores keep audio AND
-    # brls UI sounds work.
-    execute_process(
-        COMMAND ${CMAKE_COMMAND}
-            -DAUDIO_CPP=${borealis_SOURCE_DIR}/library/lib/platforms/switch/switch_audio.cpp
-            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patch_brls_audio.cmake)
+    # SwitchAudioPlayer patch DISABLED again. Sharing audren between
+    # brls's pulsar (browser UI sounds) and the libretro AudioSink
+    # is non-trivial — they collide on voice 0 + the memory pool,
+    # producing silence in both. Until we have a proper coordinator
+    # (single audrv instance with namespaced voice ids), keep the
+    # patch off; cores get audio, browser UI is silent.
+    # execute_process(
+    #     COMMAND ${CMAKE_COMMAND}
+    #         -DAUDIO_CPP=${borealis_SOURCE_DIR}/library/lib/platforms/switch/switch_audio.cpp
+    #         -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patch_brls_audio.cmake)
 
     # devkitPro's portlibs/switch/include is the canonical location for
     # switch-glm, switch-glfw, EGL, etc. The Switch.cmake toolchain
