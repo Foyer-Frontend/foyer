@@ -5,6 +5,7 @@
 #include "library_state.hpp"
 #include "library/per_game.hpp"
 #include "library/scrape_job.hpp"
+#include "library/switch_titles.hpp"
 #include "library/worker.hpp"
 #include "platform/log.hpp"
 #include "scrapers/cache.hpp"
@@ -122,7 +123,28 @@ GameActivity::GameActivity(std::string_view system_folder,
     : m_system_folder(system_folder)
     , m_game_path(game_path)
 {
-    // Derive stem from game_path: strip directory + extension.
+    // Switch installed-title pseudo-paths ("switch://<hex>") don't
+    // have a filename to strip — the basename IS the application_id
+    // in hex, which is what was getting sent to ScreenScraper as
+    // the search term (returning zero hits, since SS indexes by
+    // human-readable name). Look the title up in the NACP cache
+    // and use its name as the stem so the scrape query is the
+    // same string the user sees on the tile.
+    if (game_path.rfind("switch://", 0) == 0) {
+        const auto app_id =
+            ::foyer::library::switch_id_from_path(game_path);
+        for (const auto& t : ::foyer::library::switch_titles()) {
+            if (t.application_id == app_id) {
+                m_game_stem = t.name.empty()
+                    ? std::string{"Untitled"} : t.name;
+                return;
+            }
+        }
+        m_game_stem = "Untitled";
+        return;
+    }
+
+    // Real rom paths: strip directory + extension.
     std::string p{game_path};
     const auto slash = p.find_last_of('/');
     std::string base = (slash == std::string::npos) ? p : p.substr(slash + 1);
