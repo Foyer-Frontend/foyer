@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+
 namespace foyer::browser::update_check {
 
 // Self-update check for the foyer .nro itself.
@@ -15,6 +17,18 @@ namespace foyer::browser::update_check {
 // this single helper so two simultaneous checks can't race the
 // .nro download.
 bool kick(bool verbose);
+
+// Boot-time variant. Runs SYNCHRONOUSLY: fetches the manifest,
+// shows the Yes/No dialog, optionally streams the download, and
+// shows the restart prompt — invoking `on_done` exactly once when
+// the user is back in control. Splash uses this to gate the
+// handoff to Home so the boot doesn't continue underneath a pending
+// "Download v0.6.x?" dialog (the v0.6.71-era bug: user clicks "Yes"
+// but Home is already on screen, splash long gone).
+//
+// on_done is invoked on the brls main thread. Caller is responsible
+// for not calling kick_boot twice; it's a one-shot per session.
+void kick_boot(std::function<void()> on_done);
 
 // Per-section content-update checks (cores / bezels / cheats).
 // Each refreshes the matching manifest, aggregates pending updates

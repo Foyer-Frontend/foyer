@@ -211,14 +211,12 @@ int main(int argc, char* argv[])
             new ::foyer::browser::SplashActivity(),
             brls::TransitionAnimation::NONE);
 
-        // Boot-time update check — silent unless a newer manifest
-        // version is published, in which case the user gets a
-        // Yes/No prompt over the home screen. Gated on the
-        // General → Check for updates on boot toggle; users who
-        // want no network on boot opt out in Settings.
-        if (::foyer::library::config().update_check_on_boot) {
-            ::foyer::browser::update_check::kick(/*verbose=*/false);
-        }
+        // Boot-time update check moved into SplashActivity's
+        // worker so the splash blocks on the user's decision —
+        // see SplashActivity::onContentAvailable and
+        // update_check::kick_boot. Previously kicking it here
+        // raced the splash handoff: dialog landed on Home while
+        // boot had already completed underneath.
     }
     foyer::log::write("[boot] entering main loop\n");
 

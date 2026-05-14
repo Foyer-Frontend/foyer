@@ -76,6 +76,29 @@ const char* section_label(Section s) {
     return ok;
 }
 
+// Restart action shared by the post-download dialogs. Tears down
+// timers, applies the staged nro, and chain-launches.
+void do_restart() {
+    ::foyer::browser::install_queue::stop();
+    ::foyer::browser::theme_watcher::stop();
+    if (::foyer::browser::mtp_running()) {
+        ::foyer::browser::mtp_stop();
+    }
+    ::foyer::browser::self_update::apply_staged_if_present();
+    const std::string sd_self =
+        std::string{"sdmc:"} + ::foyer::browser::self_update::nro_path();
+    char argv[512];
+    std::snprintf(argv, sizeof(argv), "\"%s\"", sd_self.c_str());
+    if (R_FAILED(envSetNextLoad(sd_self.c_str(), argv))) {
+        foyer::log::write("[update] envSetNextLoad failed — quitting to "
+                          "the forwarder; relaunch manually\n");
+    } else {
+        foyer::log::write("[update] chain-launching new foyer at %s\n",
+                          sd_self.c_str());
+    }
+    brls::Application::quit();
+}
+
 void prompt_restart() {
     auto* dlg = new brls::Dialog(
         "Update downloaded. Restart foyer now?");
@@ -173,6 +196,95 @@ void prompt_download(const std::string& version,
 }
 
 }  // namespace
+
+// Boot-flow plumbing: the splash worker passes us a callback that
+// it'll wait on before handing off to Home. We invoke it exactly
+// once per kick_boot() — after the user dismisses the prompts (or
+// the check fails / nothing newer is found).
+namespace {
+std::function<void()> g_boot_on_done;
+
+void boot_done() {
+    if (auto cb = std::move(g_boot_on_done)) cb();
+}
+}  // namespace
+
+void kick_boot(std::function<void()> on_done) {
+    g_boot_on_done = std::move(on_done);
+    const std::string url = ::foyer::library::config().foyer_manifest_url;
+    foyer::log::write("[update] boot check enqueued\n");
+    ::foyer::browser::install_queue::enqueue(
+        "Check foyer update",
+        [url](::foyer::library::Worker& w) {
+            w.set_status("Fetching foyer manifest…");
+            const auto mf = ::foyer::library::fetch_foyer_manifest(url);
+            const bool ok = !mf.version.empty();
+            const bool newer = ok && ::foyer::library::is_newer_version(
+                FOYER_VERSION, mf.version);
+            brls::sync([ok, newer, mf]() {
+                if (!ok || !newer) {
+                    // Boot can continue immediately. No newer build (or
+                    // network failed) — silent in both cases since this
+                    // is the boot path.
+                    boot_done();
+                    return;
+                }
+                // Newer build. Boot stays on the splash while the
+                // user decides. "Later" frees the splash to push
+                // Home; "Download" runs the download + restart
+                // prompt and only fires boot_done if the user
+                // picks "Later" on the restart dialog.
+                auto* dlg = new brls::Dialog(
+                    "Update available — v" + mf.version
+                    + ".\n\nDownload now? Foyer will install it and "
+                      "ask to restart when it's ready.");
+                dlg->addButton("Later", []() {
+                    boot_done();
+                });
+                dlg->addButton("Download", [mf]() {
+                    // Mirror enqueue_download but on completion
+                    // route through a boot-flow-aware restart
+                    // prompt: "Later" releases boot, "Restart"
+                    // chain-launches (process exits before
+                    // boot_done could matter).
+                    const std::string version = mf.version;
+                    ::foyer::browser::install_queue::enqueue(
+                        "foyer " + version,
+                        [mf](::foyer::library::Worker& w) {
+                            w.set_status(
+                                "Downloading foyer " + mf.version + "…");
+                            const std::string& nro_path =
+                                ::foyer::browser::self_update::nro_path();
+                            const bool ok =
+                                ::foyer::library::download_foyer_update(
+                                    mf, nro_path,
+                                    [&w]{ return w.cancelled(); });
+                            const std::string version = mf.version;
+                            brls::sync([ok, version]() {
+                                if (!ok) {
+                                    brls::Application::notify(
+                                        "Update download failed");
+                                    boot_done();
+                                    return;
+                                }
+                                brls::Application::notify(
+                                    "Update v" + version + " ready");
+                                auto* rdlg = new brls::Dialog(
+                                    "Update downloaded. Restart foyer now?");
+                                rdlg->addButton("Later", []() {
+                                    boot_done();
+                                });
+                                rdlg->addButton("Restart", []() {
+                                    do_restart();
+                                });
+                                rdlg->open();
+                            });
+                        });
+                });
+                dlg->open();
+            });
+        });
+}
 
 bool kick(bool verbose) {
     const std::string url = ::foyer::library::config().foyer_manifest_url;

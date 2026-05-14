@@ -4,6 +4,12 @@
 #include "manifest_cache.hpp"
 #include "net/http.hpp"
 #include "platform/log.hpp"
+#include "update_check.hpp"
+
+#include "library/config.hpp"
+
+#include <condition_variable>
+#include <mutex>
 
 #include <switch.h>
 
@@ -54,6 +60,33 @@ void SplashActivity::onContentAvailable() {
                 self->m_progress_total.store(total, std::memory_order_release);
                 w.set_status(label);
             });
+
+        // Boot-time update check, gated on the user's toggle. Runs
+        // INLINE here so the splash stays visible while the user
+        // decides whether to update — otherwise the Yes/No dialog
+        // would land on top of Home, with boot already complete.
+        // The check posts dialogs back to the main thread; we
+        // wait on a condvar until update_check signals "user is
+        // back in control" (Later picked, or after the download
+        // + restart prompt resolved).
+        if (::foyer::library::config().update_check_on_boot) {
+            w.set_status("Checking for foyer updates…");
+            std::mutex             mu;
+            std::condition_variable cv;
+            bool                    done = false;
+            ::foyer::browser::update_check::kick_boot(
+                [&mu, &cv, &done]() {
+                    {
+                        std::scoped_lock lk{mu};
+                        done = true;
+                    }
+                    cv.notify_one();
+                });
+            {
+                std::unique_lock lk{mu};
+                cv.wait(lk, [&done] { return done; });
+            }
+        }
 
         // 400 ms floor so a fully-cached prefetch still gives the
         // brand half a second of screen time.
