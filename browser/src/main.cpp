@@ -84,6 +84,14 @@ int main(int argc, char* argv[])
     }
     foyer::log::write("[boot] brls init ok\n");
 
+    // Re-enable HOS idle auto-sleep. Brls (via XITRIX's moonlight
+    // build) defaults to media-playback mode + auto-sleep disabled
+    // because that fork drives video; foyer's a UI shell, the
+    // console should sleep when the user walks away.
+    appletSetMediaPlaybackState(false);
+    appletSetAutoSleepDisabled(false);
+    foyer::log::write("[boot] idle auto-sleep enabled\n");
+
     // Register foyer-specific theme colors before any XML inflates.
     // Splash references these for the bg overlay + custom progress bar.
     // Dark overlay is heavier so the pixel-art bg dims toward the
