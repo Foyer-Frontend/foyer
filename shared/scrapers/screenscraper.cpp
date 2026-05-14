@@ -137,39 +137,28 @@ bool fetch_cover(std::string_view system_folder,
     }
 
     // Installed Switch titles have a "switch://<hex>" pseudo-path
-    // and no rom file on disk — there's nothing to CRC, and SS's
-    // jeuInfos.php returns "no jeu" when given a synthetic CRC.
-    // Route those through jeuRecherche.php (fuzzy name match) with
-    // the NACP-decoded title as the search term. The first result
-    // is what we want — SS already ranks by best match.
+    // and no rom file on disk — nothing to CRC, and SS's
+    // jeuRecherche.php returns shallow {} objects for many hits
+    // (no medias / noms populated). jeuInfos.php with just romnom
+    // (CRC omitted) returns a full jeu including medias for SS-
+    // catalogued titles — confirmed against "Super Mario Bros.
+    // Wonder". Other systems get the canonical CRC + romnom
+    // jeuInfos query.
     const bool is_switch_virtual = rom_path.rfind("switch://", 0) == 0;
 
-    std::string url;
-    if (is_switch_virtual) {
-        url =
-            std::string{"https://api.screenscraper.fr/api2/jeuRecherche.php?"}
-            + "devid="       + foyer::net::url_encode(devid)
-            + "&devpassword="+ foyer::net::url_encode(devpassword)
-            + "&softname="   + foyer::net::url_encode(kSoftname)
-            + "&output=json"
-            + "&systemeid="  + std::to_string(system_id)
-            + "&recherche="  + foyer::net::url_encode(std::string{rom_stem});
-    } else {
+    std::string url =
+        std::string{"https://api.screenscraper.fr/api2/jeuInfos.php?"}
+        + "devid="       + foyer::net::url_encode(devid)
+        + "&devpassword="+ foyer::net::url_encode(devpassword)
+        + "&softname="   + foyer::net::url_encode(kSoftname)
+        + "&output=json"
+        + "&systemeid="  + std::to_string(system_id)
+        + "&romnom="     + foyer::net::url_encode(std::string{rom_stem});
+    if (!is_switch_virtual) {
         char crchex[16];
         const auto crc = crc32_file(rom_path);
         std::snprintf(crchex, sizeof(crchex), "%08x", crc);
-
-        // jeuInfos for everything else — we have a rom file on disk
-        // so the CRC + romnom path is the most accurate match.
-        url =
-            std::string{"https://api.screenscraper.fr/api2/jeuInfos.php?"}
-            + "devid="       + foyer::net::url_encode(devid)
-            + "&devpassword="+ foyer::net::url_encode(devpassword)
-            + "&softname="   + foyer::net::url_encode(kSoftname)
-            + "&output=json"
-            + "&systemeid="  + std::to_string(system_id)
-            + "&crc="        + crchex
-            + "&romnom="     + foyer::net::url_encode(std::string{rom_stem});
+        url += "&crc=" + std::string{crchex};
     }
     if (a.user_ready()) {
         url += "&ssid="       + foyer::net::url_encode(a.ssid);
