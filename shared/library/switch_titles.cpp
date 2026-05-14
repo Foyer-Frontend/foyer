@@ -231,6 +231,56 @@ std::vector<std::uint64_t> live_app_ids() {
     return ids;
 }
 
+// Strip the handful of UTF-8 codepoints brls's bundled font has no
+// glyph for — they render as a tofu/asterisk on the tile and also
+// hurt ScreenScraper match rate (SS indexes names without them).
+// Drop ™ (U+2122), ® (U+00AE), © (U+00A9), trademark spacers, and
+// the zero-width joiner family. Anything else passes through as
+// raw UTF-8.
+std::string scrub_nacp_name(std::string s) {
+    std::string out;
+    out.reserve(s.size());
+    for (std::size_t i = 0; i < s.size(); ) {
+        const unsigned char c = (unsigned char)s[i];
+        // U+00AE (®) and U+00A9 (©) are 2-byte UTF-8: 0xC2 0xAE / 0xC2 0xA9
+        if (c == 0xC2 && i + 1 < s.size()) {
+            const unsigned char d = (unsigned char)s[i + 1];
+            if (d == 0xAE || d == 0xA9) { i += 2; continue; }
+        }
+        // U+2122 (™) is 3-byte UTF-8: 0xE2 0x84 0xA2
+        if (c == 0xE2 && i + 2 < s.size()
+            && (unsigned char)s[i + 1] == 0x84
+            && (unsigned char)s[i + 2] == 0xA2) { i += 3; continue; }
+        // U+200B..U+200F (zero-width joiners / direction marks)
+        // are 3-byte UTF-8: 0xE2 0x80 0x8B..0x8F
+        if (c == 0xE2 && i + 2 < s.size()
+            && (unsigned char)s[i + 1] == 0x80) {
+            const unsigned char e = (unsigned char)s[i + 2];
+            if (e >= 0x8B && e <= 0x8F) { i += 3; continue; }
+        }
+        out.push_back(s[i]);
+        i++;
+    }
+    // Collapse runs of internal whitespace produced by stripping
+    // those codepoints (e.g. "Mario™ Wonder" → "Mario Wonder" with
+    // a leftover double space).
+    std::string compact;
+    compact.reserve(out.size());
+    bool prev_ws = false;
+    for (char ch : out) {
+        if (ch == ' ' || ch == '\t') {
+            if (!prev_ws) compact.push_back(' ');
+            prev_ws = true;
+        } else {
+            compact.push_back(ch);
+            prev_ws = false;
+        }
+    }
+    // Trim trailing space.
+    while (!compact.empty() && compact.back() == ' ') compact.pop_back();
+    return compact;
+}
+
 bool fetch_nacp(std::uint64_t app_id, CachedEntry& out) {
     ControlBuf buf;
     if (!fetch_control(app_id, buf)) {
@@ -242,8 +292,8 @@ bool fetch_nacp(std::uint64_t app_id, CachedEntry& out) {
     out.application_id = app_id;
     const auto* lang = nacp_pick_language(&buf.data.nacp);
     if (lang) {
-        out.name.assign(lang->name);
-        out.author.assign(lang->author);
+        out.name   = scrub_nacp_name(std::string{lang->name});
+        out.author = scrub_nacp_name(std::string{lang->author});
     }
     // Diagnostic: log id + name bytes so a user-shared log tells us
     // whether NACPs are returning empty names, Japanese-only slots,
