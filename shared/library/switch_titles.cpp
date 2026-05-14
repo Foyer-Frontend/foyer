@@ -175,6 +175,19 @@ void write_cache(const std::vector<CachedEntry>& in) {
 
 std::vector<std::uint64_t> live_app_ids() {
     std::vector<std::uint64_t> ids;
+
+    // libnx doesn't auto-init the ns:am2 service for AppletType_Application
+    // — nsListApplicationRecord lives behind it, so without this call we
+    // get rc=0xe401 (session closed) and zero records. nsInitialize is
+    // idempotent + cheap; the matching nsExit on quit is handled by
+    // libnx's __libnx_exit hook so we don't need to track it here.
+    const Result rc_ns = nsInitialize();
+    if (R_FAILED(rc_ns)) {
+        foyer::log::write("[switch_titles] nsInitialize rc=0x%x — "
+            "Switch title list will be empty\n", (unsigned)rc_ns);
+        return ids;
+    }
+
     constexpr s32 kPageSize = 32;
     NsApplicationRecord page[kPageSize]{};
     s32 offset = 0;
