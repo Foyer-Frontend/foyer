@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(foyer
-    VERSION 0.6.80
+    VERSION 0.6.81
     LANGUAGES C CXX
 )
 
@@ -159,11 +159,12 @@ if (BUILD_BROWSER OR PLAYER_BRLS)
             -DBOX_CPP=${borealis_SOURCE_DIR}/library/lib/core/box.cpp
             -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patch_brls_wraparound.cmake)
 
-    # Re-enable the SwitchAudioPlayer code XITRIX commented out so
-    # brls's UI sounds (focus / click / back) actually play through
-    # libpulsar + qlaunch's BFSAR. Safe to apply even on builds that
-    # can't access qlaunch romfs — the init returns early and the
-    # play() short-circuits.
+    # SwitchAudioPlayer (libpulsar + qlaunch BFSAR) — re-enabled.
+    # When PLAYER_BRLS=ON, pulsar's plsrPlayerInit grabs audren before
+    # the libretro AudioSink runs. shared/libretro/audio.cpp now
+    # tolerates "audrenInitialize already-initialized" rc and shares
+    # the renderer instance with pulsar, so cores keep audio AND
+    # brls UI sounds work.
     execute_process(
         COMMAND ${CMAKE_COMMAND}
             -DAUDIO_CPP=${borealis_SOURCE_DIR}/library/lib/platforms/switch/switch_audio.cpp

@@ -38,6 +38,11 @@ private:
     void thread_loop();
 
     bool          m_initialised   = false;
+    // True when this AudioSink called audrenInitialize itself; false
+    // when an earlier brls SwitchAudioPlayer / libpulsar got there
+    // first. Drives whether shutdown() calls audrenExit (only the
+    // owner is allowed to tear it down).
+    bool          m_owns_audren   = false;
     unsigned      m_rate          = 0;
 
     Thread             m_thread{};

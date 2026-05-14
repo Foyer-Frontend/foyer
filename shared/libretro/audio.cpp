@@ -40,23 +40,37 @@ bool AudioSink::init(unsigned sample_rate) {
     if (sample_rate == 0) sample_rate = 48000;
     m_rate = sample_rate;
 
+    // brls's libpulsar may have called audrenInitialize first in
+    // SwitchAudioPlayer's constructor (PLAYER_BRLS=ON path). If so,
+    // libnx returns "already initialized" — accept that and share
+    // the existing renderer instance. We track whether we own the
+    // init so we don't yank it out from under pulsar on shutdown.
     Result rc = audrenInitialize(&kAudrenConfig);
+    m_owns_audren = R_SUCCEEDED(rc);
     if (R_FAILED(rc)) {
-        foyer::log::write("[audio] audrenInitialize failed: 2%03d-%04d (0x%X)\n",
-            R_MODULE(rc) + 2000, R_DESCRIPTION(rc), rc);
-        return false;
+        // 0x4D215 / 0xF601 = "service already initialized" in libnx —
+        // any failure here we treat as "someone else got there first";
+        // try audrvCreate against the existing context.
+        foyer::log::write(
+            "[audio] audrenInitialize rc=0x%X — assuming someone "
+            "else (likely brls pulsar) already initialized; sharing\n",
+            (unsigned)rc);
+    } else {
+        foyer::log::write("[audio] audrenInitialize ok (we own it)\n");
     }
-    foyer::log::write("[audio] audrenInitialize ok\n");
 
     m_driver = std::malloc(sizeof(AudioDriver));
-    if (!m_driver) { audrenExit(); return false; }
+    if (!m_driver) {
+        if (m_owns_audren) audrenExit();
+        return false;
+    }
     new (m_driver) AudioDriver{};
 
     rc = audrvCreate(&drv(m_driver), &kAudrenConfig, /*final_mix_channels=*/2);
     if (R_FAILED(rc)) {
         foyer::log::write("[audio] audrvCreate failed: rc=0x%X\n", rc);
         std::free(m_driver); m_driver = nullptr;
-        audrenExit();
+        if (m_owns_audren) audrenExit();
         return false;
     }
     foyer::log::write("[audio] audrvCreate ok\n");
@@ -73,7 +87,7 @@ bool AudioSink::init(unsigned sample_rate) {
     if (!m_pool) {
         audrvClose(&drv(m_driver));
         std::free(m_driver); m_driver = nullptr;
-        audrenExit();
+        if (m_owns_audren) audrenExit();
         return false;
     }
     std::memset(m_pool, 0, m_pool_size);
@@ -88,7 +102,7 @@ bool AudioSink::init(unsigned sample_rate) {
         std::free(m_pool);   m_pool = nullptr;
         audrvClose(&drv(m_driver));
         std::free(m_driver); m_driver = nullptr;
-        audrenExit();
+        if (m_owns_audren) audrenExit();
         return false;
     }
     audrvVoiceSetDestinationMix(&drv(m_driver), m_voice_id, AUDREN_FINAL_MIX_ID);
@@ -157,7 +171,10 @@ void AudioSink::shutdown() {
         std::free(m_driver);
         m_driver = nullptr;
     }
-    audrenExit();
+    if (m_owns_audren) {
+        audrenExit();
+        m_owns_audren = false;
+    }
 
     std::free(m_pool);     m_pool     = nullptr;
     std::free(m_wavebufs); m_wavebufs = nullptr;

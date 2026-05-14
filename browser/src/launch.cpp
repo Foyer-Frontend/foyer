@@ -189,6 +189,21 @@ bool launch_game(const library::System& sys, const library::Game& game,
         ::foyer::browser::mtp_stop();
     }
 
+    // Drop a marker so the next boot (post-core-exit) can fast-path:
+    // skip splash network ops + push straight to this game's
+    // GameActivity instead of bouncing through Home. Format is two
+    // lines: system folder, then game path. mtime gates "is this
+    // a recent return?" — main.cpp ignores markers older than 5 min.
+    if (auto* m = std::fopen(
+            "/foyer/data/cache/last_session.txt", "wb")) {
+        const auto folder = std::string{sys.def->folder_name};
+        std::fwrite(folder.data(), 1, folder.size(), m);
+        std::fputc('\n', m);
+        std::fwrite(game.path.data(), 1, game.path.size(), m);
+        std::fputc('\n', m);
+        std::fclose(m);
+    }
+
     if (R_FAILED(envSetNextLoad(sd_nro.c_str(), argv))) {
         foyer::log::write("[launch] envSetNextLoad failed\n");
         return false;

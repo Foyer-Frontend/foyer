@@ -13,8 +13,10 @@
 #include <cstring>
 #include <string_view>
 
+#include "activity/game_activity.hpp"
 #include "activity/home_activity.hpp"
 #include "activity/splash_activity.hpp"
+#include "activity/system_activity.hpp"
 #include "activity/wizard_activity.hpp"
 #include "tab/settings_tab.hpp"
 #include "first_run.hpp"
@@ -29,6 +31,10 @@
 #include "i18n/i18n.hpp"
 #include "library/config.hpp"
 #include "library/switch_titles.hpp"
+
+#include <ctime>
+#include <sys/stat.h>
+#include <unistd.h>
 #include "net/http.hpp"
 #include "platform/log.hpp"
 
@@ -185,7 +191,57 @@ int main(int argc, char* argv[])
         foyer::browser::mtp_start();
     }
 
-    if (!::foyer::browser::first_run::is_complete()) {
+    // Return-from-core fast path. launch_game writes
+    // /foyer/data/cache/last_session.txt with the system folder +
+    // game path before chain-launching the core. If that marker
+    // exists and is recent (<5 min) we infer "user just came back
+    // from a game" and skip the network-heavy splash entirely:
+    //   - library_state::rescan inline (cache fast-path, ~100 ms)
+    //   - push Home → SystemActivity(folder) → GameActivity(path)
+    //   - delete the marker so the next plain boot doesn't repeat
+    // Manifest fetches + update check + asset pack download all
+    // wait until the next fresh boot.
+    bool fast_returned = false;
+    {
+        constexpr const char* kMarker = "/foyer/data/cache/last_session.txt";
+        struct stat mst{};
+        if (::stat(kMarker, &mst) == 0
+            && std::time(nullptr) - mst.st_mtime < 300) {
+            if (auto* m = std::fopen(kMarker, "rb")) {
+                char buf[512];
+                const auto n = std::fread(buf, 1, sizeof(buf) - 1, m);
+                std::fclose(m);
+                buf[n] = '\0';
+                std::string text{buf};
+                const auto nl = text.find('\n');
+                if (nl != std::string::npos) {
+                    std::string folder = text.substr(0, nl);
+                    std::string path   = text.substr(nl + 1);
+                    while (!path.empty()
+                        && (path.back() == '\n' || path.back() == '\r'))
+                        path.pop_back();
+                    foyer::log::write(
+                        "[boot] return-from-core: folder=%s path=%s\n",
+                        folder.c_str(), path.c_str());
+                    foyer::library::load_switch_titles();
+                    foyer::browser::library_state::rescan();
+                    brls::Application::pushActivity(
+                        new ::foyer::browser::HomeActivity());
+                    brls::Application::pushActivity(
+                        new ::foyer::browser::SystemActivity(folder, folder));
+                    brls::Application::pushActivity(
+                        new ::foyer::browser::GameActivity(folder, path));
+                    fast_returned = true;
+                }
+            }
+        }
+        ::unlink(kMarker);
+    }
+
+    if (fast_returned) {
+        // Skip the splash / wizard / manifest checks branch — the
+        // user is back where they left off.
+    } else if (!::foyer::browser::first_run::is_complete()) {
         foyer::log::write("[boot] first-run marker missing — wizard\n");
         ::foyer::browser::manifest_cache::prefetch({});
         foyer::log::write("[boot] pushing HomeActivity\n");
