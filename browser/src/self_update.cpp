@@ -3,6 +3,7 @@
 #include <switch.h>
 #include <cerrno>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <dirent.h>
@@ -93,6 +94,17 @@ void apply_staged_if_present() {
     }
     foyer::log::write("[self_update] applied staged nro -> %s\n",
         g_path.c_str());
+
+    // romfsExit above destroyed THIS process's romfs handle. Any
+    // subsequent brls XML inflate / asset load returns garbage,
+    // and HomeActivity's first frame crashes on a half-built View
+    // chain (foyer + 0xbd574 in v0.6.94: View::getClassString on
+    // a null typeId pointer). The running v0.6.94 code is stale
+    // anyway — the new bytes are on disk. Exit the process so the
+    // user's next launch hits the fresh nro cleanly.
+    foyer::log::write(
+        "[self_update] exiting so next launch picks up the new nro\n");
+    std::exit(0);
 }
 
 void scrub_legacy_default_bezel() {
