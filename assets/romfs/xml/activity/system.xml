@@ -20,13 +20,18 @@
     axis="column">
 
     <!-- Per-system app backdrop — same crop as Home. -->
+    <!-- Full-screen so the translucent overlay bars at the top
+         (height 80) and bottom (footer_height ~73) have something
+         to tint. v0.6.94's bar_overlay tint was rendering against
+         raw scrim because the backdrop only spanned the middle
+         band; ext to 0..720 + bars sit absolute on top. -->
     <brls:Image
         id="foyer/backdrop"
         positionType="absolute"
-        positionTop="80"
+        positionTop="0"
         positionLeft="0"
         width="1280"
-        height="567"
+        height="720"
         scalingType="fill" />
 
     <!-- Top bar — system logo on the left, clock / wifi / battery

@@ -21,18 +21,16 @@
     grow="1.0"
     axis="column">
 
-    <!-- Per-system app backdrop — absolute-positioned in the
-         middle band between the top status bar (80 px) and the
-         bottom hint bar (footer_height = 73 px) so the bars never
-         draw on top of it. Updated by HomeActivity on tile focus
-         change. -->
+    <!-- Per-system app backdrop — full-screen so the translucent
+         bar overlays (top 80 px, bottom ~73 px) have something to
+         tint. Updated by HomeActivity on tile focus change. -->
     <brls:Image
         id="foyer/backdrop"
         positionType="absolute"
-        positionTop="80"
+        positionTop="0"
         positionLeft="0"
         width="1280"
-        height="567"
+        height="720"
         scalingType="fill" />
 
     <!-- Top bar — backdrop already provides visual separation, so
