@@ -731,10 +731,17 @@ void SystemActivity::onTileFocused(int idx) {
     // in < 30 ms even on Switch — well under the carousel scroll
     // animation duration. brls::Image dedupes by path so revisiting
     // the same tile is free.
-    if (!backdrop || idx < 0 || idx >= n) return;
+    if (idx < 0 || idx >= n) return;
     auto* tile = dynamic_cast<GameTile*>(carousel->getChildren()[idx]);
     if (!tile) return;
 
+    if (focusLabel) {
+        focusLabel->setText(tile->stem());
+        focusLabel->setTextColor(
+            brls::Application::getTheme().getColor("brls/highlight/color1"));
+    }
+
+    if (!backdrop) return;
     const auto bundle = ::foyer::scrapers::game_asset_dir(
         tile->system(), tile->stem());
     const auto fanart = bundle + "fanart.jpg";

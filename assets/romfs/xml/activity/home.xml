@@ -107,6 +107,20 @@
         height="auto"
         grow="1.0" />
 
+    <!-- Focused tile name — sits above the carousel in the
+         highlight colour so the user can read which system the
+         current tile represents without relying on the splash
+         art alone. Text + colour set by HomeActivity on focus
+         change. -->
+    <brls:Label
+        id="foyer/focus_label"
+        text=""
+        width="auto"
+        height="auto"
+        fontSize="28"
+        horizontalAlign="center"
+        marginBottom="8" />
+
     <!-- System carousel — pinned just above the bottom hint bar. -->
     <brls:HScrollingFrame
         id="foyer/carousel_scroll"

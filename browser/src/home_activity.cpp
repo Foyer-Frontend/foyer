@@ -288,11 +288,16 @@ void HomeActivity::populateCarousel() {
 }
 
 void HomeActivity::onSystemFocused(std::string_view folder,
-                                   std::string_view /*display_name*/)
+                                   std::string_view display_name)
 {
     if (backdrop) {
         backdrop->setImageFromFile(
             ::foyer::library::asset_system_background(art_dir_for(folder)));
+    }
+    if (focusLabel) {
+        focusLabel->setText(std::string{display_name});
+        focusLabel->setTextColor(
+            brls::Application::getTheme().getColor("brls/highlight/color1"));
     }
 }
 

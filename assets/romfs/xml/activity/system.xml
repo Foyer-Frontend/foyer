@@ -108,6 +108,19 @@
         height="auto"
         grow="1.0" />
 
+    <!-- Focused game title — sits above the carousel in the
+         highlight colour so the user can read which game has
+         focus without relying on cover art alone. Text + colour
+         set by SystemActivity on focus change. -->
+    <brls:Label
+        id="foyer/focus_label"
+        text=""
+        width="auto"
+        height="auto"
+        fontSize="28"
+        horizontalAlign="center"
+        marginBottom="8" />
+
     <!-- Game cover-flow carousel — pinned right above the bottom
          hint bar. Frame height matches the tallest tile (280px
          portrait) + 7px top margin; the bottom margin is small so

@@ -28,6 +28,7 @@ public:
     BRLS_BIND(brls::Box,   actionRow,    "foyer/action_row");
     BRLS_BIND(brls::Box,   profiles,     "foyer/profiles");
     BRLS_BIND(brls::Image, backdrop,     "foyer/backdrop");
+    BRLS_BIND(brls::Label, focusLabel,   "foyer/focus_label");
 
 private:
     brls::RepeatingTask* clockTask = nullptr;
