@@ -185,9 +185,13 @@ bool fetch_cover(std::string_view system_folder,
     // Switch fallback chain — only when the initial jeuInfos didn't
     // find anything AND we're on the Switch virtual path (real roms
     // get the canonical CRC path and don't need fuzzy fallback).
+    auto contains = [](const std::vector<char>& v, std::string_view needle) {
+        return std::search(v.begin(), v.end(),
+                           needle.begin(), needle.end()) != v.end();
+    };
     if (is_switch_virtual
         && (resp.code == 404 || resp.body.empty()
-            || resp.body.find("\"jeu\"") == std::string::npos)) {
+            || !contains(resp.body, "\"jeu\""))) {
         const std::string rurl =
             std::string{"https://api.screenscraper.fr/api2/jeuRecherche.php?"}
             + "devid="       + foyer::net::url_encode(devid)
@@ -200,16 +204,18 @@ bool fetch_cover(std::string_view system_folder,
         auto rresp = foyer::net::get(rurl);
         if (rresp.code >= 200 && rresp.code < 300 && !rresp.body.empty()) {
             // Grab the first jeuid out of jeux[]. The light response
-            // has just "id": "<n>" in each entry — strstr is enough
-            // and avoids re-parsing the whole doc.
-            const auto id_pos = rresp.body.find("\"id\":");
+            // has just "id": "<n>" in each entry — copy the body
+            // into a std::string so find/substr work without
+            // dragging a JSON parser into the fallback path.
+            const std::string body{rresp.body.data(), rresp.body.size()};
+            const auto id_pos = body.find("\"id\":");
             if (id_pos != std::string::npos) {
-                auto q1 = rresp.body.find('"', id_pos + 5);
-                auto q2 = rresp.body.find('"', q1 + 1);
+                auto q1 = body.find('"', id_pos + 5);
+                auto q2 = body.find('"', q1 + 1);
                 if (q1 != std::string::npos && q2 != std::string::npos
                     && q2 > q1 + 1) {
                     const std::string jeuid =
-                        rresp.body.substr(q1 + 1, q2 - q1 - 1);
+                        body.substr(q1 + 1, q2 - q1 - 1);
                     if (!jeuid.empty() && jeuid.front() != '{') {
                         // Re-fetch with jeuid for the full media set.
                         const std::string jurl =
