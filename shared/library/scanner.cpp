@@ -267,6 +267,13 @@ std::vector<System> scan_library(const ScanOptions& opts) {
             apply_hide_empty(*cached);
             apply_system_sort(*cached);
             // Recreate virtual carousel tiles from the loaded games.
+            // IMPORTANT: walk only REAL systems — once we insert
+            // Favorites at out_real.begin(), the next add_virtual
+            // (Recent / AllGames) would otherwise iterate the
+            // freshly-inserted virtual and duplicate every game that
+            // matches more than one filter (e.g. a favourited recent
+            // game ended up listed twice in Recent + Favorites + Recent
+            // again). is_virtual_system() skips them cleanly.
             auto& out_real = *cached;
             auto add_virtual = [&](const SystemDef& def, auto&& filter,
                                    auto&& sort_fn, std::size_t cap) {
@@ -274,6 +281,7 @@ std::vector<System> scan_library(const ScanOptions& opts) {
                 v.def       = &def;
                 v.root_path = "(virtual)";
                 for (auto& real : out_real) {
+                    if (real.def && is_virtual_system(*real.def)) continue;
                     for (auto& g : real.games) {
                         if (filter(g)) v.games.push_back(g);
                     }
