@@ -40,6 +40,17 @@
         paddingLeft="@style/brls/hints/footer_padding_sides"
         paddingRight="@style/brls/hints/footer_padding_sides">
 
+        <!-- Wheel art (transparent PNG of the game logo) takes
+             precedence over the plain text title when SS provided
+             one. GameActivity hides whichever doesn't apply on
+             populate; both are bound so either path can win. -->
+        <brls:Image
+            id="foyer/game_wheel"
+            width="auto"
+            height="64"
+            scalingType="fit"
+            visibility="gone" />
+
         <brls:Label
             id="foyer/game_title"
             text=""

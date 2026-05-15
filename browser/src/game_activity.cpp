@@ -195,7 +195,26 @@ void GameActivity::onContentAvailable() {
         }
     }
     if (title.empty()) title = m_game_stem;
-    if (gameTitle) gameTitle->setText(title);
+
+    // If SS dropped a wheel(XX).png in the per-game bundle, show
+    // that instead of the plain text title. Wheel is a transparent
+    // PNG of the game logo and reads better than a 28pt label.
+    // Fall back to text when no wheel exists.
+    const auto bundle_dir = ::foyer::scrapers::game_asset_dir(
+        m_system_folder, m_game_stem);
+    const auto wheel_path = ::foyer::scrapers::find_in_dir(
+        bundle_dir, "wheel");
+    if (!wheel_path.empty() && gameWheel && gameTitle) {
+        gameWheel->setImageFromFile(wheel_path);
+        gameWheel->setVisibility(brls::Visibility::VISIBLE);
+        gameTitle->setVisibility(brls::Visibility::GONE);
+    } else {
+        if (gameTitle) {
+            gameTitle->setText(title);
+            gameTitle->setVisibility(brls::Visibility::VISIBLE);
+        }
+        if (gameWheel) gameWheel->setVisibility(brls::Visibility::GONE);
+    }
 
     buildGallery();
 

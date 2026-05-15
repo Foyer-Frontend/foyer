@@ -479,6 +479,16 @@ bool fetch_cover(std::string_view system_folder,
         foyer::net::get_to_file(fanart_pick.url,
             bundle_dir + "fanart.jpg");
     }
+    // Wheel — transparent PNG of the game logo, used as the top-bar
+    // title affordance on GameActivity when present (cleaner than
+    // rendering the raw title text). Saved with the region suffix
+    // so the activity can pick the variant matching the user's
+    // region preference.
+    const auto wheel_pick = pick_media("wheel");
+    if (!wheel_pick.url.empty()) {
+        foyer::net::get_to_file(wheel_pick.url,
+            bundle_path("wheel", wheel_pick.region, ".png"));
+    }
     const auto bezel_pick = pick_media("bezel-16-9");
     if (!bezel_pick.url.empty()) {
         foyer::net::get_to_file(bezel_pick.url,
