@@ -121,7 +121,10 @@ constexpr SsBoxSize kBoxSizes[] = {
     {"intellivision",   498, 680},  {"gameandwatch",    930, 954},
     {"wonderswan",      495, 680},  {"wonderswancolor", 498, 720},
     {"pcengine",        580, 680},  {"pcenginecd",      595, 600},
-    {"supergrafx",      513, 458},  {"pcfx",            462, 607},
+    // SuperGrafx HuCards share the PCE box form factor, not the
+    // 513x458 portrait. Match pcengine so the covers don't render
+    // squished in the carousel.
+    {"supergrafx",      580, 680},  {"pcfx",            462, 607},
     {"ngp",             599, 700},  {"ngpc",            599, 700},
     {"msx",             484, 680},  {"msx2",            484, 680},
     {"dos",             582, 680},  {"pokemini",        700, 700},
@@ -570,7 +573,7 @@ void SystemActivity::buildActionRow() {
     };
 
     actionRow->addView(new ActionButton(
-        "img/actions/gallery.png", "Scrape",
+        "img/actions/scrape.png", "Scrape",
         [this](brls::View*) {
             const auto* sys = library_state::find_system(m_folder);
             if (!sys || sys->games.empty()) {
@@ -604,7 +607,7 @@ void SystemActivity::buildActionRow() {
         }));
 
     actionRow->addView(new ActionButton(
-        "img/actions/search.png", "Scan",
+        "img/actions/scan.png", "Scan",
         [](brls::View*) {
             library_state::rescan();
             brls::Application::notify("Library rescanned");
