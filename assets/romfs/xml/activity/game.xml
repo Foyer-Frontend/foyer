@@ -23,20 +23,20 @@
     <brls:Image
         id="foyer/game_fanart"
         positionType="absolute"
-        positionTop="80"
+        positionTop="0"
         positionLeft="0"
         width="1280"
-        height="567"
+        height="720"
         scalingType="fill" />
 
-    <!-- Top status cluster bar — same shape as system.xml. -->
+    <!-- Top status cluster bar — same translucent overlay shape as
+         system.xml + home.xml so the fanart bleeds through. -->
     <brls:Box
         width="auto"
         height="80"
         axis="row"
         alignItems="center"
-        marginLeft="@style/brls/hints/footer_margin_sides"
-        marginRight="@style/brls/hints/footer_margin_sides"
+        backgroundColor="@theme/foyer/bar_overlay"
         paddingLeft="@style/brls/hints/footer_padding_sides"
         paddingRight="@style/brls/hints/footer_padding_sides">
 
@@ -155,15 +155,14 @@
 
     </brls:Box>
 
-    <!-- Bottom hint bar — matches system.xml. -->
+    <!-- Bottom hint bar — matches system.xml's translucent overlay. -->
     <brls:Box
         width="auto"
         height="@style/brls/applet_frame/footer_height"
         axis="row"
         alignItems="center"
         justifyContent="flexEnd"
-        marginLeft="@style/brls/hints/footer_margin_sides"
-        marginRight="@style/brls/hints/footer_margin_sides"
+        backgroundColor="@theme/foyer/bar_overlay"
         paddingLeft="@style/brls/hints/footer_padding_sides"
         paddingRight="@style/brls/hints/footer_padding_sides"
         paddingTop="@style/brls/hints/footer_padding_top_bottom"
