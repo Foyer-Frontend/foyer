@@ -35,6 +35,7 @@ public:
     BRLS_BIND(brls::Image,  slide,        "foyer/game_slide");
     BRLS_BIND(brls::Label,  slideCaption, "foyer/game_slide_caption");
     BRLS_BIND(brls::Label,  gameTitle,    "foyer/game_title");
+    BRLS_BIND(brls::Image,  gameWheel,    "foyer/game_wheel");
     BRLS_BIND(brls::Box,    metaHolder,   "foyer/game_meta");
     BRLS_BIND(brls::Box,    body,         "foyer/game_body");
 
