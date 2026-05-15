@@ -30,6 +30,7 @@ public:
     BRLS_BIND(brls::Box,   logoHolder,    "foyer/logo_holder");
     BRLS_BIND(brls::Box,   actionRow,     "foyer/action_row");
     BRLS_BIND(brls::Box,   carousel,      "foyer/carousel");
+    BRLS_BIND(brls::Image, focusWheel,    "foyer/focus_wheel");
     BRLS_BIND(brls::Label, focusLabel,    "foyer/focus_label");
     BRLS_BIND(brls::HScrollingFrame, carouselScroll, "foyer/carousel_scroll");
     BRLS_BIND(brls::Label, scrapeStatus,  "foyer/scrape_status");

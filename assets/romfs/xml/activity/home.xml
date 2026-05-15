@@ -52,6 +52,18 @@
             axis="row"
             alignItems="center" />
 
+        <!-- Focused-system logo — fills in as the user scrolls the
+             carousel. HomeActivity::onSystemFocused points at
+             theme/foyer/systems/<folder>/logo_(dark|light).png.
+             v0.6.98's blue centered focus label is gone; the logo
+             carries the affordance now. -->
+        <brls:Image
+            id="foyer/focus_logo"
+            width="auto"
+            height="56"
+            marginLeft="20"
+            scalingType="fit" />
+
         <brls:Box width="auto" height="auto" grow="1.0" />
 
         <!-- Status cluster: clock · wifi · battery (left → right) -->
@@ -106,20 +118,6 @@
         width="auto"
         height="auto"
         grow="1.0" />
-
-    <!-- Focused tile name — sits above the carousel in the
-         highlight colour so the user can read which system the
-         current tile represents without relying on the splash
-         art alone. Text + colour set by HomeActivity on focus
-         change. -->
-    <brls:Label
-        id="foyer/focus_label"
-        text=""
-        width="auto"
-        height="auto"
-        fontSize="28"
-        horizontalAlign="center"
-        marginBottom="8" />
 
     <!-- System carousel — pinned just above the bottom hint bar. -->
     <brls:HScrollingFrame
