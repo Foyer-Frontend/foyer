@@ -265,6 +265,27 @@ std::vector<System> scan_library(const ScanOptions& opts) {
             // load so a switch in system_sort_mode shows up without
             // needing to bust the library cache.
             apply_hide_empty(*cached);
+
+            // Append the Switch virtual to the real-system list
+            // BEFORE sorting so it participates in apply_system_sort
+            // alongside NES/SNES/etc instead of getting pinned at
+            // index 0. Favourites + Recent are added after sort so
+            // they stay at the top regardless of the sort mode.
+            {
+                System v;
+                v.def       = &kVirtualSwitchDef;
+                v.root_path = "(virtual)";
+                for (const auto& t : ::foyer::library::switch_titles()) {
+                    Game g{};
+                    g.path      = switch_path_for(t.application_id);
+                    g.stem      = t.name.empty()
+                        ? std::string{"Untitled"} : t.name;
+                    g.display   = g.stem;
+                    g.box_art   = t.icon_path;
+                    v.games.push_back(std::move(g));
+                }
+                cached->push_back(std::move(v));
+            }
             apply_system_sort(*cached);
             // Recreate virtual carousel tiles from the loaded games.
             // IMPORTANT: walk only REAL systems — once we insert
@@ -314,23 +335,9 @@ std::vector<System> scan_library(const ScanOptions& opts) {
             // hardware. Re-enable behind a Settings toggle if
             // someone asks for it.
             // add_virtual(kVirtualAllGamesDef, [](const Game&) { return true; }, ...);
-            // Always-present Switch virtual — populated from
-            // libnx's nsListApplicationRecord at boot.
-            {
-                System v;
-                v.def       = &kVirtualSwitchDef;
-                v.root_path = "(virtual)";
-                for (const auto& t : ::foyer::library::switch_titles()) {
-                    Game g{};
-                    g.path      = switch_path_for(t.application_id);
-                    g.stem      = t.name.empty()
-                        ? std::string{"Untitled"} : t.name;
-                    g.display   = g.stem;
-                    g.box_art   = t.icon_path;
-                    v.games.push_back(std::move(g));
-                }
-                out_real.insert(out_real.begin(), std::move(v));
-            }
+            // Switch virtual was inserted before the sort above so
+            // it could ride apply_system_sort alongside the real
+            // systems — nothing to do here.
             return std::move(*cached);
         }
     }
@@ -389,6 +396,26 @@ std::vector<System> scan_library(const ScanOptions& opts) {
     }
 
     apply_hide_empty(out);
+
+    // Switch virtual sorts with the real systems (see cache fast-
+    // path for the rationale) — push_back BEFORE apply_system_sort
+    // so the user's chosen sort mode (Alphabetical / GameCount /
+    // Custom) decides its position rather than always landing at 0.
+    {
+        System v;
+        v.def       = &kVirtualSwitchDef;
+        v.root_path = "(virtual)";
+        for (const auto& t : ::foyer::library::switch_titles()) {
+            Game g{};
+            g.path      = switch_path_for(t.application_id);
+            g.stem      = t.name.empty()
+                ? std::string{"Untitled"} : t.name;
+            g.display   = g.stem;
+            g.box_art   = t.icon_path;
+            v.games.push_back(std::move(g));
+        }
+        out.push_back(std::move(v));
+    }
     apply_system_sort(out);
 
     // Synthesise the virtual "Recent" + "Favorites" carousel tiles by
@@ -431,26 +458,8 @@ std::vector<System> scan_library(const ScanOptions& opts) {
     // rationale — 1k+ entry carousel hitches Home scroll).
     // add_virtual(kVirtualAllGamesDef, [](const Game&) { return true; }, ...);
 
-    // Switch-titles virtual — populated from
-    // foyer::library::switch_titles() (loaded in main.cpp boot
-    // path). Each installed Switch app becomes a Game whose
-    // `path` is "switch://<hex>"; launch.cpp peels the hex back
-    // out and hands it to appletRequestLaunchApplication.
-    {
-        System v;
-        v.def       = &kVirtualSwitchDef;
-        v.root_path = "(virtual)";
-        for (const auto& t : ::foyer::library::switch_titles()) {
-            Game g{};
-            g.path      = switch_path_for(t.application_id);
-            g.stem      = t.name.empty()
-                ? std::string{"Untitled"} : t.name;
-            g.display   = g.stem;
-            g.box_art   = t.icon_path;
-            v.games.push_back(std::move(g));
-        }
-        out.insert(out.begin(), std::move(v));
-    }
+    // Switch virtual was inserted before apply_system_sort above so
+    // it gets sorted in with the real systems.
 
     foyer::log::write("[scan] %zu system(s) populated\n", out.size());
     for (const auto& s : out) {
