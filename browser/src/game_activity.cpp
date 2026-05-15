@@ -1,4 +1,5 @@
 #include "activity/game_activity.hpp"
+#include "activity/per_game_activity.hpp"
 
 #include "install_queue.hpp"
 #include "launch.hpp"
@@ -292,16 +293,14 @@ void GameActivity::onContentAvailable() {
                 return true;
             }, false, false, brls::SOUND_CLICK);
 
-        // + (Start) — Per-game settings (placeholder for now).
+        // + (Start) — Per-game settings (moved here from SystemActivity
+        // in 0.6.88 so the bottom bar on the carousel stays clean).
         cv->registerAction(
             "Settings", brls::BUTTON_START,
-            [](brls::View*) {
-                auto* dlg = new brls::Dialog(
-                    "Per-game settings — core override, runahead, "
-                    "shader pick, save-state slot. Wired in a "
-                    "later alpha.");
-                dlg->addButton("hints/ok"_i18n, []() {});
-                dlg->open();
+            [path_copy, sys_copy = m_system_folder](brls::View*) {
+                brls::Application::pushActivity(
+                    new PerGameActivity(sys_copy, path_copy),
+                    brls::TransitionAnimation::NONE);
                 return true;
             }, false, false, brls::SOUND_CLICK);
     }

@@ -216,26 +216,27 @@ public:
         }
         m_cover_path = std::move(cover);
 
-        // A — launch the rom directly (chain-launch into the
-        // player nro). registerAction (not registerClickAction)
-        // so brls's hint bar shows "Launch" instead of the
-        // default "OK" label. B / Y / X / + below are tile-
-        // scoped so they fire only when this tile has focus.
+        // Hint cleanup (0.6.88): A = Open Details (canonical "OK"
+        // affordance on Switch), Y = Quick Launch (skip the detail
+        // panel). X stays as Favourite. Per-game Settings moved to
+        // GameActivity since the detail panel now sits between the
+        // tile and the game. B / L / R still cycle pages and back
+        // (the L/R hints are hidden — registerAction with the
+        // hidden=true flag — to clean up the bottom-bar).
         this->registerAction(
-            "Launch", brls::BUTTON_A,
+            "Open details", brls::BUTTON_A,
             [this](brls::View*) {
-                launch_focused_game();
+                brls::Application::pushActivity(
+                    new GameActivity(m_system, m_path));
                 return true;
             }, false, false, brls::SOUND_CLICK);
         this->addGestureRecognizer(new brls::TapGestureRecognizer(this));
 
-        // Y — open the Game details view (cover, screenshots,
-        // metadata).
+        // Y — quick-launch, skipping the detail panel.
         this->registerAction(
-            "Details", brls::BUTTON_Y,
+            "Quick launch", brls::BUTTON_Y,
             [this](brls::View*) {
-                brls::Application::pushActivity(
-                    new GameActivity(m_system, m_path));
+                launch_focused_game();
                 return true;
             }, false, false, brls::SOUND_CLICK);
 
@@ -249,16 +250,6 @@ public:
                 brls::Application::notify(was
                     ? "Removed from favourites"
                     : "Added to favourites");
-                return true;
-            }, false, false, brls::SOUND_CLICK);
-
-        // + — per-game settings override.
-        this->registerAction(
-            "Settings", brls::BUTTON_START,
-            [this](brls::View*) {
-                brls::Application::pushActivity(
-                    new PerGameActivity(m_system, m_path),
-                    brls::TransitionAnimation::NONE);
                 return true;
             }, false, false, brls::SOUND_CLICK);
     }
@@ -520,18 +511,22 @@ void SystemActivity::onContentAvailable() {
         if (n < 1) n = 1;
         return n;
     };
+    // L / R cycle pages but the hint bar suppresses their chips
+    // (registerAction hidden=true) so the bottom bar stays clean
+    // — only A / Y / X / B chips are visible. The actions still
+    // fire on button press.
     this->getContentView()->registerAction(
         "Prev page", brls::BUTTON_LB,
         [jump_focus, page_size](brls::View*) {
             return jump_focus(-page_size());
         },
-        false, true, brls::SOUND_FOCUS_CHANGE);
+        /*hidden=*/true, /*allowRepeating=*/true, brls::SOUND_FOCUS_CHANGE);
     this->getContentView()->registerAction(
         "Next page", brls::BUTTON_RB,
         [jump_focus, page_size](brls::View*) {
             return jump_focus(+page_size());
         },
-        false, true, brls::SOUND_FOCUS_CHANGE);
+        /*hidden=*/true, /*allowRepeating=*/true, brls::SOUND_FOCUS_CHANGE);
 }
 
 void SystemActivity::buildLogo() {
