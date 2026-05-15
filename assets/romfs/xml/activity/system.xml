@@ -38,8 +38,7 @@
         height="80"
         axis="row"
         alignItems="center"
-        marginLeft="@style/brls/hints/footer_margin_sides"
-        marginRight="@style/brls/hints/footer_margin_sides"
+        backgroundColor="@theme/foyer/bar_overlay"
         paddingLeft="@style/brls/hints/footer_padding_sides"
         paddingRight="@style/brls/hints/footer_padding_sides">
 
@@ -133,8 +132,7 @@
         height="@style/brls/applet_frame/footer_height"
         axis="row"
         alignItems="center"
-        marginLeft="@style/brls/hints/footer_margin_sides"
-        marginRight="@style/brls/hints/footer_margin_sides"
+        backgroundColor="@theme/foyer/bar_overlay"
         paddingLeft="@style/brls/hints/footer_padding_sides"
         paddingRight="@style/brls/hints/footer_padding_sides"
         paddingTop="@style/brls/hints/footer_padding_top_bottom"

@@ -106,6 +106,14 @@ int main(int argc, char* argv[])
         nvgRGBA(15, 18, 30, 190));
     brls::Theme::getLightTheme().addColor("foyer/splash_overlay",
         nvgRGBA(245, 248, 255, 140));
+    // Translucent top/bottom bar tint that lets the backdrop bleed
+    // through while still keeping clock / wifi / battery / button
+    // hints legible. Dark = ~70% black for dark backdrops, Light =
+    // ~70% white for light themes.
+    brls::Theme::getDarkTheme().addColor("foyer/bar_overlay",
+        nvgRGBA(0, 0, 0, 180));
+    brls::Theme::getLightTheme().addColor("foyer/bar_overlay",
+        nvgRGBA(255, 255, 255, 180));
     brls::Theme::getDarkTheme().addColor("foyer/splash_bar_track",
         nvgRGBA(255, 255, 255, 50));
     brls::Theme::getLightTheme().addColor("foyer/splash_bar_track",
