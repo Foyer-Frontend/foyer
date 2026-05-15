@@ -110,7 +110,17 @@ bool asset_pack_present() {
     // only that dir. Require both top-level dirs so a half-extracted
     // pack triggers a re-download.
     const std::string root{kAssetRoot};
-    return dir_exists(root + "/systems") && dir_exists(root + "/themes");
+    if (!dir_exists(root + "/systems") || !dir_exists(root + "/themes"))
+        return false;
+    // Sentinel for v0.6.103 — auto-* + __switch virtual logos were
+    // added that day. Force a re-download for users whose asset
+    // pack predates that. The check is cheap (single stat) and
+    // bumps the cache once per new content drop without needing a
+    // version sidecar.
+    struct stat st{};
+    return ::stat(
+        (root + "/themes/foyer/systems/__switch/logo_dark.png").c_str(),
+        &st) == 0;
 }
 
 std::string asset_pack_system_file(std::string_view pack,
