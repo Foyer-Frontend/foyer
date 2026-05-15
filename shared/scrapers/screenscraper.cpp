@@ -137,35 +137,100 @@ bool fetch_cover(std::string_view system_folder,
     }
 
     // Installed Switch titles have a "switch://<hex>" pseudo-path
-    // and no rom file on disk — nothing to CRC, and SS's
-    // jeuRecherche.php returns shallow {} objects for many hits
-    // (no medias / noms populated). jeuInfos.php with just romnom
-    // (CRC omitted) returns a full jeu including medias for SS-
-    // catalogued titles — confirmed against "Super Mario Bros.
-    // Wonder". Other systems get the canonical CRC + romnom
-    // jeuInfos query.
+    // and no rom file on disk — nothing to CRC. SS coverage of
+    // Switch indie / obscure titles is sparse: jeuInfos with just
+    // romnom returns 404 for any name that doesn't exact-match an
+    // indexed rom, and jeuRecherche returns shallow {} objects for
+    // titles SS has heard of but never scraped. The fallback chain
+    // below tries jeuInfos exact match first; on 404 it tries
+    // jeuRecherche to get a jeuid; if that yields one, it re-runs
+    // jeuInfos by jeuid for the full media payload.
     const bool is_switch_virtual = rom_path.rfind("switch://", 0) == 0;
 
-    std::string url =
-        std::string{"https://api.screenscraper.fr/api2/jeuInfos.php?"}
-        + "devid="       + foyer::net::url_encode(devid)
-        + "&devpassword="+ foyer::net::url_encode(devpassword)
-        + "&softname="   + foyer::net::url_encode(kSoftname)
-        + "&output=json"
-        + "&systemeid="  + std::to_string(system_id)
-        + "&romnom="     + foyer::net::url_encode(std::string{rom_stem});
+    auto creds_suffix = [&]() {
+        std::string s;
+        if (a.user_ready()) {
+            s += "&ssid="       + foyer::net::url_encode(a.ssid);
+            s += "&sspassword=" + foyer::net::url_encode(a.sspassword);
+        }
+        return s;
+    };
+
+    auto build_jeuinfos_url = [&](const std::string& name,
+                                  const std::string& crc_hex) {
+        std::string u =
+            std::string{"https://api.screenscraper.fr/api2/jeuInfos.php?"}
+            + "devid="       + foyer::net::url_encode(devid)
+            + "&devpassword="+ foyer::net::url_encode(devpassword)
+            + "&softname="   + foyer::net::url_encode(kSoftname)
+            + "&output=json"
+            + "&systemeid="  + std::to_string(system_id)
+            + "&romnom="     + foyer::net::url_encode(name);
+        if (!crc_hex.empty()) u += "&crc=" + crc_hex;
+        u += creds_suffix();
+        return u;
+    };
+
+    std::string crc_hex;
     if (!is_switch_virtual) {
         char crchex[16];
         const auto crc = crc32_file(rom_path);
         std::snprintf(crchex, sizeof(crchex), "%08x", crc);
-        url += "&crc=" + std::string{crchex};
+        crc_hex = crchex;
     }
-    if (a.user_ready()) {
-        url += "&ssid="       + foyer::net::url_encode(a.ssid);
-        url += "&sspassword=" + foyer::net::url_encode(a.sspassword);
-    }
+    std::string url = build_jeuinfos_url(std::string{rom_stem}, crc_hex);
 
     auto resp = foyer::net::get(url);
+
+    // Switch fallback chain — only when the initial jeuInfos didn't
+    // find anything AND we're on the Switch virtual path (real roms
+    // get the canonical CRC path and don't need fuzzy fallback).
+    if (is_switch_virtual
+        && (resp.code == 404 || resp.body.empty()
+            || resp.body.find("\"jeu\"") == std::string::npos)) {
+        const std::string rurl =
+            std::string{"https://api.screenscraper.fr/api2/jeuRecherche.php?"}
+            + "devid="       + foyer::net::url_encode(devid)
+            + "&devpassword="+ foyer::net::url_encode(devpassword)
+            + "&softname="   + foyer::net::url_encode(kSoftname)
+            + "&output=json"
+            + "&systemeid="  + std::to_string(system_id)
+            + "&recherche="  + foyer::net::url_encode(std::string{rom_stem})
+            + creds_suffix();
+        auto rresp = foyer::net::get(rurl);
+        if (rresp.code >= 200 && rresp.code < 300 && !rresp.body.empty()) {
+            // Grab the first jeuid out of jeux[]. The light response
+            // has just "id": "<n>" in each entry — strstr is enough
+            // and avoids re-parsing the whole doc.
+            const auto id_pos = rresp.body.find("\"id\":");
+            if (id_pos != std::string::npos) {
+                auto q1 = rresp.body.find('"', id_pos + 5);
+                auto q2 = rresp.body.find('"', q1 + 1);
+                if (q1 != std::string::npos && q2 != std::string::npos
+                    && q2 > q1 + 1) {
+                    const std::string jeuid =
+                        rresp.body.substr(q1 + 1, q2 - q1 - 1);
+                    if (!jeuid.empty() && jeuid.front() != '{') {
+                        // Re-fetch with jeuid for the full media set.
+                        const std::string jurl =
+                            std::string{"https://api.screenscraper.fr/api2/jeuInfos.php?"}
+                            + "devid="       + foyer::net::url_encode(devid)
+                            + "&devpassword="+ foyer::net::url_encode(devpassword)
+                            + "&softname="   + foyer::net::url_encode(kSoftname)
+                            + "&output=json"
+                            + "&systemeid="  + std::to_string(system_id)
+                            + "&gameid="     + jeuid
+                            + creds_suffix();
+                        foyer::log::write(
+                            "[ss] switch fallback via jeuid=%s\n",
+                            jeuid.c_str());
+                        resp = foyer::net::get(jurl);
+                    }
+                }
+            }
+        }
+    }
+
     if (resp.code < 200 || resp.code >= 300 || resp.body.empty()) {
         foyer::log::write("[ss] lookup failed: code=%ld bytes=%zu\n",
             resp.code, resp.body.size());
