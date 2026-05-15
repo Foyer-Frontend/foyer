@@ -10,6 +10,8 @@
 
 #include <switch.h>
 
+extern "C" void retro_reset(void);
+
 #include <borealis/views/applet_frame.hpp>
 #include <borealis/views/cells/cell_detail.hpp>
 #include <borealis/views/scrolling_frame.hpp>
@@ -67,6 +69,25 @@ brls::View* PauseActivity::createContentView() {
     add_cell("Resume", "Close menu",
         [](brls::View*) {
             brls::Application::popActivity(brls::TransitionAnimation::NONE);
+            return true;
+        });
+
+    add_cell("Restart", "Reset the game",
+        [](brls::View*) {
+            auto* dlg = new brls::Dialog(
+                "Restart the game? Unsaved progress will be lost.");
+            dlg->addButton("Cancel", []() {});
+            dlg->addButton("Restart", []() {
+                // libretro retro_reset — same effect as a soft
+                // reset on the original hardware. The emulator
+                // activity stays up and the frame ticker keeps
+                // pumping retro_run, so the next frame paints
+                // the post-reset state.
+                ::retro_reset();
+                foyer::log::write("[pause] retro_reset called\n");
+                brls::Application::popActivity(brls::TransitionAnimation::NONE);
+            });
+            dlg->open();
             return true;
         });
 
