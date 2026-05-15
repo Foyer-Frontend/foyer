@@ -118,7 +118,20 @@ bool load_state(const std::string& path) {
 
     const auto core_sz = retro_serialize_size();
     if (core_sz != 0 && core_sz != sz) {
-        foyer::log::write("[state] size mismatch: file=%zu core=%zu\n", sz, core_sz);
+        // Refuse to load. Most libretro cores embed implementation
+        // details in their state blob — internal struct sizes,
+        // pointer offsets, allocator metadata. A size mismatch =
+        // the core was rebuilt with a different layout since the
+        // state was saved. retro_unserialize will happily accept
+        // the bytes (it just memcpys into its internal state),
+        // but the next retro_run derefs a stale pointer and the
+        // process aborts with PC=0. Drop the state on the floor;
+        // the user can save fresh in this session.
+        foyer::log::write(
+            "[state] size mismatch: file=%zu core=%zu — refusing load "
+            "(rebuilt core, state incompatible)\n",
+            sz, core_sz);
+        return false;
     }
 
     std::vector<std::uint8_t> buf(sz);
