@@ -76,9 +76,22 @@ const char* section_label(Section s) {
     return ok;
 }
 
+// Forward decl: boot_done lives below in a separate anonymous
+// namespace block; do_restart needs to call it to unblock the
+// splash worker's condvar wait before brls::Application::quit.
+void boot_done();
+
 // Restart action shared by the post-download dialogs. Tears down
 // timers, applies the staged nro, and chain-launches.
 void do_restart() {
+    // If we got here via the boot-flow restart dialog the splash
+    // worker is still blocked on its condvar waiting for boot_done.
+    // Signal it before Application::quit so the worker thread can
+    // unwind cleanly — otherwise the process exits with the
+    // worker mid-wait and the std::thread join in Worker's dtor
+    // takes down the process.
+    boot_done();
+
     ::foyer::browser::install_queue::stop();
     ::foyer::browser::theme_watcher::stop();
     if (::foyer::browser::mtp_running()) {
