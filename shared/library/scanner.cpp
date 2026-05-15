@@ -309,13 +309,11 @@ std::vector<System> scan_library(const ScanOptions& opts) {
                         });
                 },
                 /*cap=*/100);
-            add_virtual(kVirtualAllGamesDef,
-                [](const Game&) { return true; },
-                [](std::vector<Game>& v) {
-                    std::sort(v.begin(), v.end(),
-                        [](const Game& a, const Game& b) { return a.stem < b.stem; });
-                },
-                /*cap=*/0);
+            // All Games virtual disabled — building a 1k+ entry
+            // carousel hitched the home screen scroll on Switch
+            // hardware. Re-enable behind a Settings toggle if
+            // someone asks for it.
+            // add_virtual(kVirtualAllGamesDef, [](const Game&) { return true; }, ...);
             // Always-present Switch virtual — populated from
             // libnx's nsListApplicationRecord at boot.
             {
@@ -429,13 +427,9 @@ std::vector<System> scan_library(const ScanOptions& opts) {
                 });
         },
         /*cap=*/100);
-    add_virtual(kVirtualAllGamesDef,
-        [](const Game&) { return true; },
-        [](std::vector<Game>& v) {
-            std::sort(v.begin(), v.end(),
-                [](const Game& a, const Game& b) { return a.stem < b.stem; });
-        },
-        /*cap=*/0);
+    // All Games virtual disabled (see cache fast-path above for the
+    // rationale — 1k+ entry carousel hitches Home scroll).
+    // add_virtual(kVirtualAllGamesDef, [](const Game&) { return true; }, ...);
 
     // Switch-titles virtual — populated from
     // foyer::library::switch_titles() (loaded in main.cpp boot
