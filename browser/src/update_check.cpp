@@ -213,6 +213,13 @@ void kick_boot(std::function<void()> on_done) {
     g_boot_on_done = std::move(on_done);
     const std::string url = ::foyer::library::config().foyer_manifest_url;
     foyer::log::write("[update] boot check enqueued\n");
+    // install_queue::enqueue creates a brls::RepeatingTimer + calls
+    // brls::Application::notify; both expect to run on the brls
+    // main thread. kick_boot is called from the splash worker
+    // thread, so we route the enqueue through brls::sync to land
+    // on the main thread. The actual manifest fetch still happens
+    // in the install_queue's own worker thread (spawned by start_next).
+    brls::sync([url] {
     ::foyer::browser::install_queue::enqueue(
         "Check foyer update",
         [url](::foyer::library::Worker& w) {
@@ -284,6 +291,7 @@ void kick_boot(std::function<void()> on_done) {
                 dlg->open();
             });
         });
+    });
 }
 
 bool kick(bool verbose) {
