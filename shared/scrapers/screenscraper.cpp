@@ -6,6 +6,8 @@
 #include "net/http.hpp"
 #include "platform/log.hpp"
 
+#include <sys/stat.h>
+
 #include <algorithm>
 #include <array>
 #include <cstdio>
