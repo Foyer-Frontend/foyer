@@ -111,7 +111,7 @@ std::string pack_system_dir(std::string_view pack, std::string_view folder) {
 // LOCAL extract was installed with; asset_pack_present compares
 // to the running binary's expectation and forces a redownload on
 // mismatch.
-constexpr const char* kAssetPackVersion = "3";
+constexpr const char* kAssetPackVersion = "4";
 
 bool asset_pack_present() {
     const std::string root{kAssetRoot};
