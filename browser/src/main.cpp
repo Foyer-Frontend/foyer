@@ -124,7 +124,15 @@ int main(int argc, char* argv[])
         nvgRGBA(0, 130, 220, 255));
 
     // brls now owns the romfs fd. Safe to swap the staged-update file in.
-    foyer::browser::self_update::apply_staged_if_present();
+    // Returns true when a stage was applied — in that case our own
+    // romfs handle is gone (romfsExit inside) and continuing this
+    // boot would crash the next XML inflate. exit(0) so the user's
+    // next launch picks up the freshly-renamed nro cleanly.
+    if (foyer::browser::self_update::apply_staged_if_present()) {
+        foyer::log::write(
+            "[boot] staged nro applied during boot — exiting; relaunch\n");
+        std::exit(0);
+    }
     foyer::browser::self_update::scrub_legacy_default_bezel();
     if (foyer::library::config().scrub_extracted_enabled) {
         foyer::browser::self_update::scrub_extract_lru(

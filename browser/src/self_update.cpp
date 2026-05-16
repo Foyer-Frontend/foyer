@@ -49,9 +49,9 @@ void detect_paths() {
         g_path.c_str());
 }
 
-void apply_staged_if_present() {
+bool apply_staged_if_present() {
     struct stat st{};
-    if (::stat(g_path_new.c_str(), &st) != 0) return;
+    if (::stat(g_path_new.c_str(), &st) != 0) return false;
 
     // 0.5.21 floor: drop suspiciously-small staged files. A truncated
     // download leaves a partial foyer.nro.new; renaming it to foyer.nro
@@ -63,7 +63,7 @@ void apply_staged_if_present() {
             "deleting (probably a partial download)\n",
             (long long)st.st_size);
         ::unlink(g_path_new.c_str());
-        return;
+        return false;
     }
 
     // HOS keeps the running NRO file pinned via its open romfs fd
@@ -90,21 +90,17 @@ void apply_staged_if_present() {
             "[self_update] rename of staged nro failed errno=%d "
             "(leaving %s in place for the next attempt)\n",
             errno, g_path_new.c_str());
-        return;  // do NOT unlink .new on failure
+        return false;  // do NOT unlink .new on failure
     }
     foyer::log::write("[self_update] applied staged nro -> %s\n",
         g_path.c_str());
-
-    // romfsExit above destroyed THIS process's romfs handle. Any
-    // subsequent brls XML inflate / asset load returns garbage,
-    // and HomeActivity's first frame crashes on a half-built View
-    // chain (foyer + 0xbd574 in v0.6.94: View::getClassString on
-    // a null typeId pointer). The running v0.6.94 code is stale
-    // anyway — the new bytes are on disk. Exit the process so the
-    // user's next launch hits the fresh nro cleanly.
-    foyer::log::write(
-        "[self_update] exiting so next launch picks up the new nro\n");
-    std::exit(0);
+    // NOTE: romfsExit above destroyed THIS process's romfs handle.
+    // Callers must either exit() (boot path — main.cpp does this
+    // when this returns true) or chain-launch immediately via
+    // envSetNextLoad + brls::Application::quit (do_restart /
+    // prompt_restart). Doing neither + continuing the brls main
+    // loop crashes the next XML inflate on a dead romfs.
+    return true;
 }
 
 void scrub_legacy_default_bezel() {
