@@ -98,26 +98,32 @@ void do_restart() {
         ::foyer::browser::mtp_stop();
     }
     ::foyer::browser::self_update::apply_staged_if_present();
-    // No envSetNextLoad — chain-launching directly into the freshly-
-    // renamed foyer.nro consistently crashed in the new process's
-    // first mainLoop frame inside Application::handleAction's
-    // shared_ptr<Action> insertion_sort (state leak across hbloader's
-    // re-map). v0.6.68 / v0.6.85 each tried a tweak; both still
-    // crashed. Same-process restart isn't reliable, so quit cleanly
-    // and let the user relaunch from the forwarder — the second
-    // launch boots the new version every time.
-    foyer::log::write(
-        "[update] staged nro applied — quit + relaunch manually to "
-        "boot the new version\n");
+
+    // Chain-launch the freshly-renamed foyer.nro — same path
+    // Settings → Updates uses successfully via prompt_restart.
+    // boot_done() above already released the splash worker so
+    // the upcoming mainLoop drain doesn't race a condvar wait.
+    const std::string sd_self =
+        std::string{"sdmc:"} + ::foyer::browser::self_update::nro_path();
+    char argv[512];
+    std::snprintf(argv, sizeof(argv), "\"%s\"", sd_self.c_str());
+    if (R_FAILED(envSetNextLoad(sd_self.c_str(), argv))) {
+        foyer::log::write(
+            "[update] envSetNextLoad failed — quitting to "
+            "the forwarder; relaunch manually\n");
+    } else {
+        foyer::log::write(
+            "[update] chain-launching new foyer at %s\n",
+            sd_self.c_str());
+    }
     brls::Application::quit();
 }
 
 void prompt_restart() {
     auto* dlg = new brls::Dialog(
-        "Update downloaded. Quit foyer? Relaunch from Home to boot "
-        "the new version (chain-launch crashes the first frame).");
+        "Update downloaded. Restart foyer now?");
     dlg->addButton("Later", []() {});
-    dlg->addButton("Quit", []() {
+    dlg->addButton("Restart", []() {
         // Tear down every long-lived RepeatingTask/Timer BEFORE
         // we touch the filesystem or chain-launch. brls's quit
         // drain otherwise lets these tick into already-freed
@@ -291,13 +297,11 @@ void kick_boot(std::function<void()> on_done) {
                                 brls::Application::notify(
                                     "Update v" + version + " ready");
                                 auto* rdlg = new brls::Dialog(
-                                    "Update downloaded. Quit foyer? "
-                                    "Relaunch from Home to boot the new "
-                                    "version.");
+                                    "Update downloaded. Restart foyer now?");
                                 rdlg->addButton("Later", []() {
                                     boot_done();
                                 });
-                                rdlg->addButton("Quit", []() {
+                                rdlg->addButton("Restart", []() {
                                     do_restart();
                                 });
                                 rdlg->open();
