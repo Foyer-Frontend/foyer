@@ -57,15 +57,10 @@
              theme/foyer/systems/<folder>/logo_(dark|light).png.
              v0.6.98's blue centered focus label is gone; the logo
              carries the affordance now. -->
-        <!-- Width + height both bounded so wide logos (atari2600's
-             logo_dark is 480x62 — aspect 7.7) don't blow out the
-             top bar at fit-to-height-56. Aspect-fit inside a
-             160x40 box; tall logos stay 40 high, wide logos go
-             narrower than 160. -->
         <brls:Image
             id="foyer/focus_logo"
-            width="160"
-            height="40"
+            width="auto"
+            height="56"
             marginLeft="20"
             scalingType="fit" />
 
