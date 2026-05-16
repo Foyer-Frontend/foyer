@@ -454,50 +454,54 @@ bool fetch_cover(std::string_view system_folder,
         return nm;
     };
     foyer::scrapers::ensure_parent_dir(bundle_dir + ".placeholder");
-    if (!box.url.empty()) {
+
+    // Per-kind missing-file probe — system-scrape re-runs over an
+    // already-scraped library only re-fetch the kinds we don't
+    // have on disk yet (e.g. wheel was added in v0.6.99; existing
+    // bundles miss it). Looks for any file matching <kind>(*).<ext>
+    // or <kind>.<ext> via scrapers::find_in_dir.
+    auto kind_present = [&](const std::string& kind) {
+        return !::foyer::scrapers::find_in_dir(bundle_dir, kind).empty();
+    };
+    auto fetch_if_missing =
+        [&](const std::string& kind, const MediaPick& pick, const char* ext) {
+            if (pick.url.empty()) return;
+            if (kind_present(kind)) return;
+            foyer::net::get_to_file(pick.url, bundle_path(kind, pick.region, ext));
+        };
+
+    // box-2D goes to dest_png + the bundle copy; check the bundle
+    // side so re-runs without an existing bundle still fetch.
+    if (!box.url.empty() && !kind_present("box-2D")) {
         foyer::net::get_to_file(box.url,
             bundle_path("box-2D", box.region, ".png"));
     }
 
-    // Companion media — best-effort, individual failures don't
-    // count against the scrape hit total. Each lands at the
-    // canonical filename the user expects.
-    const auto title_pick = pick_media("sstitle");
-    if (!title_pick.url.empty()) {
-        foyer::net::get_to_file(title_pick.url,
-            bundle_path("sstitle", title_pick.region, ".png"));
+    fetch_if_missing("sstitle",      pick_media("sstitle"),      ".png");
+    fetch_if_missing("ss",           pick_media("ss"),           ".png");
+    {
+        // fanart filename has no region tag in the user's layout;
+        // probe by literal filename.
+        struct stat st{};
+        const auto fanart_dest = bundle_dir + "fanart.jpg";
+        if (::stat(fanart_dest.c_str(), &st) != 0) {
+            const auto fanart_pick = pick_media("fanart");
+            if (!fanart_pick.url.empty()) {
+                foyer::net::get_to_file(fanart_pick.url, fanart_dest);
+            }
+        }
     }
-    const auto ss_pick = pick_media("ss");
-    if (!ss_pick.url.empty()) {
-        foyer::net::get_to_file(ss_pick.url,
-            bundle_path("ss", ss_pick.region, ".png"));
-    }
-    const auto fanart_pick = pick_media("fanart");
-    if (!fanart_pick.url.empty()) {
-        // fanart filename has no region tag in the user's reference
-        // layout — single fanart per game.
-        foyer::net::get_to_file(fanart_pick.url,
-            bundle_dir + "fanart.jpg");
-    }
-    // Wheel — transparent PNG of the game logo, used as the top-bar
-    // title affordance on GameActivity when present (cleaner than
-    // rendering the raw title text). Saved with the region suffix
-    // so the activity can pick the variant matching the user's
-    // region preference.
-    const auto wheel_pick = pick_media("wheel");
-    if (!wheel_pick.url.empty()) {
-        foyer::net::get_to_file(wheel_pick.url,
-            bundle_path("wheel", wheel_pick.region, ".png"));
-    }
-    const auto bezel_pick = pick_media("bezel-16-9");
-    if (!bezel_pick.url.empty()) {
-        foyer::net::get_to_file(bezel_pick.url,
-            bundle_path("bezel-16-9", bezel_pick.region, ".png"));
-    }
-    const auto video_pick = pick_media("video-normalized");
-    if (!video_pick.url.empty()) {
-        foyer::net::get_to_file(video_pick.url,
-            bundle_dir + "video-normalized.mp4");
+    fetch_if_missing("wheel",        pick_media("wheel"),        ".png");
+    fetch_if_missing("bezel-16-9",   pick_media("bezel-16-9"),   ".png");
+    {
+        struct stat st{};
+        const auto vid_dest = bundle_dir + "video-normalized.mp4";
+        if (::stat(vid_dest.c_str(), &st) != 0) {
+            const auto video_pick = pick_media("video-normalized");
+            if (!video_pick.url.empty()) {
+                foyer::net::get_to_file(video_pick.url, vid_dest);
+            }
+        }
     }
 
     // Drop a metadata.json next to the media so the detail panel

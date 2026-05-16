@@ -94,14 +94,11 @@ ScrapeStats run_system_scrape(const System& sys, ScrapeJob::Source src,
             short_name.c_str(), label, out.done, out.total);
         w.set_status(banner);
 
-        // Cache gate — skip games that already have a metadata.json
-        // bundle (the only marker that survives across foyer
-        // versions; old covers don't qualify).
-        const auto bundle_meta =
-            scrapers::game_asset_dir(folder, g.stem) + "metadata.json";
-        struct stat st{};
-        if (::stat(bundle_meta.c_str(), &st) == 0) continue;
-
+        // No cache gate — fetch_cover internally probes each media
+        // kind (box-2D, sstitle, wheel, fanart, …) before
+        // re-downloading. Re-running a system scrape now fills in
+        // new kinds (wheel was added in v0.6.99) without re-pulling
+        // already-present art.
         const auto dest = scrapers::cover_path(folder, g.stem);
         if (fetch_one(src, folder, thumbs_db, g.path, g.stem, dest)) {
             out.hits++;
