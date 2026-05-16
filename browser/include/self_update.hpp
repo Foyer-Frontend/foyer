@@ -13,7 +13,15 @@ void detect_paths();
 // Must be called AFTER brls::Application::init() — borealis opens
 // argv[0] for romfs reads during init, and we can't rename the file
 // out from under the not-yet-established fd (0.5.25 fatal regression).
-void apply_staged_if_present();
+//
+// Returns true when the .new file existed and was renamed. NOTE:
+// this function calls romfsExit() to release the file lock; after
+// it returns true, THIS process's romfs handle is dead. Callers
+// must either exit(0) immediately (main()'s boot path) or
+// chain-launch via envSetNextLoad + brls::Application::quit
+// (prompt_restart / do_restart). Continuing the brls main loop
+// will crash the next XML inflate.
+bool apply_staged_if_present();
 
 // Idempotent scrub of /foyer/bezels/default.png — the v0.2.x bundled
 // CRT-TV bezel that older player NROs still pick up via fallback. No
