@@ -145,6 +145,20 @@ void DownloadQueueActivity::onContentAvailable() {
                 brls::Application::popActivity(brls::TransitionAnimation::NONE);
                 return true;
             }, false, false, brls::SOUND_BACK);
+        cv->registerAction(
+            "Cancel", brls::BUTTON_Y,
+            [](brls::View*) {
+                ::foyer::browser::install_queue::cancel_current();
+                brls::Application::notify("Cancelled active download");
+                return true;
+            }, false, false, brls::SOUND_CLICK);
+        cv->registerAction(
+            "Cancel all", brls::BUTTON_X,
+            [](brls::View*) {
+                ::foyer::browser::install_queue::stop();
+                brls::Application::notify("Cancelled all downloads");
+                return true;
+            }, false, false, brls::SOUND_CLICK);
     }
 
     refresh();

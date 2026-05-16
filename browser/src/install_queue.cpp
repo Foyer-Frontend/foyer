@@ -163,6 +163,16 @@ std::size_t enqueue(std::string tag, JobBody body) {
     return depth;
 }
 
+void cancel_current() {
+    std::unique_lock lk{g_mutex};
+    if (g_worker) {
+        g_worker->cancel();
+        foyer::log::write(
+            "[install_queue] cancel requested for active tag=%s\n",
+            g_active_tag.c_str());
+    }
+}
+
 void stop() {
     std::unique_lock lk{g_mutex};
     g_queue.clear();

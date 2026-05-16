@@ -108,34 +108,6 @@
         height="auto"
         grow="1.0" />
 
-    <!-- Focused game wheel + title fallback — above the cover
-         carousel. SystemActivity picks: if SS scraped a
-         wheel(XX).png into the per-game bundle, show it; else
-         show the plain text title. -->
-    <brls:Box
-        width="auto"
-        height="72"
-        axis="row"
-        alignItems="center"
-        justifyContent="center"
-        marginBottom="4">
-
-        <brls:Image
-            id="foyer/focus_wheel"
-            width="auto"
-            height="64"
-            scalingType="fit"
-            visibility="gone" />
-
-        <brls:Label
-            id="foyer/focus_label"
-            text=""
-            width="auto"
-            height="auto"
-            fontSize="28"
-            horizontalAlign="center" />
-    </brls:Box>
-
     <!-- Game cover-flow carousel — pinned right above the bottom
          hint bar. Frame height matches the tallest tile (280px
          portrait) + 7px top margin; the bottom margin is small so

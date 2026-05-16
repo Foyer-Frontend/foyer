@@ -735,26 +735,9 @@ void SystemActivity::onTileFocused(int idx) {
     auto* tile = dynamic_cast<GameTile*>(carousel->getChildren()[idx]);
     if (!tile) return;
 
+    if (!backdrop) return;
     const auto bundle = ::foyer::scrapers::game_asset_dir(
         tile->system(), tile->stem());
-
-    // Focused-game wheel / title pair. Wheel art (transparent
-    // PNG of the game logo) wins when SS dropped one in the
-    // bundle; otherwise fall back to the plain text stem.
-    const auto wheel_path = ::foyer::scrapers::find_in_dir(bundle, "wheel");
-    if (!wheel_path.empty() && focusWheel) {
-        focusWheel->setImageFromFile(wheel_path);
-        focusWheel->setVisibility(brls::Visibility::VISIBLE);
-        if (focusLabel) focusLabel->setVisibility(brls::Visibility::GONE);
-    } else if (focusLabel) {
-        focusLabel->setText(tile->stem());
-        focusLabel->setTextColor(
-            brls::Application::getTheme().getColor("brls/highlight/color1"));
-        focusLabel->setVisibility(brls::Visibility::VISIBLE);
-        if (focusWheel) focusWheel->setVisibility(brls::Visibility::GONE);
-    }
-
-    if (!backdrop) return;
     const auto fanart = bundle + "fanart.jpg";
     struct stat st{};
     if (::stat(fanart.c_str(), &st) == 0 && st.st_size > 0) {

@@ -30,6 +30,13 @@ std::size_t enqueue(std::string tag, JobBody body);
 // torn-down Application.
 void stop();
 
+// Cancel just the currently-running job. The worker's cancel
+// flag is set so its body bails at the next poll point (curl
+// xferinfo or w.cancelled() check); the next pending job
+// starts on the following poll tick. Pending jobs are NOT
+// touched.
+void cancel_current();
+
 // How many jobs are pending (including the active one). 0 if
 // idle.
 std::size_t pending();

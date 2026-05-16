@@ -105,22 +105,28 @@ std::string pack_system_dir(std::string_view pack, std::string_view folder) {
 
 } // namespace
 
+// Bump this every time the foyer-assets.zip content changes in a
+// way that needs forcing existing users to re-download. The
+// sidecar at /foyer/data/assets/.version stores the version the
+// LOCAL extract was installed with; asset_pack_present compares
+// to the running binary's expectation and forces a redownload on
+// mismatch.
+constexpr const char* kAssetPackVersion = "3";
+
 bool asset_pack_present() {
-    // "systems" alone isn't enough — older v0.6.66 builds extracted
-    // only that dir. Require both top-level dirs so a half-extracted
-    // pack triggers a re-download.
     const std::string root{kAssetRoot};
     if (!dir_exists(root + "/systems") || !dir_exists(root + "/themes"))
         return false;
-    // Sentinel for v0.6.103 — auto-* + __switch virtual logos were
-    // added that day. Force a re-download for users whose asset
-    // pack predates that. The check is cheap (single stat) and
-    // bumps the cache once per new content drop without needing a
-    // version sidecar.
-    struct stat st{};
-    return ::stat(
-        (root + "/themes/foyer/systems/__switch/logo_dark.png").c_str(),
-        &st) == 0;
+    auto* f = std::fopen((root + "/.version").c_str(), "rb");
+    if (!f) return false;
+    char buf[16] = {0};
+    const auto n = std::fread(buf, 1, sizeof(buf) - 1, f);
+    std::fclose(f);
+    std::string ver{buf, n};
+    while (!ver.empty()
+        && (ver.back() == '\n' || ver.back() == '\r' || ver.back() == ' '))
+        ver.pop_back();
+    return ver == kAssetPackVersion;
 }
 
 std::string asset_pack_system_file(std::string_view pack,
@@ -182,7 +188,17 @@ bool install_asset_pack(
         return false;
     }
 
-    foyer::log::write("[asset_pack] installed to %s\n", kAssetRoot);
+    // Stamp the version sidecar so asset_pack_present() can detect
+    // future content bumps without an http HEAD check.
+    if (auto* vf = std::fopen(
+            (std::string{kAssetRoot} + "/.version").c_str(), "wb")) {
+        std::fwrite(kAssetPackVersion, 1,
+                    std::strlen(kAssetPackVersion), vf);
+        std::fclose(vf);
+    }
+
+    foyer::log::write("[asset_pack] installed to %s (v=%s)\n",
+        kAssetRoot, kAssetPackVersion);
     return true;
 }
 
