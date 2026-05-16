@@ -536,12 +536,14 @@ void SystemActivity::buildLogo() {
     if (!logoHolder) return;
     // Top-bar logo on SystemActivity reflects the focused GAME.
     // Two children: an Image (wheel art) and a Label (text
-    // fallback). onTileFocused toggles which one is visible
-    // based on whether SS dropped a wheel(XX).png in the bundle.
-    constexpr float kLogoW = 280.0f;
+    // fallback). Image is height-only constrained (width=auto)
+    // so the natural aspect of each wheel is preserved — wide
+    // wheels stretch right from the left edge of logo_holder,
+    // narrow ones stay narrow. logo_holder itself sits at the
+    // left of the top bar so every wheel starts at the same
+    // x coordinate regardless of size.
     constexpr float kLogoH = 56.0f;
     auto* logo = new brls::Image();
-    logo->setWidth(kLogoW);
     logo->setHeight(kLogoH);
     logo->setScalingType(brls::ImageScalingType::FIT);
     logoHolder->addView(logo);
