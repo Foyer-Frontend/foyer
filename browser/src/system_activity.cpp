@@ -534,30 +534,24 @@ void SystemActivity::onContentAvailable() {
 
 void SystemActivity::buildLogo() {
     if (!logoHolder) return;
-
-    // Sized to fit the 80px top bar with breathing room above /
-    // below. FIT scaling preserves aspect, so wide logos stay
-    // proportional and the holder gives them up to 240px of
-    // horizontal room.
-    constexpr float kLogoW = 240.0f;
+    // Top-bar logo on SystemActivity reflects the focused GAME.
+    // Two children: an Image (wheel art) and a Label (text
+    // fallback). onTileFocused toggles which one is visible
+    // based on whether SS dropped a wheel(XX).png in the bundle.
+    constexpr float kLogoW = 280.0f;
     constexpr float kLogoH = 56.0f;
-
-    // Pre-rendered variants live alongside splash + background;
-    // pick the one whose foreground colour reads against the
-    // current theme's background. (Runtime tinting via
-    // nvgImagePattern looked muddy on hardware — the texture
-    // multiplication doesn't preserve antialiased edges cleanly,
-    // so the user requested separate dark / light PNGs.)
-    const bool dark =
-        brls::Application::getThemeVariant() == brls::ThemeVariant::DARK;
-
     auto* logo = new brls::Image();
     logo->setWidth(kLogoW);
     logo->setHeight(kLogoH);
     logo->setScalingType(brls::ImageScalingType::FIT);
     logoHolder->addView(logo);
-    logo->setImageFromFile(
-        ::foyer::library::asset_system_logo(art_dir_for(m_folder), dark));
+    logo->setVisibility(brls::Visibility::GONE);
+
+    auto* lbl = new brls::Label();
+    lbl->setText("");
+    lbl->setFontSize(24.0f);
+    logoHolder->addView(lbl);
+    lbl->setVisibility(brls::Visibility::GONE);
 }
 
 void SystemActivity::buildActionRow() {
@@ -735,9 +729,32 @@ void SystemActivity::onTileFocused(int idx) {
     auto* tile = dynamic_cast<GameTile*>(carousel->getChildren()[idx]);
     if (!tile) return;
 
-    if (!backdrop) return;
     const auto bundle = ::foyer::scrapers::game_asset_dir(
         tile->system(), tile->stem());
+
+    // Top-bar logo follows the focused game. Wheel art when SS
+    // dropped one; text fallback when not.
+    if (logoHolder && logoHolder->getChildren().size() >= 2) {
+        auto* logo = dynamic_cast<brls::Image*>(
+            logoHolder->getChildren()[0]);
+        auto* lbl  = dynamic_cast<brls::Label*>(
+            logoHolder->getChildren()[1]);
+        const auto wheel_path =
+            ::foyer::scrapers::find_in_dir(bundle, "wheel");
+        if (logo && !wheel_path.empty()) {
+            logo->setImageFromFile(wheel_path);
+            logo->setVisibility(brls::Visibility::VISIBLE);
+            if (lbl) lbl->setVisibility(brls::Visibility::GONE);
+        } else {
+            if (logo) logo->setVisibility(brls::Visibility::GONE);
+            if (lbl) {
+                lbl->setText(tile->stem());
+                lbl->setVisibility(brls::Visibility::VISIBLE);
+            }
+        }
+    }
+
+    if (!backdrop) return;
     const auto fanart = bundle + "fanart.jpg";
     struct stat st{};
     if (::stat(fanart.c_str(), &st) == 0 && st.st_size > 0) {
