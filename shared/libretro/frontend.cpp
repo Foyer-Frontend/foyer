@@ -357,6 +357,12 @@ bool Frontend::load_game(const std::string& rom_path) {
     return true;
 }
 
+void Frontend::flush_sram() {
+    if (!m_rom_path.empty()) {
+        save_sram_for(m_rom_path);
+    }
+}
+
 void Frontend::unload_game() {
     if (!m_game_loaded) return;
     // Capture SRAM before retro_unload_game tears down the memory

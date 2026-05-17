@@ -152,6 +152,16 @@ brls::View* PauseActivity::createContentView() {
     add_cell("Quit", "Back to foyer",
         [this, back](brls::View*) {
             if (m_on_quit) m_on_quit();
+            // Flush SRAM proactively here — relying on
+            // EmulatorActivity's destructor was racing the
+            // chain-launch: brls::Application::quit doesn't
+            // guarantee the activity stack drains before main()
+            // returns, so dtors that call save_sram_for / unload_game
+            // could be skipped entirely and cartridge-save games
+            // (Zelda etc) lost their .srm. Explicitly persist
+            // before envSetNextLoad so the file is written + closed
+            // before the process tears down.
+            ::foyer::libretro::Frontend::instance().flush_sram();
             // Chain-launch back to foyer.nro instead of dropping
             // the user on the homebrew menu. The browser stamped
             // its own path as argv[2] when launching us.

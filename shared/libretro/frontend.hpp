@@ -69,6 +69,14 @@ struct Frontend {
 
     void unload_game();
 
+    // Persist battery-backed RAM to /foyer/saves/<rom>.srm. Called
+    // implicitly on unload_game + once per 30 s during run_frame.
+    // Pause overlay's Quit cell also calls it explicitly so SRAM
+    // is flushed before chain-launch (brls's activity stack
+    // teardown after Application::quit isn't guaranteed to run
+    // dtors before the process exits).
+    void flush_sram();
+
     // Drive one frame. Pumps input, calls retro_run, and forwards any video
     // / audio output to the platform sinks.
     void run_frame();
