@@ -54,7 +54,8 @@ brls::View* SlotPickerActivity::createContentView() {
         cell->registerClickAction([mode, rom, sys, i](brls::View*) {
             const auto path =
                 ::foyer::libretro::state_path_for(rom, sys, i);
-            if (mode == Mode::Save) {
+            const Mode m = mode;
+            if (m == Mode::Save) {
                 if (::foyer::libretro::save_state(path)) {
                     brls::Application::notify(
                         "Saved to slot " + std::to_string(i));
@@ -63,7 +64,15 @@ brls::View* SlotPickerActivity::createContentView() {
                 } else {
                     brls::Application::notify("Save failed");
                 }
-                brls::Application::popActivity(brls::TransitionAnimation::NONE);
+                // Defer the pop so brls finishes dispatching the
+                // current click-action before tearing this activity
+                // down — popping while we're still on the action
+                // callback's stack frame hits brls's deletion pool
+                // mid-dispatch and crashes (PC=0 via a freed
+                // View*'s vtable on the next frame).
+                brls::sync([]() {
+                    brls::Application::popActivity(brls::TransitionAnimation::NONE);
+                });
             } else {
                 if (::foyer::libretro::load_state(path)) {
                     brls::Application::notify(
@@ -72,8 +81,10 @@ brls::View* SlotPickerActivity::createContentView() {
                         path.c_str());
                     // Pop the picker AND the pause overlay so
                     // the user is straight back in the game.
-                    brls::Application::popActivity(brls::TransitionAnimation::NONE);
-                    brls::Application::popActivity(brls::TransitionAnimation::NONE);
+                    brls::sync([]() {
+                        brls::Application::popActivity(brls::TransitionAnimation::NONE);
+                        brls::Application::popActivity(brls::TransitionAnimation::NONE);
+                    });
                 } else {
                     brls::Application::notify("Load failed");
                 }
