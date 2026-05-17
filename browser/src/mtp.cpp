@@ -228,22 +228,12 @@ bool mtp_start() {
         entries.emplace_back(std::make_shared<FsRomRoot>(root, "Foyer Roms", "foyer-roms"));
         foyer::log::write("[mtp] mount: roms -> %s\n", root.c_str());
     }
-    if (cfg.mtp_expose_logs) {
-        // Logs always live under /foyer/data/logs regardless of
-        // rom_root override — the directory is foyer-internal,
-        // not user-configurable.
-        const std::string logs = "/foyer/data/logs";
-        // Make sure the directory exists before libhaze tries to
-        // enumerate it. On a fresh install with logging never yet
-        // initialised, mounting an absent path makes libmtp's
-        // GetObjectHandles return "could not get object handles"
-        // on the host side. mkdir's failure (EEXIST) is fine.
-        ::mkdir("/foyer",            0755);
-        ::mkdir("/foyer/data",       0755);
-        ::mkdir(logs.c_str(),        0755);
-        entries.emplace_back(std::make_shared<FsRomRoot>(logs, "Foyer Logs", "foyer-logs"));
-        foyer::log::write("[mtp] mount: logs -> %s\n", logs.c_str());
-    }
+    // mtp_expose_logs was retired in v0.6.117 — libhaze never
+    // surfaced live-written log files reliably (enumerate cache),
+    // and the in-app Log viewer (Settings → About → Logs) is the
+    // canonical path for grabbing logs off the device. Config
+    // field stays in shared/library/config so existing on-disk
+    // configs parse cleanly; the value is simply ignored here.
 
     if (entries.empty()) {
         foyer::log::write("[mtp] no mounts enabled — skipping init\n");

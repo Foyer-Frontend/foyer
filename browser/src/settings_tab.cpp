@@ -512,16 +512,7 @@ FoyerLibraryTab::FoyerLibraryTab() {
             });
         host->addView(cell);
     }
-    {
-        auto* cell = new brls::BooleanCell();
-        cell->init("Expose logs (/foyer/data/logs)",
-            ::foyer::library::config().mtp_expose_logs,
-            [restart_mtp](bool v) {
-                ::foyer::library::set_bool("mtp_expose_logs", v);
-                restart_mtp();
-            });
-        host->addView(cell);
-    }
+    // "Expose logs" cell removed in v0.6.117 — see mtp.cpp.
 
     wrap_with_scroll(host, this);
 }

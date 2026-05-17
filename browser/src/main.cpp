@@ -202,8 +202,7 @@ int main(int argc, char* argv[])
     // libhaze MTP — auto-spin on boot when either mount toggle is on.
     // The user can flip the toggles later in Settings → Library to
     // start/stop the server without rebooting.
-    if (foyer::library::config().mtp_expose_roms
-        || foyer::library::config().mtp_expose_logs) {
+    if (foyer::library::config().mtp_expose_roms) {
         foyer::browser::mtp_start();
     }
 
