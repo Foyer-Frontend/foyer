@@ -29,24 +29,32 @@ set(_romfs    foyer_player_romfs_${FOYER_CORE})
 # player target needs it. We compile it as a small static lib alongside the
 # core so identical code is reused across player builds.
 #
-# Phase ImGui-1 skips this entire block — the "Hello foyer" boot doesn't
-# touch libretro yet, and the existing sources still call nanovg
-# (`nvgUpdateImage` etc.) which the ImGui shell won't provide until
-# Phase 2 brings in shared/libretro/video_gl.cpp.
-if (NOT PLAYER_IMGUI)
+# PLAYER_IMGUI swaps the nanovg-shaped sources (video.cpp + bezel.cpp +
+# overlay.cpp) for their GL-direct siblings (video_gl.cpp + bezel_gl.cpp).
+# overlay.cpp is dropped entirely — the ImGui shell paints its overlay
+# via ImGui modals, not the legacy nanovg overlay system.
+if (PLAYER_IMGUI)
+    set(_render_specific_sources
+        ${CMAKE_SOURCE_DIR}/shared/libretro/video_gl.cpp
+        ${CMAKE_SOURCE_DIR}/shared/libretro/bezel_gl.cpp)
+else()
+    set(_render_specific_sources
+        ${CMAKE_SOURCE_DIR}/shared/libretro/video.cpp
+        ${CMAKE_SOURCE_DIR}/shared/libretro/bezel.cpp
+        ${CMAKE_SOURCE_DIR}/shared/libretro/overlay.cpp)
+endif()
+
 add_library(${_frontend} STATIC
     ${CMAKE_SOURCE_DIR}/shared/libretro/frontend.cpp
-    ${CMAKE_SOURCE_DIR}/shared/libretro/video.cpp
     ${CMAKE_SOURCE_DIR}/shared/libretro/video_hw.cpp
     ${CMAKE_SOURCE_DIR}/shared/libretro/audio.cpp
     ${CMAKE_SOURCE_DIR}/shared/libretro/input.cpp
     ${CMAKE_SOURCE_DIR}/shared/libretro/savestate.cpp
-    ${CMAKE_SOURCE_DIR}/shared/libretro/overlay.cpp
     ${CMAKE_SOURCE_DIR}/shared/libretro/cheevos.cpp
     ${CMAKE_SOURCE_DIR}/shared/libretro/core_options.cpp
     ${CMAKE_SOURCE_DIR}/shared/libretro/cheats.cpp
-    ${CMAKE_SOURCE_DIR}/shared/libretro/bezel.cpp
     ${CMAKE_SOURCE_DIR}/shared/libretro/shader.cpp
+    ${_render_specific_sources}
 )
 target_include_directories(${_frontend} PUBLIC
     ${CMAKE_SOURCE_DIR}/shared/libretro
@@ -107,7 +115,6 @@ target_link_libraries(${_frontend} PUBLIC
 )
 set_target_properties(${_frontend} PROPERTIES
     CXX_STANDARD 26)
-endif()  # NOT PLAYER_IMGUI
 
 # Player executable. The render shell choice (above) swaps the entry
 # + activity sources. Each shell ships its own userAppInit/userAppExit:
@@ -117,6 +124,7 @@ if (PLAYER_IMGUI)
     add_executable(${_player}
         src/imgui/main_imgui.cpp
         src/imgui/gl_context.cpp
+        src/imgui/emulator_loop.cpp
         src/imgui/imgui_switch_input.cpp
         src/imgui/imgui_theme.cpp
     )
@@ -150,19 +158,13 @@ else()
     )
 endif()
 if (PLAYER_IMGUI)
-    # Phase ImGui-1 boots a black-screen "Hello foyer" without
-    # libretro. The frontend lib still uses nanovg APIs throughout
-    # (video.cpp::nvgUpdateImage etc.) which require either brls or
-    # foyer_render to provide nanovg; in ImGui-2 we replace those
-    # call sites with raw GLES via shared/libretro/video_gl.cpp and
-    # re-link the frontend.
+    # Phase ImGui-2: link the libretro frontend (now compiled with
+    # video_gl.cpp + bezel_gl.cpp instead of the nanovg-shaped
+    # video.cpp / bezel.cpp) and ImGui together. EGL/GLES symbols
+    # come transitively from foyer_imgui + _frontend.
     target_link_libraries(${_player} PRIVATE
-        foyer_shared
+        ${_frontend}
         foyer_imgui
-        EGL
-        GLESv2
-        glapi
-        drm_nouveau
     )
 else()
     target_link_libraries(${_player} PRIVATE

@@ -1,17 +1,20 @@
-// foyer player — ImGui render shell (Phase ImGui-1).
+// foyer player — ImGui render shell (Phase ImGui-2).
 //
-// One-window-loop entry. libretro is NOT wired yet (Phase 2 hooks
-// Frontend::run_frame in via emulator_loop.cpp). Right now we boot,
-// stand up EGL/GLES3, init ImGui, draw "Hello foyer", exit on +.
+// Boots the libretro core through emulator_loop + draws an FPS
+// overlay via ImGui. Pause modal + picker overlays land in Phase 4.
 //
-// Switch boot still needs the userAppInit/userAppExit boilerplate
-// from libnx (services init, romfs). brls's switch_wrapper.c brought
-// that with it; without brls we have to provide our own.
+// argv contract: same as main_brls.cpp.
+//   argv[0]  nro path on sd
+//   argv[1]  rom path (sdmc: prefix tolerated, stripped)
+//   argv[2]  back nro path (sdmc:) — used by Quit chain-launch
+//   argv[3+] reserved
 
+#include "imgui/emulator_loop.hpp"
 #include "imgui/gl_context.hpp"
 #include "imgui/imgui_switch_input.hpp"
 #include "imgui/imgui_theme.hpp"
 
+#include "libretro/audio.hpp"
 #include "platform/log.hpp"
 
 #include <imgui.h>
@@ -21,11 +24,10 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <string>
+#include <string_view>
 
 extern "C" {
-// libnx hooks. Match the minimal "graphics + romfs + nifm + setsys"
-// service set; mirror what borealis's switch_wrapper.c did so the
-// rest of foyer_shared keeps working.
 void userAppInit(void) {
     Result rc = romfsInit();
     if (R_FAILED(rc)) diagAbortWithResult(rc);
@@ -46,51 +48,69 @@ void userAppExit(void) {
 
 namespace {
 
-using namespace foyer::player::imgui_shell;
+std::string normalise_argv_path(std::string_view in) {
+    if (in.starts_with("\"") && in.ends_with("\"")) {
+        in = in.substr(1, in.size() - 2);
+    }
+    if (in.starts_with("sdmc:")) {
+        in = in.substr(5);
+    }
+    return std::string{in};
+}
 
-bool g_should_quit = false;
-
-void draw_hello(int fb_w, int fb_h) {
-    ImGui::SetNextWindowPos(ImVec2(0, 0));
-    ImGui::SetNextWindowSize(ImVec2((float)fb_w, (float)fb_h));
-    ImGui::Begin("foyer", nullptr,
-        ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-        ImGuiWindowFlags_NoMove     | ImGuiWindowFlags_NoSavedSettings |
-        ImGuiWindowFlags_NoBringToFrontOnFocus);
-    const char* msg = "Hello foyer — ImGui Phase 1\n+ to exit";
-    const auto sz = ImGui::CalcTextSize(msg);
-    ImGui::SetCursorPos(ImVec2(((float)fb_w - sz.x) * 0.5f,
-                               ((float)fb_h - sz.y) * 0.5f));
-    ImGui::Text("%s", msg);
-    ImGui::End();
+std::string derive_system_folder(const std::string& rom_path) {
+    // /foyer/roms/<sys>/<file> — parent of parent dir is <sys>.
+    const auto slash = rom_path.find_last_of('/');
+    if (slash == std::string::npos || slash == 0) return {};
+    const auto upper = rom_path.substr(0, slash);
+    const auto up_slash = upper.find_last_of('/');
+    return (up_slash == std::string::npos)
+        ? upper : upper.substr(up_slash + 1);
 }
 
 }  // namespace
 
-int main(int /*argc*/, char* /*argv*/[]) {
-    foyer::log::write("[player-imgui] boot\n");
+int main(int argc, char** argv) {
+    foyer::log::init_file();
+    foyer::log::write("[player-imgui] argc=%d\n", argc);
+
+    using namespace foyer::player::imgui_shell;
 
     GlContext gl{};
     if (!gl_context_init(gl)) {
-        foyer::log::write("[player-imgui] GL bringup failed; aborting\n");
+        foyer::log::write("[player-imgui] GL bringup failed\n");
         return 1;
     }
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    ImGui::GetIO().IniFilename = nullptr;        // no imgui.ini on the SD card
+    ImGui::GetIO().IniFilename = nullptr;
     ImGui_ImplOpenGL3_Init("#version 300 es");
     input_init();
     theme_apply();
-
-    // 1 Hz theme re-poll alongside the main loop; matches the brls
-    // theme_watcher cadence in the browser binary.
     u64 last_theme_check_ns = armGetSystemTick();
     constexpr u64 kThemeCheckPeriodNs = 1'000'000'000ull;
 
-    while (appletMainLoop() && !g_should_quit) {
+    bool game_running = false;
+    if (argc >= 2) {
+        const std::string rom_path = normalise_argv_path(argv[1]);
+        const std::string back_nro =
+            (argc >= 3) ? normalise_argv_path(argv[2]) : std::string{};
+        const std::string sys_folder = derive_system_folder(rom_path);
+
+        if (foyer::player::emulator::start(rom_path, back_nro, sys_folder)) {
+            game_running = true;
+        } else {
+            foyer::log::write("[player-imgui] emulator start failed\n");
+        }
+    } else {
+        foyer::log::write("[player-imgui] no rom path in argv — idle\n");
+    }
+
+    bool quit = false;
+    while (appletMainLoop() && !quit) {
         input_new_frame();
-        if (input_pressed_plus()) g_should_quit = true;
+        if (input_pressed_plus()) quit = true;
 
         const u64 now_ns = armGetSystemTick();
         if (now_ns - last_theme_check_ns > kThemeCheckPeriodNs) {
@@ -98,26 +118,75 @@ int main(int /*argc*/, char* /*argv*/[]) {
             last_theme_check_ns = now_ns;
         }
 
+        // Advance the core BEFORE draw so the freshest frame is on
+        // the GL texture by the time we blit it.
+        if (game_running) {
+            if (foyer::player::emulator::tick()) quit = true;
+        }
+
+        // Clear + draw the game frame + bezel.
+        if (game_running) {
+            foyer::player::emulator::draw((float)gl.fb_w, (float)gl.fb_h);
+        } else {
+            glViewport(0, 0, gl.fb_w, gl.fb_h);
+            glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
+        }
+
+        // ImGui overlay on top.
         ImGuiIO& io = ImGui::GetIO();
         io.DisplaySize = ImVec2((float)gl.fb_w, (float)gl.fb_h);
-        io.DeltaTime   = 1.0f / 60.0f;            // Phase 2 reads actual delta
-
+        io.DeltaTime   = 1.0f / 60.0f;
         ImGui_ImplOpenGL3_NewFrame();
         ImGui::NewFrame();
-
-        draw_hello(gl.fb_w, gl.fb_h);
-
+        if (!game_running) {
+            ImGui::SetNextWindowPos(ImVec2(0, 0));
+            ImGui::SetNextWindowSize(ImVec2((float)gl.fb_w, (float)gl.fb_h));
+            ImGui::Begin("foyer", nullptr,
+                ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+                ImGuiWindowFlags_NoMove     | ImGuiWindowFlags_NoSavedSettings);
+            ImGui::Text("foyer player (ImGui) — Phase 2");
+            ImGui::Text("No rom path in argv. + to exit.");
+            ImGui::End();
+        } else {
+            ImGui::SetNextWindowPos(ImVec2(8, 8));
+            ImGui::SetNextWindowBgAlpha(0.30f);
+            ImGui::Begin("hud", nullptr,
+                ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+                ImGuiWindowFlags_NoMove     | ImGuiWindowFlags_NoSavedSettings |
+                ImGuiWindowFlags_AlwaysAutoResize |
+                ImGuiWindowFlags_NoFocusOnAppearing |
+                ImGuiWindowFlags_NoInputs);
+            ImGui::Text("FPS %.0f", io.Framerate);
+            ImGui::End();
+        }
         ImGui::Render();
-        glViewport(0, 0, gl.fb_w, gl.fb_h);
-        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+        // Drive the audren pump on the main thread alongside the
+        // libretro audio callback (which fills the queue from the
+        // run_frame thread context). AudioSink::pump pulls from the
+        // queue and writes into the audio buffers.
+        foyer::libretro::AudioSink::instance().pump();
+
         gl_context_swap(gl);
     }
 
+    if (game_running) foyer::player::emulator::shutdown();
     ImGui_ImplOpenGL3_Shutdown();
     ImGui::DestroyContext();
     gl_context_shutdown(gl);
+
+    // Chain-launch back to browser if we have a back nro path.
+    if (quit && argc >= 3) {
+        const std::string back = normalise_argv_path(argv[2]);
+        if (!back.empty()) {
+            const std::string sdmc_back = "sdmc:" + back;
+            char a[512];
+            std::snprintf(a, sizeof(a), "\"%s\"", sdmc_back.c_str());
+            envSetNextLoad(sdmc_back.c_str(), a);
+        }
+    }
     foyer::log::write("[player-imgui] exit\n");
     return 0;
 }
