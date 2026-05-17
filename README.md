@@ -6,20 +6,22 @@ ROM directly via libretro cores.
 
 > [!WARNING]
 > **Early development.** foyer is under active development; the
-> 0.6.x line is alpha-quality, not every libretro core in the
+> 0.7.x line is still alpha-quality, not every libretro core in the
 > rotation has been fully exercised on hardware, and you should
 > expect bugs and the occasional crash. File issues with the
 > on-device log (Settings → About → Logs) and the Atmosphère
 > crash report when something goes wrong — they make root-causing
 > dramatically faster.
 
-**Current line:** 0.6.x — built on
+**Current line:** 0.7.x — browser is still
 [borealis](https://github.com/XITRIX/borealis) (XITRIX/borealis,
-`moonlight_wiliwili` branch). Latest tag: **v0.6.115**. The Phase H
-players-on-borealis migration is the default build
-(`PLAYER_BRLS=ON`). System + theme art now ships as a separately-
-downloaded `foyer-assets.zip` so `foyer.nro` itself stays ~8 MB.
-See [`ROADMAP.md`](ROADMAP.md) for the phase-by-phase plan.
+`moonlight_wiliwili` branch); per-core players were ported off
+borealis through ImGui in 0.6.124–0.6.130 and onto
+[Plutonium](https://github.com/XorTroll/Plutonium) (SDL2 + the
+XorTroll Plutonium UI framework) in 0.7.0. Latest tag: **v0.7.0**.
+System + theme art ships as a separately-downloaded
+`foyer-assets.zip` so `foyer.nro` itself stays ~8 MB. See
+[`ROADMAP.md`](ROADMAP.md) for the phase-by-phase plan.
 
 ### Status snapshot
 
@@ -30,11 +32,13 @@ See [`ROADMAP.md`](ROADMAP.md) for the phase-by-phase plan.
   virtual system. Re-running a system scrape now fills in
   missing media kinds per game (wheel art etc) without
   re-pulling already-present files.
-- **Players (PLAYER_BRLS=ON)** — launching works. Cores get audio
-  (foyer's libretro AudioSink owns `audrenInitialize`; brls UI
-  sounds disabled in player nros to avoid the voice 0 collision
-  diagnosed in v0.6.82). MTP must stop before chain-launch — done
-  automatically.
+- **Players (PLAYER_PLUTONIUM=ON, default since 0.7.0)** —
+  launching works. The pause overlay (`L3 + R3`) honours the
+  foyer/HOS Light/Dark theme, live-previews shader picks against
+  the frozen pause frame, and preserves the highlight position
+  across every picker rebuild. Cores get audio through SDL2's
+  audio device fed by foyer's libretro AudioSink. MTP must stop
+  before chain-launch — done automatically.
 - **Switch native titles** (`__switch` virtual) — NACP enumeration
   via `nsListApplicationRecord` + launch via
   `appletRequestLaunchApplication`. SS coverage on the Switch
@@ -112,16 +116,25 @@ See [`ROADMAP.md`](ROADMAP.md) for the phase-by-phase plan.
 
 ### Player (per-core NRO)
 
-- Built on borealis since 0.6.29 (`PLAYER_BRLS=ON` default). Boots
-  the ROM directly, no browser overhead.
-- Audio via `audrv` at the core's reported sample rate.
-- **Pause overlay** with full HOS-style chrome (top + bottom bars,
-  clock / wifi / battery, theme-color title). `L3 + R3` opens it.
-- From the overlay: Save / Load state (slot picker with timestamps,
-  Quick + 1–9), Display (aspect mode picker), Shaders (preset
-  picker), Core options (SelectorCell per `CoreOption`), Cheats
-  (BooleanCell per cheat), Quit (chain-launches back to
-  `foyer.nro`).
+- Built on Plutonium since 0.7.0 (`PLAYER_PLUTONIUM=ON` default,
+  SDL2 + XorTroll/Plutonium). Boots the ROM directly, no browser
+  overhead. Brief stop on ImGui in 0.6.124–0.6.130; borealis
+  player retired alongside it. The shared `foyer_libretro_frontend`
+  + `ShaderPipeline` survived every framework swap.
+- Audio via SDL2 (`SDL_AUDIO_DEVICE` + the libretro AudioSink) at
+  the core's reported sample rate.
+- **Pause overlay** rendered as a Plutonium Layout on top of the
+  frozen frame + bezel. `L3 + R3` opens it. Theme-aware palette —
+  dark UI → dark panel + light text, light UI → light panel + dark
+  text. Highlight survives rebuilds.
+- From the overlay: Restart rom, Save / Load state (slot picker
+  with timestamps, Quick + 1–9), Shaders (preset picker with live
+  preview against the paused frame, "none" restores the unshaded
+  frame), Display (Aspect submenu, Bezel ON/OFF, Pick bezel),
+  Core options (cycle on A per `CoreOption`), Cheats (boolean
+  toggle per cheat — `file_idx`-keyed so empty-code rows in the
+  `.cht` don't shift toggles off by one), Quit (chain-launches
+  back to `foyer.nro`).
 - **Bezels** rendered from the ScreenScraper bundle
   (`/foyer/assets/system/<sys>/<stem>/bezel-16-9(*).png`); fall
   back to a per-system override under `/foyer/bezels/`.
@@ -200,11 +213,13 @@ romfs:/
 
 ## Theme
 
-0.6.x ships a single bundled theme tree
+0.7.x ships a single bundled theme tree
 (`romfs:/themes/foyer/`) combining alekfull-NX tile splashes with
 retrofix-revisited per-system app backdrops. brls owns the rest of
-the chrome (Light or Dark, picked from the Switch system theme
-automatically via `setsysGetColorSetId`).
+the browser chrome (Light or Dark, picked from the Switch system
+theme automatically via `setsysGetColorSetId`); the Plutonium
+player overlay reads the same `ColorSetId` so its panel + text
+colours follow the system theme in lockstep with the browser.
 
 Settings → General → Theme overrides the system default (Auto /
 Light / Dark). `theme_watcher` polls once per second so toggling
@@ -425,19 +440,20 @@ foyer-cores uses **CalVer** tags (`YYYY.MM.DD[.NN]`):
 Requires devkitPro with `switch-dev`, `switch-curl`, `switch-glm`,
 `switch-glfw`, `switch-zlib`, `switch-mbedtls`, `deko3d`,
 `switch-mesa`, `switch-libdrm_nouveau`, `switch-glad`,
-`switch-ffmpeg`. CMake ≥ 3.21 (FetchContent's `SOURCE_SUBDIR`).
+`switch-ffmpeg`, `switch-sdl2`, `switch-sdl2_image`,
+`switch-sdl2_ttf`. CMake ≥ 3.21 (FetchContent's `SOURCE_SUBDIR`).
 
 ```sh
 export DEVKITPRO=/opt/devkitpro
 export DEVKITA64=/opt/devkitpro/devkitA64
 export PATH=$DEVKITPRO/tools/bin:$DEVKITA64/bin:$PATH
 
-# Browser
+# Browser (borealis)
 cmake --preset Release
 cmake --build build/Release -j$(nproc)
 # → build/Release/foyer.nro
 
-# Player (one core per build)
+# Player (Plutonium — one core per build)
 cmake --preset Player-fceumm
 cmake --build --preset Player-fceumm
 # → build/Player-fceumm/foyer-fceumm.nro
