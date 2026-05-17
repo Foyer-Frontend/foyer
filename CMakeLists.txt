@@ -10,33 +10,9 @@ project(foyer
 # ---------------------------------------------------------------------------
 option(BUILD_BROWSER "Build the foyer browser nro"     ON)
 option(BUILD_PLAYER  "Build per-core player nros"      OFF)
-# Phase H — players-on-borealis. When ON, the player nro replaces its
-# nanovg-deko3d window loop (foyer_render) with brls + an
-# EmulatorActivity that hosts a custom EmulatorView. Off by default
-# until the pause overlay + bezel + shader paths are reskinned.
-option(PLAYER_BRLS   "Build per-core players on borealis (Phase H, retired in 0.7.0)" OFF)
-# PLAYER_IMGUI — ImGui + libnx-EGL render shell. Briefly the player
-# default in 0.6.124–0.6.130 between the borealis and Plutonium eras.
-# brls vs ImGui cannot coexist in one binary (they fight over the
-# nvhost channel under libnx + drag in two different nanovg copies),
-# which is why every UI swap was a full replacement instead of a
-# co-resident toggle. See docs/PLAYER_MIGRATION_PLAN.md for the
-# rollout phases.
-option(PLAYER_IMGUI  "Build per-core players on Dear ImGui (retired in 0.7.0)" OFF)
-# PLAYER_PLUTONIUM — XorTroll/Plutonium (SDL2 + the Plutonium widget
-# layer) is the 0.7.0 default. Same single-GLES-context model as the
-# ImGui shell so the libretro shader pipeline keeps working without
-# nvhost contention; the difference is Plutonium's retained-mode
-# widgets look like the Goldleaf / uLaunch Switch homebrew UIs out of
-# the box.
-option(PLAYER_PLUTONIUM "Build per-core players on Plutonium (default since 0.7.0)" ON)
-if (PLAYER_PLUTONIUM)
-    set(PLAYER_BRLS  OFF CACHE BOOL "" FORCE)
-    set(PLAYER_IMGUI OFF CACHE BOOL "" FORCE)
-endif()
-if (PLAYER_IMGUI)
-    set(PLAYER_BRLS OFF CACHE BOOL "" FORCE)
-endif()
+# Player binary is Plutonium-only since 0.7.0. The borealis (Phase
+# H) and Dear ImGui (Phase ImGui-1..6) player shells were retired
+# in P5 — see docs/PLAYER_MIGRATION_PLAN.md for the history.
 # FOYER_CORE = single core name (legacy single-build presets).
 set(FOYER_CORE  "" CACHE STRING
     "Single libretro core to build (e.g. fceumm). Used by Player-* presets.")
@@ -141,11 +117,10 @@ find_package(CURL REQUIRED)
 
 # ---------------------------------------------------------------------------
 # borealis (XITRIX fork — used by Moonlight Switch). Browser UI is built
-# on top of brls starting in 0.6.0. Players still link our own
-# nanovg-deko3d via foyer_render — borealis vendors its own nanovg copy
-# and the two cannot coexist in the same binary.
+# on top of brls starting in 0.6.0. Player binary uses Plutonium (SDL2)
+# instead since 0.7.0 — brls is browser-only now.
 # ---------------------------------------------------------------------------
-if (BUILD_BROWSER OR PLAYER_BRLS)
+if (BUILD_BROWSER)
     # Switch + deko3d backend. We bypass borealis's toolchain.cmake (it
     # tries to include $DEVKITPRO/cmake/Switch.cmake, which our top-level
     # preset already loaded), so the BOREALIS_USE_* flags must be set
@@ -205,13 +180,13 @@ endif()
 
 # ---------------------------------------------------------------------------
 # Plutonium — Switch homebrew UI framework on SDL2 (XorTroll). Used by
-# Goldleaf / uLaunch. PLAYER_PLUTONIUM picks this shell. Plutonium ships
-# only a Makefile upstream, so we vendor the source via FetchContent and
-# compile it ourselves into a static lib alongside our player target.
-# SDL2 + SDL2_image + SDL2_ttf + SDL2_mixer + SDL2_gfx come from the
-# devkitpro switch portlibs.
+# Goldleaf / uLaunch. Player binary's only UI shell since 0.7.0.
+# Plutonium ships only a Makefile upstream, so we vendor the source
+# via FetchContent and compile it ourselves into a static lib
+# alongside our player target. SDL2 + SDL2_image + SDL2_ttf +
+# SDL2_mixer + SDL2_gfx come from the devkitpro switch portlibs.
 # ---------------------------------------------------------------------------
-if (PLAYER_PLUTONIUM)
+if (BUILD_PLAYER)
     FetchContent_Declare(plutonium
         GIT_REPOSITORY https://github.com/XorTroll/Plutonium.git
         GIT_TAG        1.0.0
@@ -242,55 +217,6 @@ if (PLAYER_PLUTONIUM)
         freetype harfbuzz png jpeg webp bz2 z
         opusfile opus modplug mpg123 vorbisidec
         m)
-endif()
-
-# ---------------------------------------------------------------------------
-# Dear ImGui — the new player render shell (Phase ImGui-1+). brls is OFF
-# whenever PLAYER_IMGUI is ON, so the two never coexist (they each vendor
-# their own copy of nanovg / pull different GPU stacks). Pull the core 4
-# TUs + the OpenGL3 backend; the libnx input + EGL backend lives in
-# player/src/imgui/ (~150 LOC, no upstream impl exists).
-# ---------------------------------------------------------------------------
-if (PLAYER_IMGUI)
-    FetchContent_Declare(imgui
-        GIT_REPOSITORY https://github.com/ocornut/imgui.git
-        GIT_TAG        v1.91.5-docking
-        GIT_SHALLOW    TRUE)
-    FetchContent_MakeAvailable(imgui)
-
-    add_library(foyer_imgui STATIC
-        ${imgui_SOURCE_DIR}/imgui.cpp
-        ${imgui_SOURCE_DIR}/imgui_draw.cpp
-        ${imgui_SOURCE_DIR}/imgui_tables.cpp
-        ${imgui_SOURCE_DIR}/imgui_widgets.cpp
-        ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
-    )
-    target_include_directories(foyer_imgui PUBLIC
-        ${imgui_SOURCE_DIR}
-        ${imgui_SOURCE_DIR}/backends)
-    # Switch portlibs ships <GLES3/gl3.h> + <EGL/egl.h> but the
-    # Switch.cmake toolchain doesn't add portlibs/switch/include to
-    # the default include path for arbitrary targets. Add it as a
-    # SYSTEM include so the imgui OpenGL3 backend (and our own
-    # gl_context.cpp) can `#include <GLES3/gl3.h>` without warnings.
-    if (DEFINED ENV{DEVKITPRO})
-        target_include_directories(foyer_imgui SYSTEM PUBLIC
-            $ENV{DEVKITPRO}/portlibs/switch/include)
-    endif()
-    # backends/imgui_impl_opengl3.cpp gates its GLES3 path on
-    # IMGUI_IMPL_OPENGL_ES3; the Switch portlibs ship <GLES3/gl3.h>
-    # which the loader maps onto. No glad / glew needed.
-    target_compile_definitions(foyer_imgui PUBLIC
-        IMGUI_IMPL_OPENGL_ES3=1
-        # Switch newlib has no execvp / waitpid; the default shell
-        # helper in imgui.cpp links against both. We never open URLs
-        # from the player anyway.
-        IMGUI_DISABLE_DEFAULT_SHELL_FUNCTIONS=1
-        # The same set of POSIX shims is missing for the default file
-        # helper (fopen/fread/etc. are fine, but the implementation
-        # touches popen). Disable for safety.
-        IMGUI_DISABLE_FILE_FUNCTIONS=0)
-    set_target_properties(foyer_imgui PROPERTIES CXX_STANDARD 17)
 endif()
 
 # ---------------------------------------------------------------------------

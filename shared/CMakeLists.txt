@@ -1,12 +1,10 @@
-# Shared static libraries used by browser + player nros.
+# Shared static library used by browser + player nros.
 #
-# 0.6.0 split:
-#   - foyer_shared  = service + data layer (config, library scan, scrapers,
-#                      net, i18n, log, archive). NO rendering deps. Browser +
-#                      players both link this.
-#   - foyer_render  = legacy nanovg-deko3d App shell. Players still use this
-#                      for libretro frame presentation; the browser switched
-#                      to borealis in 0.6.0 and no longer links it.
+# foyer_shared = service + data layer (config, library scan, scrapers,
+# net, i18n, log, archive). NO rendering deps. Browser + players both
+# link this. The browser layers brls on top; the player layers
+# Plutonium (SDL2) on top. The legacy nanovg-deko3d foyer_render
+# target was removed in 0.7.0's P5 purge.
 
 add_library(foyer_shared STATIC
     platform/log.cpp
@@ -76,13 +74,3 @@ target_compile_options(foyer_shared PUBLIC
     -fstrict-aliasing
 )
 
-# Render shell: nanovg-deko3d App. Players link this for libretro frame
-# presentation; browser uses borealis instead.
-add_library(foyer_render STATIC
-    platform/app.cpp
-)
-
-target_link_libraries(foyer_render PUBLIC
-    foyer_shared
-    nanovg
-)

@@ -1,14 +1,17 @@
 #pragma once
 //
-// shared/libretro/video_sdl — SDL2 sibling of video.hpp. Receives
-// libretro frames, uploads to a streaming SDL_Texture, draws aspect-
-// fit via SDL_RenderCopy. Used by PLAYER_PLUTONIUM.
+// shared/libretro/video_sdl — SDL2 video sink. Receives libretro
+// frames, uploads to a streaming SDL_Texture, draws aspect-fit via
+// SDL_RenderCopy. The only video path since 0.7.0; the legacy
+// nanovg + ImGui+GL siblings were removed in P5.
 //
-// The CPU shader path runs inside upload() — process(uint8_t*) on
-// the RGBA buffer before SDL_UpdateTexture. Same model that worked
-// under PLAYER_BRLS. GPU shader is parked: every attempt to mix
-// raw GL with SDL2's gles2 renderer on switch-sdl2 poisoned SDL's
-// state cache and broke the menu text rendering.
+// The shader chain runs ON THE GPU inside upload() (between
+// libretro frames, BEFORE the next SDL render begins) and reads
+// back into the SDL_Texture's pixels. Every raw-GL state mutation
+// is bracketed with save/restore so SDL2's gles2 renderer state
+// cache never sees us — without that bracketing, SDL_RenderCopy
+// inherited our viewport / scissor / program / FBO and the
+// foreground UI broke or vanished.
 
 #include "frontend.hpp"
 #include "aspect.hpp"
