@@ -14,21 +14,22 @@ option(BUILD_PLAYER  "Build per-core player nros"      OFF)
 # nanovg-deko3d window loop (foyer_render) with brls + an
 # EmulatorActivity that hosts a custom EmulatorView. Off by default
 # until the pause overlay + bezel + shader paths are reskinned.
-option(PLAYER_BRLS   "Build per-core players on borealis (Phase H)" ON)
-# PLAYER_IMGUI — ImGui + libnx-EGL render shell. Eventually replaces
-# PLAYER_BRLS so the player runs everything (libretro frame upload,
-# shader passes, UI) on a single GLES3 context — same model as
-# RetroArch. brls vs ImGui cannot coexist in one binary (they fight
-# over the nvhost channel under libnx + drag in two different nanovg
-# copies). When ON, PLAYER_BRLS is force-disabled below.
-# See docs/PLAYER_MIGRATION_PLAN.md for the rollout phases.
-option(PLAYER_IMGUI  "Build per-core players on Dear ImGui (Phase ImGui-1)" OFF)
-# PLAYER_PLUTONIUM — XorTroll/Plutonium (SDL2-based) replacement for the
-# ImGui shell. Same single-GLES-context model so the libretro shader
-# pipeline keeps working without nvhost contention; the difference is
-# Plutonium's retained-mode widgets look like the Goldleaf / uLaunch
-# Switch homebrew UIs out of the box.
-option(PLAYER_PLUTONIUM "Build per-core players on Plutonium (Phase P1+)" OFF)
+option(PLAYER_BRLS   "Build per-core players on borealis (Phase H, retired in 0.7.0)" OFF)
+# PLAYER_IMGUI — ImGui + libnx-EGL render shell. Briefly the player
+# default in 0.6.124–0.6.130 between the borealis and Plutonium eras.
+# brls vs ImGui cannot coexist in one binary (they fight over the
+# nvhost channel under libnx + drag in two different nanovg copies),
+# which is why every UI swap was a full replacement instead of a
+# co-resident toggle. See docs/PLAYER_MIGRATION_PLAN.md for the
+# rollout phases.
+option(PLAYER_IMGUI  "Build per-core players on Dear ImGui (retired in 0.7.0)" OFF)
+# PLAYER_PLUTONIUM — XorTroll/Plutonium (SDL2 + the Plutonium widget
+# layer) is the 0.7.0 default. Same single-GLES-context model as the
+# ImGui shell so the libretro shader pipeline keeps working without
+# nvhost contention; the difference is Plutonium's retained-mode
+# widgets look like the Goldleaf / uLaunch Switch homebrew UIs out of
+# the box.
+option(PLAYER_PLUTONIUM "Build per-core players on Plutonium (default since 0.7.0)" ON)
 if (PLAYER_PLUTONIUM)
     set(PLAYER_BRLS  OFF CACHE BOOL "" FORCE)
     set(PLAYER_IMGUI OFF CACHE BOOL "" FORCE)
