@@ -15,10 +15,33 @@ ROM directly via libretro cores.
 
 **Current line:** 0.6.x — built on
 [borealis](https://github.com/XITRIX/borealis) (XITRIX/borealis,
-`moonlight_wiliwili` branch). Latest tag: **v0.6.37**. The Phase H
+`moonlight_wiliwili` branch). Latest tag: **v0.6.115**. The Phase H
 players-on-borealis migration is the default build
-(`PLAYER_BRLS=ON`). See [`ROADMAP.md`](ROADMAP.md) for the
-phase-by-phase plan.
+(`PLAYER_BRLS=ON`). System + theme art now ships as a separately-
+downloaded `foyer-assets.zip` so `foyer.nro` itself stays ~8 MB.
+See [`ROADMAP.md`](ROADMAP.md) for the phase-by-phase plan.
+
+### Status snapshot
+
+- **Browser** — stable. Update flow (Settings + boot-splash) +
+  chain-launch back-into-foyer + asset-pack auto-download all
+  working. SS scrape via `jeuInfos` (CRC+romnom) with a
+  `jeuRecherche` → `jeuInfos gameid` fallback for the Switch
+  virtual system. Re-running a system scrape now fills in
+  missing media kinds per game (wheel art etc) without
+  re-pulling already-present files.
+- **Players (PLAYER_BRLS=ON)** — launching works. Cores get audio
+  (foyer's libretro AudioSink owns `audrenInitialize`; brls UI
+  sounds disabled in player nros to avoid the voice 0 collision
+  diagnosed in v0.6.82). MTP must stop before chain-launch — done
+  automatically.
+- **Switch native titles** (`__switch` virtual) — NACP enumeration
+  via `nsListApplicationRecord` + launch via
+  `appletRequestLaunchApplication`. SS coverage on the Switch
+  system is sparse on indie titles; mainline first-party hits.
+- **MTP** — `/foyer/roms` + `/foyer/data/logs` exposed via libhaze
+  when the Settings toggles are on. Auto-stopped before every
+  chain-launch.
 
 ## Screenshots
 
@@ -223,6 +246,155 @@ The current live core list is in
 [`foyer-cores/manifest.json`](https://github.com/foyer-frontend/foyer-cores/releases/latest)
 (~55 cores at the latest tag). Foyer's `system_db.cpp` knows about
 every system regardless of which cores happen to be installed.
+
+## Compatibility matrix — cores
+
+`✅` = exercised on hardware and working, `🟡` = partially / quirky,
+`❌` = broken / crashes, `⬜` = not yet tested. Update entries as you
+verify them; un-verified cells stay `⬜` so it's obvious what still
+needs a pass.
+
+| Core | System(s) | Boots | Audio | Save state | Bezel | Shader | Cheats |
+|---|---|---|---|---|---|---|---|
+| `fceumm` | NES | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `nestopia` | NES | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `mesen` | NES | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `snes9x` | SNES | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `snes9x2010` | SNES | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `bsnes_hd_beta` | SNES | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `gambatte` | GB / GBC | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `sameboy` | GB / GBC | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `tgbdual` | GB / GBC | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `mgba` | GBA | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `gpsp` | GBA | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `vba_next` | GBA | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `melonds` | NDS | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `mupen64plus` | N64 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `pokemini` | Pokemon Mini | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `mednafen_vb` | Virtual Boy | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `genesisplusgx` | Genesis / SMS / GG | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `genesis_plus_gx_wide` | Genesis | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `picodrive` | 32X / SegaCD | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `yabasanshiro` | Saturn | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `flycast` | Dreamcast | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `pcsx_rearmed` | PSX | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `swanstation` | PSX | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `mednafen_psx_hw` | PSX | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `ppsspp` | PSP | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `race` | NGP / NGPC | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `mednafen_ngp` | NGP / NGPC | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `stella` | Atari 2600 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `stella2014` | Atari 2600 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `prosystem` | Atari 7800 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `handy` | Atari Lynx | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `mednafen_lynx` | Atari Lynx | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `atari800` | Atari 800 / 5200 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `virtualjaguar` | Atari Jaguar | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `mednafen_pce_fast` | PCE | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `beetle_pce` | PCE / PCE-CD | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `beetle_supergrafx` | SuperGrafx | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `beetle_pcfx` | PC-FX | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `beetle_wswan` | WonderSwan | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `beetle_vb` | Virtual Boy | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `freeintv` | Intellivision | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `gw` | Game & Watch | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `prboom` | Doom | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `tyrquake` | Quake | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `retro8` | Pico-8 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `dosbox_pure` | DOS | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `caprice32` | Amstrad CPC | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `frodo` | C64 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `fmsx` | MSX / MSX2 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `opera` | 3DO | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `mame2003_plus` | Arcade | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `nxengine` | Cave Story | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `reminiscence` | Flashback | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `puae` | Amiga | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `scummvm` | ScummVM | ❌ | — | — | — | — | — |
+| `parallel_n64` | N64 | ❌ | — | — | — | — | — |
+
+`scummvm` is currently disabled in the foyer-cores matrix (build
+time); `parallel_n64` has an upstream link error chain that needs
+recipe surgery — see `foyer-cores/.github/workflows/build-cores.yml`.
+
+## Compatibility matrix — systems
+
+Per-system scrape + theme art status. `Scrape` covers ScreenScraper
+box-2D + wheel + fanart fetch via foyer's system-scrape action.
+
+| Folder | Display | SS coverage | foyer-assets art | Notes |
+|---|---|---|---|---|
+| `nes` | Nintendo Entertainment System | ⬜ | ✅ | |
+| `snes` | Super Nintendo | ⬜ | ✅ | |
+| `n64` | Nintendo 64 | ⬜ | ✅ | |
+| `gb` | Game Boy | ⬜ | ✅ | |
+| `gbc` | Game Boy Color | ⬜ | ✅ | |
+| `gba` | Game Boy Advance | ⬜ | ✅ | |
+| `nds` | Nintendo DS | ⬜ | ✅ | |
+| `gc` | GameCube | ⬜ | ✅ | external nro (Dolphin) |
+| `virtualboy` | Virtual Boy | ⬜ | ✅ | |
+| `pokemini` | Pokemon Mini | ⬜ | ✅ | |
+| `__switch` | Nintendo Switch (installed titles) | 🟡 | ✅ | indie title coverage thin |
+| `genesis` / `megadrive` | Mega Drive / Genesis | ⬜ | ✅ | |
+| `mastersystem` | Master System | ⬜ | ✅ | |
+| `gamegear` | Game Gear | ⬜ | ✅ | |
+| `32x` | Sega 32X | ⬜ | ✅ | |
+| `segacd` | Sega CD | ⬜ | ✅ | |
+| `saturn` | Sega Saturn | ⬜ | ✅ | |
+| `dc` | Dreamcast | ⬜ | ✅ | |
+| `psx` | PlayStation | ⬜ | ✅ | |
+| `psp` | PlayStation Portable | ⬜ | ✅ | |
+| `ngp` / `ngpc` | Neo Geo Pocket / Color | ⬜ | ✅ | |
+| `atari2600` | Atari 2600 | ⬜ | ✅ | |
+| `atari5200` | Atari 5200 | ⬜ | ✅ | |
+| `atari7800` | Atari 7800 | ⬜ | ✅ | |
+| `atari800` | Atari 800 | ⬜ | ✅ | |
+| `atarilynx` | Atari Lynx | ⬜ | ✅ | |
+| `atarijaguar` | Atari Jaguar | ⬜ | ✅ | |
+| `pcengine` / `pcenginecd` | PC Engine / CD | ⬜ | ✅ | |
+| `supergrafx` | SuperGrafx | ⬜ | ✅ | |
+| `pcfx` | PC-FX | ⬜ | ✅ | |
+| `wonderswan` / `wonderswancolor` | WonderSwan / Color | ⬜ | ✅ | |
+| `intellivision` | Intellivision | ⬜ | ✅ | |
+| `gameandwatch` | Game & Watch | ⬜ | ✅ | |
+| `3do` | 3DO | ⬜ | ✅ | |
+| `arcade` | Arcade (MAME 2003+) | ⬜ | ✅ | |
+| `doom` | Doom (PrBoom) | ⬜ | ✅ | |
+| `quake` | Quake (TyrQuake) | ⬜ | ✅ | |
+| `pico8` | Pico-8 | ⬜ | ✅ | |
+| `dos` | DOS (DOSBox-pure) | ⬜ | ✅ | |
+| `amstradcpc` | Amstrad CPC | ⬜ | ✅ | |
+| `c64` | Commodore 64 | ⬜ | ✅ | |
+| `msx` / `msx2` | MSX / MSX2 | ⬜ | ✅ | |
+| `amiga` / `amiga600` / `amiga1200` / `amigacd32` / `cdtv` | Amiga family | ⬜ | ✅ | |
+| `scummvm` | ScummVM | ⬜ | ✅ | core disabled in matrix |
+
+## Compatibility matrix — features
+
+| Feature | Status | Notes |
+|---|---|---|
+| Library scan + cache | ✅ | `/foyer/data/cache/library.cache.json` |
+| Switch title enumeration | ✅ | NACP cache at `switch_titles.cache` |
+| SS scrape (box-2D, wheel, fanart, sstitle, ss, bezel, video) | ✅ | Re-scrape fills only missing kinds |
+| libretro-thumbnails scraper | ⬜ | wire-in for any system on the LR db |
+| SteamGridDB scraper | ⬜ | creds wired in wizard; query path not yet exhaustive |
+| Per-game state slots (10) | 🟡 | Save works; load refused on size mismatch (v0.6.96 guard) |
+| Per-game settings (core / shader / runahead / favourite) | ✅ | `PerGameActivity` |
+| Per-system settings (default core) | ✅ | `PerSystemActivity` |
+| Cheats (libretro-database packs) | ⬜ | |
+| Bezels (libretro/common-overlays packs) | ⬜ | install + pause-overlay toggle wired |
+| Shaders (libretro presets) | ⬜ | install + per-rom override wired |
+| RetroAchievements | ⬜ | rcheevos linked; login + Settings switch pending |
+| Run-ahead | ⬜ | per-game override exists; not validated |
+| Self-update (Settings) | ✅ | Chain-launches new nro |
+| Self-update (boot splash) | ✅ | Modal Yes / Later dialog before Home |
+| Asset pack auto-download / versioning | ✅ | sidecar `/foyer/data/assets/.version` |
+| MTP (`/foyer/roms`) | ✅ | libhaze; auto-stops before chain-launch |
+| MTP (`/foyer/data/logs`) | ✅ | |
+| Crash log viewer (Atmosphère + foyer) | ✅ | Settings → About → Logs |
+| In-app sleep / restart / shutdown | ✅ | `PowerActivity` |
+| Theme follow HOS Light / Dark | ✅ | `theme_watcher` polls once/sec |
+| Wizard (first-run) | ✅ | scraper creds + initial cores / bezels / shaders |
 
 ### Release cadence
 
