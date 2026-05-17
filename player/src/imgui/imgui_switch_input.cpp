@@ -18,8 +18,12 @@ struct Map {
 };
 
 const Map kButtons[] = {
-    { HidNpadButton_A,            ImGuiKey_GamepadFaceRight },
-    { HidNpadButton_B,            ImGuiKey_GamepadFaceDown  },
+    // Switch convention: A (right) = confirm, B (bottom) = back.
+    // ImGui's nav binds confirm to FaceDown and back to FaceRight,
+    // so map Switch's A to ImGui's FaceDown semantically (even
+    // though it's the physical right face button on the controller).
+    { HidNpadButton_A,            ImGuiKey_GamepadFaceDown  },
+    { HidNpadButton_B,            ImGuiKey_GamepadFaceRight },
     { HidNpadButton_X,            ImGuiKey_GamepadFaceUp    },
     { HidNpadButton_Y,            ImGuiKey_GamepadFaceLeft  },
     { HidNpadButton_L,            ImGuiKey_GamepadL1        },

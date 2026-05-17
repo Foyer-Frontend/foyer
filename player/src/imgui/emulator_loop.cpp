@@ -176,17 +176,16 @@ bool tick() {
     }
     g_pause_combo = combo;
 
-    // Don't let libretro see UI keys while a modal is up — A on
-    // "Resume" was firing as JOYPAD_A inside the game and racing
-    // saves.
-    if (!modals_input_blocked()) {
-        foyer::libretro::poll_input(*pad);
-    } else {
-        // Send a zeroed pad to libretro so previously-held buttons
-        // don't stay latched across modal open.
+    // Don't let libretro see UI keys while a modal is up. Also skip
+    // run_frame entirely — emulation pauses while the menu is open
+    // (same as the brls EmulatorActivity which short-circuits its
+    // tick when PauseActivity is on top of the stack).
+    if (modals_input_blocked()) {
         foyer::libretro::Frontend::instance().input() = {};
+        return g_exit_request || modals_quit_requested();
     }
 
+    foyer::libretro::poll_input(*pad);
     foyer::libretro::Frontend::instance().run_frame();
     return g_exit_request || modals_quit_requested();
 }

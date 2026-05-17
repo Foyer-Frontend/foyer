@@ -40,12 +40,28 @@ void compute_rom_stem() {
         g_rom_stem = g_rom_stem.substr(0, dot);
 }
 
+constexpr float kFontScale  = 1.6f;   // 13pt default -> ~21pt
+constexpr float kRowPadY    = 12.0f;
+constexpr ImU32 kDimColor   = IM_COL32(0, 0, 0, 160);
+
+// Full-screen translucent dimmer drawn behind every modal. Honours
+// the theme indirectly through ImGui's foreground draw list.
+void draw_dim() {
+    const auto vp = ImGui::GetMainViewport();
+    auto* dl = ImGui::GetBackgroundDrawList(vp);
+    dl->AddRectFilled(vp->Pos,
+                      ImVec2(vp->Pos.x + vp->Size.x,
+                             vp->Pos.y + vp->Size.y),
+                      kDimColor);
+}
+
 void center_next_window(float w, float h) {
     const auto vp = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(ImVec2(vp->Pos.x + (vp->Size.x - w) * 0.5f,
                                    vp->Pos.y + (vp->Size.y - h) * 0.5f),
                             ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_Always);
+    ImGui::SetNextWindowBgAlpha(0.92f);
 }
 
 constexpr ImGuiWindowFlags kModalFlags =
@@ -54,13 +70,32 @@ constexpr ImGuiWindowFlags kModalFlags =
     ImGuiWindowFlags_NoMove        |
     ImGuiWindowFlags_NoSavedSettings;
 
-bool select_row(const char* label, bool& confirmed) {
-    if (ImGui::Selectable(label, false, ImGuiSelectableFlags_None,
-            ImVec2(0, ImGui::GetTextLineHeightWithSpacing() * 1.4f))) {
-        confirmed = true;
-        return true;
+void begin_modal(const char* title) {
+    draw_dim();
+    ImGui::Begin("##modal", nullptr, kModalFlags);
+    ImGui::SetWindowFontScale(kFontScale);
+    // Auto-focus the first item so gamepad nav can drive it
+    // immediately. ImGui keeps the focus after the first frame.
+    if (ImGui::IsWindowAppearing()) {
+        ImGui::SetKeyboardFocusHere();
     }
-    return false;
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+    ImGui::TextUnformatted(title);
+    ImGui::PopStyleColor();
+    ImGui::Separator();
+    ImGui::Dummy(ImVec2(0, 4));
+}
+
+bool select_row(const char* icon, const char* label) {
+    char buf[160];
+    std::snprintf(buf, sizeof(buf), "  %s   %s", icon, label);
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
+        ImVec2(8.0f, kRowPadY));
+    const bool clicked = ImGui::Selectable(buf, false,
+        ImGuiSelectableFlags_None,
+        ImVec2(0, ImGui::GetTextLineHeightWithSpacing() * 1.6f));
+    ImGui::PopStyleVar();
+    return clicked;
 }
 
 void apply_pending() {
@@ -71,39 +106,22 @@ void apply_pending() {
 // ----- Pause root --------------------------------------------------------
 
 void draw_pause() {
-    center_next_window(560.0f, 540.0f);
-    ImGui::Begin("##pause", nullptr, kModalFlags);
-    ImGui::Text("Paused");
-    ImGui::Separator();
+    center_next_window(640.0f, 620.0f);
+    begin_modal("Paused");
 
-    bool clicked = false;
-    if (select_row("Resume", clicked)) {
-        g_pending = Modal::None;
-    }
-    if (select_row("Restart — reset the game", clicked)) {
+    if (select_row("[>]",  "Resume"))                g_pending = Modal::None;
+    if (select_row("[R]",  "Restart")) {
         ::retro_reset();
         foyer::log::write("[modals] retro_reset\n");
         g_pending = Modal::None;
     }
-    if (select_row("Save state — pick a slot", clicked)) {
-        g_pending = Modal::SaveSlot;
-    }
-    if (select_row("Load state — pick a slot", clicked)) {
-        g_pending = Modal::LoadSlot;
-    }
-    if (select_row("Core options", clicked)) {
-        g_pending = Modal::CoreOptions;
-    }
-    if (select_row("Display — aspect / scale", clicked)) {
-        g_pending = Modal::Display;
-    }
-    if (select_row("Shaders", clicked)) {
-        g_pending = Modal::Shaders;
-    }
-    if (select_row("Cheats", clicked)) {
-        g_pending = Modal::Cheats;
-    }
-    if (select_row("Quit — back to foyer", clicked)) {
+    if (select_row("[S]",  "Save state"))            g_pending = Modal::SaveSlot;
+    if (select_row("[L]",  "Load state"))            g_pending = Modal::LoadSlot;
+    if (select_row("[O]",  "Core options"))          g_pending = Modal::CoreOptions;
+    if (select_row("[D]",  "Display — aspect"))      g_pending = Modal::Display;
+    if (select_row("[F]",  "Shaders"))               g_pending = Modal::Shaders;
+    if (select_row("[C]",  "Cheats"))                g_pending = Modal::Cheats;
+    if (select_row("[Q]",  "Quit to foyer")) {
         foyer::libretro::Frontend::instance().flush_sram();
         if (g_on_quit) g_on_quit();
         if (!g_back_nro.empty()) {
@@ -115,7 +133,7 @@ void draw_pause() {
         g_pending = Modal::None;
     }
 
-    if (ImGui::IsKeyPressed(ImGuiKey_GamepadFaceDown)) {
+    if (ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight)) {
         g_pending = Modal::None;
     }
     ImGui::End();
@@ -124,11 +142,8 @@ void draw_pause() {
 // ----- Slot picker (Save / Load) ----------------------------------------
 
 void draw_slot(bool save_mode) {
-    center_next_window(560.0f, 540.0f);
-    ImGui::Begin("##slot", nullptr, kModalFlags);
-    ImGui::Text(save_mode ? "Save state — pick a slot"
-                          : "Load state — pick a slot");
-    ImGui::Separator();
+    center_next_window(720.0f, 620.0f);
+    begin_modal(save_mode ? "Save state" : "Load state");
 
     foyer::libretro::StateSlot slots[foyer::libretro::kStateSlotCount];
     foyer::libretro::inspect_slots(g_rom_path, g_system_folder, slots);
@@ -141,13 +156,13 @@ void draw_slot(bool save_mode) {
             char ts[32];
             std::strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M", &tm);
             std::snprintf(label, sizeof(label),
-                "Slot %d — %s (%.1f KB)",
+                "Slot %d   %s   %.1f KB",
                 i, ts, slots[i].size_bytes / 1024.0);
         } else {
-            std::snprintf(label, sizeof(label), "Slot %d — empty", i);
+            std::snprintf(label, sizeof(label), "Slot %d   (empty)", i);
         }
-        bool clicked = false;
-        if (select_row(label, clicked)) {
+        char icon[8]; std::snprintf(icon, sizeof(icon), "[%d]", i);
+        if (select_row(icon, label)) {
             const auto path = foyer::libretro::state_path_for(
                 g_rom_path, g_system_folder, i);
             if (save_mode) {
@@ -171,7 +186,7 @@ void draw_slot(bool save_mode) {
             }
         }
     }
-    if (ImGui::IsKeyPressed(ImGuiKey_GamepadFaceDown)) {
+    if (ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight)) {
         g_pending = Modal::Pause;
     }
     ImGui::End();
@@ -180,22 +195,18 @@ void draw_slot(bool save_mode) {
 // ----- Shaders picker ---------------------------------------------------
 
 void draw_shaders() {
-    center_next_window(560.0f, 540.0f);
-    ImGui::Begin("##shaders", nullptr, kModalFlags);
-    ImGui::Text("Shaders");
-    ImGui::Separator();
+    center_next_window(720.0f, 620.0f);
+    begin_modal("Shaders");
 
     const auto presets = foyer::libretro::ShaderPipeline::available_presets();
     const std::string active = foyer::libretro::shader_pipeline().active();
 
     auto pick = [&](const std::string& name, const std::string& label) {
+        const bool is_active = (name == active);
         char buf[160];
-        if (name == active)
-            std::snprintf(buf, sizeof(buf), "%s — Active", label.c_str());
-        else
-            std::snprintf(buf, sizeof(buf), "%s", label.c_str());
-        bool clicked = false;
-        if (select_row(buf, clicked)) {
+        std::snprintf(buf, sizeof(buf), "%s%s",
+            label.c_str(), is_active ? "   (active)" : "");
+        if (select_row(is_active ? "[*]" : "[ ]", buf)) {
             foyer::libretro::shader_pipeline().set_preset(name);
             foyer::library::set_shader_name(name);
             g_pending = Modal::Pause;
@@ -208,7 +219,7 @@ void draw_shaders() {
         pick(p.name, p.label.empty() ? p.name : p.label);
     }
 
-    if (ImGui::IsKeyPressed(ImGuiKey_GamepadFaceDown)) {
+    if (ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight)) {
         g_pending = Modal::Pause;
     }
     ImGui::End();
@@ -229,25 +240,21 @@ void draw_display() {
         { "Integer auto",   AspectMode::IntegerAuto  },
     };
 
-    center_next_window(560.0f, 540.0f);
-    ImGui::Begin("##display", nullptr, kModalFlags);
-    ImGui::Text("Display");
-    ImGui::Separator();
+    center_next_window(640.0f, 620.0f);
+    begin_modal("Display");
 
     const auto cur = foyer::libretro::VideoSinkGl::instance().aspect();
     for (const auto& r : rows) {
-        char buf[64];
-        if (r.m == cur)
-            std::snprintf(buf, sizeof(buf), "%s — Active", r.label);
-        else
-            std::snprintf(buf, sizeof(buf), "%s", r.label);
-        bool clicked = false;
-        if (select_row(buf, clicked)) {
+        const bool is_active = (r.m == cur);
+        char buf[96];
+        std::snprintf(buf, sizeof(buf), "%s%s",
+            r.label, is_active ? "   (active)" : "");
+        if (select_row(is_active ? "[*]" : "[ ]", buf)) {
             foyer::libretro::VideoSinkGl::instance().set_aspect(r.m);
             g_pending = Modal::Pause;
         }
     }
-    if (ImGui::IsKeyPressed(ImGuiKey_GamepadFaceDown)) {
+    if (ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight)) {
         g_pending = Modal::Pause;
     }
     ImGui::End();
@@ -256,29 +263,24 @@ void draw_display() {
 // ----- Core options picker --------------------------------------------
 
 void draw_core_options() {
-    center_next_window(700.0f, 540.0f);
-    ImGui::Begin("##core_options", nullptr, kModalFlags);
-    ImGui::Text("Core options");
-    ImGui::Separator();
+    center_next_window(800.0f, 620.0f);
+    begin_modal("Core options");
 
     auto& co = foyer::libretro::CoreOptions::instance();
     const auto& opts = co.options();
     if (opts.empty()) {
         ImGui::TextDisabled("(this core publishes no options)");
     } else {
-        ImGui::BeginChild("##co_scroll", ImVec2(0, 460), false);
+        ImGui::BeginChild("##co_scroll", ImVec2(0, 480), false);
         for (const auto& o : opts) {
-            char hdr[160];
-            std::snprintf(hdr, sizeof(hdr), "%s = %s",
+            char hdr[200];
+            std::snprintf(hdr, sizeof(hdr), "%s   =   %s",
                 (o.desc.empty() ? o.key : o.desc).c_str(),
                 o.value.c_str());
             if (ImGui::TreeNode(hdr)) {
                 for (const auto& v : o.choices) {
-                    bool clicked = false;
-                    char row[160];
-                    std::snprintf(row, sizeof(row), "  %s%s",
-                        v.c_str(), v == o.value ? " — Active" : "");
-                    if (select_row(row, clicked)) {
+                    const bool is_active = (v == o.value);
+                    if (select_row(is_active ? "[*]" : "[ ]", v.c_str())) {
                         co.set(o.key, v);
                     }
                 }
@@ -287,7 +289,7 @@ void draw_core_options() {
         }
         ImGui::EndChild();
     }
-    if (ImGui::IsKeyPressed(ImGuiKey_GamepadFaceDown)) {
+    if (ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight)) {
         g_pending = Modal::Pause;
     }
     ImGui::End();
@@ -306,24 +308,18 @@ void ensure_cheats_loaded() {
 }
 
 void draw_cheats() {
-    center_next_window(700.0f, 540.0f);
-    ImGui::Begin("##cheats", nullptr, kModalFlags);
-    ImGui::Text("Cheats");
-    ImGui::Separator();
+    center_next_window(800.0f, 620.0f);
+    begin_modal("Cheats");
 
     ensure_cheats_loaded();
     if (g_cheats_cache.empty()) {
         ImGui::TextDisabled("(no cheats loaded for this game)");
     } else {
-        ImGui::BeginChild("##ch_scroll", ImVec2(0, 460), false);
+        ImGui::BeginChild("##ch_scroll", ImVec2(0, 480), false);
         for (std::size_t i = 0; i < g_cheats_cache.size(); ++i) {
-            char buf[160];
             const bool on = g_cheats_cache[i].enabled;
-            std::snprintf(buf, sizeof(buf), "%s %s",
-                on ? "[ON]" : "[  ]",
-                g_cheats_cache[i].desc.c_str());
-            bool clicked = false;
-            if (select_row(buf, clicked)) {
+            if (select_row(on ? "[*]" : "[ ]",
+                           g_cheats_cache[i].desc.c_str())) {
                 g_cheats_cache[i].enabled = !on;
                 foyer::libretro::save_cheats_for(
                     g_system_folder, g_rom_stem, g_cheats_cache);
@@ -332,7 +328,7 @@ void draw_cheats() {
         }
         ImGui::EndChild();
     }
-    if (ImGui::IsKeyPressed(ImGuiKey_GamepadFaceDown)) {
+    if (ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight)) {
         g_pending = Modal::Pause;
     }
     ImGui::End();
