@@ -85,7 +85,27 @@ int main(int argc, char** argv) {
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    ImGui::GetIO().IniFilename = nullptr;
+    ImGuiIO& io_init = ImGui::GetIO();
+    io_init.IniFilename = nullptr;
+
+    // Default ImGui font at 18 px (readable from couch distance on
+    // 720p / 1080p), with FontAwesome 6 Free Solid merged on top so
+    // ICON_FA_* literals from imgui/icons.hpp render as glyphs.
+    {
+        ImFontConfig base_cfg;
+        base_cfg.SizePixels = 18.0f;
+        io_init.Fonts->AddFontDefault(&base_cfg);
+
+        ImFontConfig fa_cfg;
+        fa_cfg.MergeMode        = true;
+        fa_cfg.PixelSnapH       = true;
+        fa_cfg.GlyphMinAdvanceX = 18.0f;
+        static const ImWchar fa_ranges[] = { 0xf000, 0xf8ff, 0 };
+        io_init.Fonts->AddFontFromFileTTF(
+            "romfs:/fonts/fa-solid-900.ttf",
+            18.0f, &fa_cfg, fa_ranges);
+    }
+
     ImGui_ImplOpenGL3_Init("#version 300 es");
     input_init();
     theme_apply();

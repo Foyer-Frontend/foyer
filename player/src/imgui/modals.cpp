@@ -1,4 +1,5 @@
 #include "imgui/modals.hpp"
+#include "imgui/icons.hpp"
 
 #include "library/config.hpp"
 #include "libretro/cheats.hpp"
@@ -109,19 +110,19 @@ void draw_pause() {
     center_next_window(640.0f, 620.0f);
     begin_modal("Paused");
 
-    if (select_row("[>]",  "Resume"))                g_pending = Modal::None;
-    if (select_row("[R]",  "Restart")) {
+    if (select_row(ICON_FA_PLAY,        "Resume"))         g_pending = Modal::None;
+    if (select_row(ICON_FA_ROTATE,      "Restart")) {
         ::retro_reset();
         foyer::log::write("[modals] retro_reset\n");
         g_pending = Modal::None;
     }
-    if (select_row("[S]",  "Save state"))            g_pending = Modal::SaveSlot;
-    if (select_row("[L]",  "Load state"))            g_pending = Modal::LoadSlot;
-    if (select_row("[O]",  "Core options"))          g_pending = Modal::CoreOptions;
-    if (select_row("[D]",  "Display — aspect"))      g_pending = Modal::Display;
-    if (select_row("[F]",  "Shaders"))               g_pending = Modal::Shaders;
-    if (select_row("[C]",  "Cheats"))                g_pending = Modal::Cheats;
-    if (select_row("[Q]",  "Quit to foyer")) {
+    if (select_row(ICON_FA_FLOPPY,      "Save state"))     g_pending = Modal::SaveSlot;
+    if (select_row(ICON_FA_FOLDER_OPEN, "Load state"))     g_pending = Modal::LoadSlot;
+    if (select_row(ICON_FA_GEAR,        "Core options"))   g_pending = Modal::CoreOptions;
+    if (select_row(ICON_FA_DESKTOP,     "Display"))        g_pending = Modal::Display;
+    if (select_row(ICON_FA_WAND,        "Shaders"))        g_pending = Modal::Shaders;
+    if (select_row(ICON_FA_BUG,         "Cheats"))         g_pending = Modal::Cheats;
+    if (select_row(ICON_FA_POWER,       "Quit to foyer")) {
         foyer::libretro::Frontend::instance().flush_sram();
         if (g_on_quit) g_on_quit();
         if (!g_back_nro.empty()) {
