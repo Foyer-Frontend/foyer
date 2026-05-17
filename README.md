@@ -254,68 +254,75 @@ every system regardless of which cores happen to be installed.
 verify them; un-verified cells stay `⬜` so it's obvious what still
 needs a pass.
 
-| Core | System(s) | Boots | Audio | Save state | Bezel | Shader | Cheats |
-|---|---|---|---|---|---|---|---|
-| `fceumm` | NES | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `nestopia` | NES | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `mesen` | NES | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `snes9x` | SNES | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `snes9x2010` | SNES | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `bsnes_hd_beta` | SNES | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `gambatte` | GB / GBC | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `sameboy` | GB / GBC | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `tgbdual` | GB / GBC | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `mgba` | GBA | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `gpsp` | GBA | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `vba_next` | GBA | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `melonds` | NDS | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `mupen64plus` | N64 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `pokemini` | Pokemon Mini | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `mednafen_vb` | Virtual Boy | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `genesisplusgx` | Genesis / SMS / GG | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `genesis_plus_gx_wide` | Genesis | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `picodrive` | 32X / SegaCD | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `yabasanshiro` | Saturn | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `flycast` | Dreamcast | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `pcsx_rearmed` | PSX | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `swanstation` | PSX | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `mednafen_psx_hw` | PSX | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `ppsspp` | PSP | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `race` | NGP / NGPC | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `mednafen_ngp` | NGP / NGPC | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `stella` | Atari 2600 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `stella2014` | Atari 2600 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `prosystem` | Atari 7800 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `handy` | Atari Lynx | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `mednafen_lynx` | Atari Lynx | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `atari800` | Atari 800 / 5200 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `virtualjaguar` | Atari Jaguar | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `mednafen_pce_fast` | PCE | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `beetle_pce` | PCE / PCE-CD | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `beetle_supergrafx` | SuperGrafx | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `beetle_pcfx` | PC-FX | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `beetle_wswan` | WonderSwan | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `beetle_vb` | Virtual Boy | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `freeintv` | Intellivision | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `gw` | Game & Watch | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `prboom` | Doom | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `tyrquake` | Quake | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `retro8` | Pico-8 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `dosbox_pure` | DOS | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `caprice32` | Amstrad CPC | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `frodo` | C64 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `fmsx` | MSX / MSX2 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `opera` | 3DO | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `mame2003_plus` | Arcade | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `nxengine` | Cave Story | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `reminiscence` | Flashback | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `puae` | Amiga | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| Core | System(s) | Boots | Audio | SRAM | Save state | Bezel | Shader | Cheats |
+|---|---|---|---|---|---|---|---|---|
+| `fceumm` | NES | ✅ | ✅ | 🟡 v0.6.116 fix | ⬜ | ✅ | ⬜ | ⬜ |
+| `nestopia` | NES | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `mesen` | NES | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `snes9x` | SNES | ✅ | ✅ | 🟡 v0.6.116 fix | ⬜ | ✅ | ⬜ | ⬜ |
+| `snes9x2010` | SNES | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `bsnes_hd_beta` | SNES | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `gambatte` | GB / GBC | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `sameboy` | GB / GBC | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `tgbdual` | GB / GBC | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `mgba` | GBA | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `gpsp` | GBA | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `vba_next` | GBA | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `melonds` | NDS | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `mupen64plus` | N64 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `pokemini` | Pokemon Mini | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `mednafen_vb` | Virtual Boy | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `genesisplusgx` | Genesis / SMS / GG | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `genesis_plus_gx_wide` | Genesis | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `picodrive` | 32X / SegaCD | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `yabasanshiro` | Saturn | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `flycast` | Dreamcast | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `pcsx_rearmed` | PSX | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `swanstation` | PSX | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `mednafen_psx_hw` | PSX | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `ppsspp` | PSP | ❌ doesn't boot | — | — | — | — | — | — |
+| `race` | NGP / NGPC | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `mednafen_ngp` | NGP / NGPC | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `stella` | Atari 2600 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `stella2014` | Atari 2600 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `prosystem` | Atari 7800 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `handy` | Atari Lynx | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `mednafen_lynx` | Atari Lynx | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `atari800` | Atari 800 / 5200 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `virtualjaguar` | Atari Jaguar | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `mednafen_pce_fast` | PCE | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `beetle_pce` | PCE / PCE-CD | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `beetle_supergrafx` | SuperGrafx | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `beetle_pcfx` | PC-FX | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `beetle_wswan` | WonderSwan | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `beetle_vb` | Virtual Boy | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `freeintv` | Intellivision | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `gw` | Game & Watch | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `prboom` | Doom | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `tyrquake` | Quake | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `retro8` | Pico-8 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `dosbox_pure` | DOS | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `caprice32` | Amstrad CPC | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `frodo` | C64 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `fmsx` | MSX / MSX2 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `opera` | 3DO | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `mame2003_plus` | Arcade | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `nxengine` | Cave Story | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `reminiscence` | Flashback | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `puae` | Amiga | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | `scummvm` | ScummVM | ❌ | — | — | — | — | — |
 | `parallel_n64` | N64 | ❌ | — | — | — | — | — |
 
 `scummvm` is currently disabled in the foyer-cores matrix (build
 time); `parallel_n64` has an upstream link error chain that needs
 recipe surgery — see `foyer-cores/.github/workflows/build-cores.yml`.
+
+**Note on SRAM**: cartridge battery saves (.srm files at
+`/foyer/saves/<rom>.srm`) require v0.6.116+ in both foyer
+browser AND the player nros — earlier versions skipped the
+on-quit flush so saves were lost on chain-launch. The 🟡
+markers above reflect that the fix is in v0.6.116 but the
+matching player nros need a foyer-cores rebuild to ship.
 
 ## Compatibility matrix — systems
 
