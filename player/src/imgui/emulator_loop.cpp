@@ -1,4 +1,5 @@
 #include "imgui/emulator_loop.hpp"
+#include "imgui/imgui_switch_input.hpp"
 
 #include "libretro/audio.hpp"
 #include "libretro/bezel_gl.hpp"
@@ -26,8 +27,6 @@ std::string g_original_rom_path;
 std::string g_back_nro;
 std::string g_system_folder;
 bool        g_game_ok       = false;
-bool        g_pad_inited    = false;
-PadState    g_pad{};
 bool        g_pause_combo   = false;
 bool        g_exit_request  = false;
 
@@ -123,16 +122,20 @@ bool start(const std::string& rom_path,
 bool tick() {
     if (!g_game_ok) return false;
 
-    if (!g_pad_inited) {
-        padConfigureInput(1, HidNpadStyleSet_NpadStandard);
-        padInitializeDefault(&g_pad);
-        g_pad_inited = true;
+    // Share the PadState owned by imgui_switch_input — it's already
+    // padUpdate'd this frame (the ImGui shell polls it before
+    // tick()), so we just read out of the same struct. Two
+    // independent padInitializeDefault sites was the reason
+    // controls didn't reach the core in v0.6.125: libnx silently
+    // routed events to the most-recently-initialised PadState
+    // (imgui_switch_input's) while libretro::poll_input was reading
+    // a different one.
+    PadState* pad = foyer::player::imgui_shell::input_pad();
+    if (!pad) {
+        return g_exit_request;
     }
-    padUpdate(&g_pad);
-    const u64 held = padGetButtons(&g_pad);
+    const u64 held = padGetButtons(pad);
 
-    // L3+R3 toggle — Phase 4 wires the pause modal here. For now,
-    // detect + log so we have hardware confirmation the combo works.
     const bool combo = (held & HidNpadButton_StickL)
                     && (held & HidNpadButton_StickR);
     if (combo && !g_pause_combo) {
@@ -140,9 +143,7 @@ bool tick() {
     }
     g_pause_combo = combo;
 
-    // Mirror the pad into libretro's InputState. Same call brls does
-    // in emulator_activity.cpp::tick_frame.
-    foyer::libretro::poll_input(g_pad);
+    foyer::libretro::poll_input(*pad);
 
     foyer::libretro::Frontend::instance().run_frame();
     return g_exit_request;

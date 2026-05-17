@@ -41,4 +41,10 @@ void gl_context_shutdown(GlContext& ctx);
 // pull <EGL/egl.h>.
 void gl_context_swap(GlContext& ctx);
 
+// Per-frame poll. Detects HOS dock/undock transitions and resizes
+// the NWindow + fb_w/fb_h accordingly so the swapchain follows the
+// live operation mode without a player restart. Returns true if the
+// dimensions changed (caller may want to glViewport again).
+bool gl_context_tick(GlContext& ctx);
+
 }  // namespace foyer::player::imgui_shell

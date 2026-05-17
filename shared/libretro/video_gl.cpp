@@ -77,28 +77,22 @@ void convert_xrgb8888_to_rgba8(const void* src_v, std::size_t pitch,
     }
 }
 
+// mesa-on-Switch (libnx + nouveau) miscompiles GLES3
+// `const vec2[](...)` global arrays — gl_VertexID then indexes
+// uninitialised storage and every fragment ends up at the origin.
+// Bit-twiddle 0..3 -> {(0,0),(1,0),(0,1),(1,1)} instead.
 constexpr const char* kVS = R"(#version 300 es
 precision highp float;
 uniform vec2 u_pos;     // NDC top-left
 uniform vec2 u_scale;   // NDC size
 out vec2 v_uv;
-const vec2 kCorners[4] = vec2[](
-    vec2(0.0, 0.0),     // top-left
-    vec2(1.0, 0.0),     // top-right
-    vec2(0.0, 1.0),     // bottom-left
-    vec2(1.0, 1.0));    // bottom-right
 void main() {
-    vec2 c = kCorners[gl_VertexID];
+    vec2 c = vec2(float(gl_VertexID & 1),
+                  float((gl_VertexID >> 1) & 1));
     vec2 ndc;
     ndc.x = u_pos.x + c.x * u_scale.x;
     ndc.y = u_pos.y - c.y * u_scale.y;
     gl_Position = vec4(ndc, 0.0, 1.0);
-    // Texture v=0 is the bottom in GL; rows uploaded via
-    // glTexSubImage2D land top-row-at-v=0, so sampling at v=corner-y
-    // (corner-y == 1 at bottom in our NDC mapping) reads the
-    // bottom of the input, which is the source's bottom row.
-    // Match the libretro convention: c.y of 0 (top) reads source
-    // top row, c.y of 1 (bottom) reads source bottom row.
     v_uv = vec2(c.x, c.y);
 }
 )";
@@ -168,7 +162,10 @@ bool VideoSinkGl::init() {
 
     Frontend::instance().set_video_sink(&VideoSinkGl::on_frame);
 
-    foyer::log::write("[video_gl] init ok\n");
+    foyer::log::write("[video_gl] init ok prog=%u vao=%u loc_pos=%d loc_scale=%d loc_tex=%d err=0x%x\n",
+        (unsigned)m_program, (unsigned)m_vao,
+        m_loc_pos, m_loc_scale, m_loc_tex,
+        (unsigned)glGetError());
     return true;
 }
 
@@ -241,6 +238,12 @@ void VideoSinkGl::upload(const Frontend::VideoFrame& f) {
 }
 
 void VideoSinkGl::draw(float screen_w, float screen_h) {
+    static int s_draw_log_budget = 4;
+    if (s_draw_log_budget > 0) {
+        foyer::log::write("[video_gl] draw screen=%.0fx%.0f tex=%u src=%ux%u prog=%u\n",
+            screen_w, screen_h, (unsigned)m_tex, m_w, m_h, (unsigned)m_program);
+        --s_draw_log_budget;
+    }
     if (!m_program || !m_tex || m_w == 0 || m_h == 0) return;
 
     auto fit = [&](float aspect) {
@@ -304,6 +307,13 @@ void VideoSinkGl::draw(float screen_w, float screen_h) {
     glDisable(GL_BLEND);
     glDisable(GL_CULL_FACE);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    const GLenum err = glGetError();
+    static int s_err_log_budget = 4;
+    if (s_err_log_budget > 0) {
+        foyer::log::write("[video_gl] draw err=0x%x ndc=(%.2f,%.2f) scale=(%.2f,%.2f)\n",
+            (unsigned)err, nx, ny, nw, nh);
+        --s_err_log_budget;
+    }
     glBindVertexArray(0);
 }
 

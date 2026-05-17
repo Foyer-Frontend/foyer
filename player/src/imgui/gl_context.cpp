@@ -1,6 +1,7 @@
 #include "imgui/gl_context.hpp"
 #include "platform/log.hpp"
 
+#include <GLES3/gl3.h>
 #include <switch.h>
 
 #include <array>
@@ -33,6 +34,34 @@ const char* egl_err_str(EGLint e) {
 
 bool gl_context_init(GlContext& out) {
     out = GlContext{};
+
+    // libnx's NWindow needs an explicit size before EGL can wrap it
+    // as a surface — the default object is zero-sized and silently
+    // produces a 0×0 framebuffer (every clear/draw still "works",
+    // it just goes nowhere). Pick the size based on HOS operation
+    // mode: handheld is 1280×720, docked is 1920×1080. Phase 2 only
+    // handles the boot-time mode; live dock/undock resize comes
+    // later (Phase 4-era).
+    NWindow* win = nwindowGetDefault();
+    u32 want_w = 1280, want_h = 720;
+    if (appletGetOperationMode() == AppletOperationMode_Console) {
+        want_w = 1920;
+        want_h = 1080;
+    }
+    if (win) {
+        const Result rc = nwindowSetDimensions(win, want_w, want_h);
+        if (R_FAILED(rc)) {
+            foyer::log::write(
+                "[imgui_gl] nwindowSetDimensions(%ux%u) rc=0x%x — continuing\n",
+                want_w, want_h, (unsigned)rc);
+        } else {
+            foyer::log::write(
+                "[imgui_gl] nwindowSetDimensions(%ux%u) ok (op_mode=%s)\n",
+                want_w, want_h,
+                appletGetOperationMode() == AppletOperationMode_Console
+                    ? "docked" : "handheld");
+        }
+    }
 
     out.display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
     if (out.display == EGL_NO_DISPLAY) {
@@ -101,7 +130,7 @@ bool gl_context_init(GlContext& out) {
     }
 
     out.surface = eglCreateWindowSurface(out.display, cfg,
-        (EGLNativeWindowType)nwindowGetDefault(), nullptr);
+        (EGLNativeWindowType)win, nullptr);
     if (out.surface == EGL_NO_SURFACE) {
         foyer::log::write("[imgui_gl] eglCreateWindowSurface failed: %s\n",
             egl_err_str(eglGetError()));
@@ -134,9 +163,34 @@ bool gl_context_init(GlContext& out) {
         return false;
     }
 
+    // mesa-on-Switch's eglQuerySurface reports 0×0 even after
+    // nwindowSetDimensions — the surface is sized lazily on first
+    // present. Read the configured dimensions back from the window
+    // (libnx fills these from the NWindow's swapchain config).
     eglQuerySurface(out.display, out.surface, EGL_WIDTH,  &out.fb_w);
     eglQuerySurface(out.display, out.surface, EGL_HEIGHT, &out.fb_h);
+    if (out.fb_w <= 0 || out.fb_h <= 0) {
+        u32 nw = 0, nh = 0;
+        if (win && R_SUCCEEDED(nwindowGetDimensions(win, &nw, &nh))
+                && nw > 0 && nh > 0) {
+            out.fb_w = (int)nw;
+            out.fb_h = (int)nh;
+        } else {
+            // Last-ditch fall-back to the want_* we asked for above.
+            out.fb_w = (int)want_w;
+            out.fb_h = (int)want_h;
+        }
+    }
     foyer::log::write("[imgui_gl] surface ready %dx%d\n", out.fb_w, out.fb_h);
+
+    const GLubyte* ver  = glGetString(GL_VERSION);
+    const GLubyte* glsl = glGetString(GL_SHADING_LANGUAGE_VERSION);
+    const GLubyte* vend = glGetString(GL_VENDOR);
+    const GLubyte* rend = glGetString(GL_RENDERER);
+    foyer::log::write("[imgui_gl] GL_VERSION=%s\n",  ver  ? (const char*)ver  : "(null)");
+    foyer::log::write("[imgui_gl] GL_SL_VERSION=%s\n", glsl ? (const char*)glsl : "(null)");
+    foyer::log::write("[imgui_gl] GL_VENDOR=%s\n",  vend ? (const char*)vend : "(null)");
+    foyer::log::write("[imgui_gl] GL_RENDERER=%s\n",  rend ? (const char*)rend : "(null)");
     return true;
 }
 
@@ -158,6 +212,28 @@ void gl_context_shutdown(GlContext& ctx) {
 void gl_context_swap(GlContext& ctx) {
     if (ctx.display == EGL_NO_DISPLAY) return;
     eglSwapBuffers(ctx.display, ctx.surface);
+}
+
+bool gl_context_tick(GlContext& ctx) {
+    NWindow* win = nwindowGetDefault();
+    if (!win) return false;
+    const u32 want_w = (appletGetOperationMode() == AppletOperationMode_Console)
+        ? 1920u : 1280u;
+    const u32 want_h = (appletGetOperationMode() == AppletOperationMode_Console)
+        ? 1080u :  720u;
+    if ((u32)ctx.fb_w == want_w && (u32)ctx.fb_h == want_h) return false;
+
+    foyer::log::write("[imgui_gl] resize %dx%d -> %ux%u\n",
+        ctx.fb_w, ctx.fb_h, want_w, want_h);
+    const Result rc = nwindowSetDimensions(win, want_w, want_h);
+    if (R_FAILED(rc)) {
+        foyer::log::write("[imgui_gl] nwindowSetDimensions rc=0x%x\n",
+            (unsigned)rc);
+        return false;
+    }
+    ctx.fb_w = (int)want_w;
+    ctx.fb_h = (int)want_h;
+    return true;
 }
 
 }  // namespace foyer::player::imgui_shell

@@ -79,22 +79,18 @@ std::string resolve_path() {
     return {};
 }
 
+// mesa-on-Switch miscompiles `const vec2[](...)` globals — replace
+// the lookup with arithmetic on gl_VertexID. Strip {0..3} into
+// {(0,0),(1,0),(0,1),(1,1)} for UV, then expand UV to NDC.
 constexpr const char* kVS = R"(#version 300 es
 precision highp float;
 out vec2 v_uv;
-const vec2 kCorners[4] = vec2[](
-    vec2(-1.0,  1.0),
-    vec2( 1.0,  1.0),
-    vec2(-1.0, -1.0),
-    vec2( 1.0, -1.0));
-const vec2 kUV[4] = vec2[](
-    vec2(0.0, 0.0),
-    vec2(1.0, 0.0),
-    vec2(0.0, 1.0),
-    vec2(1.0, 1.0));
 void main() {
-    gl_Position = vec4(kCorners[gl_VertexID], 0.0, 1.0);
-    v_uv        = kUV[gl_VertexID];
+    vec2 uv = vec2(float(gl_VertexID & 1),
+                   float((gl_VertexID >> 1) & 1));
+    vec2 ndc = vec2(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
+    gl_Position = vec4(ndc, 0.0, 1.0);
+    v_uv        = uv;
 }
 )";
 

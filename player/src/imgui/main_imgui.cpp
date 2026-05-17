@@ -109,8 +109,12 @@ int main(int argc, char** argv) {
 
     bool quit = false;
     while (appletMainLoop() && !quit) {
+        gl_context_tick(gl);
         input_new_frame();
-        if (input_pressed_plus()) quit = true;
+        // + (Plus / Start) is reserved for libretro Start; the
+        // pause modal in Phase 4 uses L3+R3. The "no rom path"
+        // idle screen still wants + to exit.
+        if (!game_running && input_pressed_plus()) quit = true;
 
         const u64 now_ns = armGetSystemTick();
         if (now_ns - last_theme_check_ns > kThemeCheckPeriodNs) {

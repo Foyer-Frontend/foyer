@@ -80,4 +80,6 @@ void input_new_frame() {
 
 bool input_pressed_plus() { return g_plus_pressed_this_frame; }
 
+::PadState* input_pad() { return g_inited ? &g_pad : nullptr; }
+
 }  // namespace foyer::player::imgui_shell
