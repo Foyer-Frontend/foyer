@@ -5,6 +5,7 @@
 #include "shaders_picker_activity.hpp"
 #include "slot_picker_activity.hpp"
 
+#include "libretro/frontend.hpp"
 #include "libretro/savestate.hpp"
 #include "platform/log.hpp"
 
