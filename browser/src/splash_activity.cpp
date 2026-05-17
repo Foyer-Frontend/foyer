@@ -46,6 +46,22 @@ SplashActivity::~SplashActivity() {
 void SplashActivity::onContentAvailable() {
     if (build) build->setText(FOYER_DISPLAY_VERSION);
 
+    // Pop-restore-focus needs a live target. The boot-update
+    // brls::Dialog pushes ON TOP of the splash; when the user picks
+    // a button the Dialog dismisses and brls walks focusStack to
+    // restore focus on the splash. If the splash has nothing
+    // focusable, the focus pointer hangs on the dying Dialog button
+    // ("invisible button" highlight) and the next A press deref's
+    // a freed view — the same defect 0.6.21 fixed for EmulatorView
+    // and 0.6.20 for the pause overlay. Make the content box
+    // focusable (no visible highlight) and land focus on it.
+    if (auto* cv = this->getContentView()) {
+        cv->setFocusable(true);
+        cv->setHideHighlight(true);
+        cv->setHideHighlightBackground(true);
+        brls::Application::giveFocus(cv);
+    }
+
     if (m_worker) return;
 
     foyer::log::write("[splash] kicking worker\n");
