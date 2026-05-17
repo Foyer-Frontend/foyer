@@ -21,6 +21,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <vector>
 #include <dirent.h>
 #include <fstream>
 #include <sstream>
@@ -291,35 +292,73 @@ bool ShaderPipeline::init() {
             egl_err_str(eglGetError()));
         return false;
     }
-    const EGLint cfg_attrs[] = {
-        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
-        EGL_SURFACE_TYPE,    EGL_PBUFFER_BIT,
-        EGL_RED_SIZE,        8,
-        EGL_GREEN_SIZE,      8,
-        EGL_BLUE_SIZE,       8,
-        EGL_ALPHA_SIZE,      8,
-        EGL_NONE
+    // Switch's mesa-on-libnx doesn't advertise pbuffer-capable configs;
+    // eglChooseConfig returned 0 with EGL_SUCCESS on hardware. Walk a
+    // progressively-relaxed probe ladder (same shape as video_hw's
+    // probe) and fall back to a surfaceless context if no pbuffer is
+    // available — we render to FBOs only.
+    struct Probe { EGLint renderable; EGLint surface_type; };
+    const Probe probes[] = {
+        { EGL_OPENGL_ES3_BIT, EGL_PBUFFER_BIT },
+        { EGL_OPENGL_ES3_BIT, -1 },               // unfiltered
+        { EGL_OPENGL_ES2_BIT, EGL_PBUFFER_BIT },
+        { EGL_OPENGL_ES2_BIT, -1 },
     };
     EGLConfig cfg{};
     EGLint    n = 0;
-    if (!eglChooseConfig(display, cfg_attrs, &cfg, 1, &n) || n < 1) {
-        foyer::log::write("[shader] eglChooseConfig failed: %s\n",
+    EGLint    picked_renderable  = 0;
+    EGLint    picked_surface     = -1;
+    bool      picked             = false;
+    for (const auto& p : probes) {
+        std::vector<EGLint> attrs = {
+            EGL_RENDERABLE_TYPE, p.renderable,
+            EGL_RED_SIZE,        8,
+            EGL_GREEN_SIZE,      8,
+            EGL_BLUE_SIZE,       8,
+            EGL_ALPHA_SIZE,      8,
+        };
+        if (p.surface_type != -1) {
+            attrs.push_back(EGL_SURFACE_TYPE);
+            attrs.push_back(p.surface_type);
+        }
+        attrs.push_back(EGL_NONE);
+        if (eglChooseConfig(display, attrs.data(), &cfg, 1, &n) && n >= 1) {
+            picked_renderable = p.renderable;
+            picked_surface    = p.surface_type;
+            picked            = true;
+            foyer::log::write(
+                "[shader] config picked: gles=%s surface=%s\n",
+                p.renderable == EGL_OPENGL_ES3_BIT ? "3" : "2",
+                p.surface_type == EGL_PBUFFER_BIT ? "pbuffer" : "any");
+            break;
+        }
+    }
+    if (!picked) {
+        foyer::log::write("[shader] eglChooseConfig: no config after %zu probes (%s)\n",
+            sizeof(probes) / sizeof(probes[0]),
             egl_err_str(eglGetError()));
         return false;
     }
-    const EGLint pb_attrs[] = { EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE };
-    auto surf = eglCreatePbufferSurface(display, cfg, pb_attrs);
-    if (surf == EGL_NO_SURFACE) {
-        foyer::log::write("[shader] eglCreatePbufferSurface failed: %s\n",
-            egl_err_str(eglGetError()));
-        return false;
+
+    // pbuffer first if the chosen config supports it; otherwise rely on
+    // EGL_KHR_surfaceless_context (mesa-on-Switch ships it).
+    EGLSurface surf = EGL_NO_SURFACE;
+    if (picked_surface != EGL_WINDOW_BIT) {
+        const EGLint pb_attrs[] = { EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE };
+        surf = eglCreatePbufferSurface(display, cfg, pb_attrs);
+        if (surf == EGL_NO_SURFACE) {
+            foyer::log::write(
+                "[shader] pbuffer unavailable (%s); trying surfaceless\n",
+                egl_err_str(eglGetError()));
+        }
     }
-    const EGLint ctx_attrs[] = { EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE };
+    const EGLint ctx_ver = picked_renderable == EGL_OPENGL_ES3_BIT ? 3 : 2;
+    const EGLint ctx_attrs[] = { EGL_CONTEXT_CLIENT_VERSION, ctx_ver, EGL_NONE };
     auto ctx = eglCreateContext(display, cfg, EGL_NO_CONTEXT, ctx_attrs);
     if (ctx == EGL_NO_CONTEXT) {
-        foyer::log::write("[shader] eglCreateContext failed: %s\n",
-            egl_err_str(eglGetError()));
-        eglDestroySurface(display, surf);
+        foyer::log::write("[shader] eglCreateContext(client_ver=%d) failed: %s\n",
+            (int)ctx_ver, egl_err_str(eglGetError()));
+        if (surf != EGL_NO_SURFACE) eglDestroySurface(display, surf);
         return false;
     }
     m_egl_display = (void*)display;

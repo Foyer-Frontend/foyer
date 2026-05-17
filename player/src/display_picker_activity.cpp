@@ -45,7 +45,9 @@ brls::View* DisplayPickerActivity::createContentView() {
         const auto mode = opt.mode;
         cell->registerClickAction([mode](brls::View*) {
             foyer::libretro::VideoSinkImpl::instance().set_aspect(mode);
-            brls::Application::popActivity(brls::TransitionAnimation::NONE);
+            brls::sync([]() {
+                brls::Application::popActivity(brls::TransitionAnimation::NONE);
+            });
             return true;
         });
         host->addView(cell);

@@ -33,7 +33,13 @@ brls::View* ShadersPickerActivity::createContentView() {
         const std::string n = name;
         cell->registerClickAction([n](brls::View*) {
             foyer::libretro::shader_pipeline().set_preset(n);
-            brls::Application::popActivity(brls::TransitionAnimation::NONE);
+            // Defer the pop — same crash mode as SlotPicker: popping
+            // inside the click_action callback frame tears down the
+            // activity while brls is still dispatching the click,
+            // freed-View* vtable -> PC=0 on the next frame.
+            brls::sync([]() {
+                brls::Application::popActivity(brls::TransitionAnimation::NONE);
+            });
             return true;
         });
         host->addView(cell);
