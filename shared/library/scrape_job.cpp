@@ -118,11 +118,12 @@ bool run_one_scrape(std::string_view system_folder,
                     std::string_view rom_path,
                     std::string_view rom_stem,
                     Worker& w) {
-    char banner[160];
-    std::snprintf(banner, sizeof(banner), "Rescraping %.*s…",
-        (int)rom_stem.size(), rom_stem.data());
-    w.set_status(banner);
-
+    // No banner set_status here — install_queue::start_next_locked
+    // already toasts "Rescraping <stem>…" off the job tag, and
+    // poll_tick toasts "Rescraped <stem>" on completion. Setting
+    // a matching status here just made the poll_tick relay fire
+    // the same line a second time, hence the duplicated banners
+    // (and the symmetric "Rescraped" duplicate at the end).
     const std::string folder{system_folder};
     const std::string stem{rom_stem};
 
@@ -133,14 +134,8 @@ bool run_one_scrape(std::string_view system_folder,
 
     const auto dest = scrapers::cover_path(folder, stem);
     const std::string path{rom_path};
-    const bool ok = scrapers::screenscraper::fetch_cover(
+    return scrapers::screenscraper::fetch_cover(
         folder, path, stem, dest);
-
-    std::snprintf(banner, sizeof(banner),
-        ok ? "Rescraped %.*s" : "Rescrape failed for %.*s",
-        (int)stem.size(), stem.c_str());
-    w.set_status(banner);
-    return ok;
 }
 
 } // namespace foyer::library

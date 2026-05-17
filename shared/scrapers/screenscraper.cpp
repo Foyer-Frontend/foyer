@@ -8,6 +8,8 @@
 
 #include <sys/stat.h>
 
+#include <switch.h>
+
 #include <algorithm>
 #include <array>
 #include <cstdio>
@@ -470,13 +472,24 @@ bool fetch_cover(std::string_view system_folder,
             if (pick.url.empty()) return;
             if (kind_present(kind)) return;
             foyer::net::get_to_file(pick.url, bundle_path(kind, pick.region, ext));
+            svcSleepThread(50'000'000ULL);
         };
+
+    // Breathing room between media writes so brls's main-loop
+    // frame pump has time between large allocations / file
+    // writes. ~50 ms = three frames at 60 Hz; enough for the
+    // UI thread to drain its task queue without making the
+    // scrape feel sluggish.
+    auto yield_ms = [](int ms) {
+        svcSleepThread((u64)ms * 1'000'000ULL);
+    };
 
     // box-2D goes to dest_png + the bundle copy; check the bundle
     // side so re-runs without an existing bundle still fetch.
     if (!box.url.empty() && !kind_present("box-2D")) {
         foyer::net::get_to_file(box.url,
             bundle_path("box-2D", box.region, ".png"));
+        yield_ms(50);
     }
 
     fetch_if_missing("sstitle",      pick_media("sstitle"),      ".png");
