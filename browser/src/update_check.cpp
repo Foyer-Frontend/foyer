@@ -124,6 +124,11 @@ void prompt_restart() {
         "Update downloaded. Restart foyer now?");
     dlg->addButton("Later", []() {});
     dlg->addButton("Restart", []() {
+        // Defer everything by a frame so the Dialog finishes
+        // dismissing and brls's focus tracker doesn't deref a
+        // freed button view (same crash mode as the boot-flow
+        // dialogs above).
+        brls::sync([]() {
         // Tear down every long-lived RepeatingTask/Timer BEFORE
         // we touch the filesystem or chain-launch. brls's quit
         // drain otherwise lets these tick into already-freed
@@ -173,6 +178,7 @@ void prompt_restart() {
                 sd_self.c_str());
         }
         brls::Application::quit();
+        });
     });
     dlg->open();
 }
@@ -210,7 +216,7 @@ void prompt_download(const std::string& version,
         + ".\n\nDownload now? Foyer will install it on next launch.");
     dlg->addButton("Cancel", []() {});
     dlg->addButton("Download", [mf]() {
-        enqueue_download(mf);
+        brls::sync([mf]() { enqueue_download(mf); });
     });
     dlg->open();
 }
@@ -265,18 +271,28 @@ void kick_boot(std::function<void()> on_done) {
                     "Update available — v" + mf.version
                     + ".\n\nDownload now? Foyer will install it and "
                       "ask to restart when it's ready.");
+                // Defer the work in every button callback — same
+                // "highlight bleed" / freed-View vtable crash we hit
+                // in SlotPicker/ShadersPicker: brls dismisses the
+                // Dialog after the click callback returns, and any
+                // pop / push / boot_done done synchronously here
+                // races the dismiss. Wrap each body in brls::sync so
+                // the side-effects land one frame later, after the
+                // Dialog has fully torn down.
                 dlg->addButton("Later", []() {
-                    boot_done();
+                    brls::sync([]() { boot_done(); });
                 });
                 dlg->addButton("Download", [mf]() {
                     // Mirror enqueue_download but on completion
                     // route through a boot-flow-aware restart
                     // prompt: "Later" releases boot, "Restart"
                     // chain-launches (process exits before
-                    // boot_done could matter).
-                    const std::string version = mf.version;
+                    // boot_done could matter). Defer the enqueue
+                    // a frame so the Dialog dismiss completes
+                    // before we kick off any UI work.
+                    brls::sync([mf]() {
                     ::foyer::browser::install_queue::enqueue(
-                        "foyer " + version,
+                        "foyer " + mf.version,
                         [mf](::foyer::library::Worker& w) {
                             w.set_status(
                                 "Downloading foyer " + mf.version + "…");
@@ -299,14 +315,15 @@ void kick_boot(std::function<void()> on_done) {
                                 auto* rdlg = new brls::Dialog(
                                     "Update downloaded. Restart foyer now?");
                                 rdlg->addButton("Later", []() {
-                                    boot_done();
+                                    brls::sync([]() { boot_done(); });
                                 });
                                 rdlg->addButton("Restart", []() {
-                                    do_restart();
+                                    brls::sync([]() { do_restart(); });
                                 });
                                 rdlg->open();
                             });
                         });
+                    });
                 });
                 dlg->open();
             });
