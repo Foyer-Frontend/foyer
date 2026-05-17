@@ -1,6 +1,8 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -54,11 +56,14 @@ public:
 
     // Switch to a preset by name. Resolution order: built-in →
     // <name>.json (multi-pass) → <name>.glsl (single-pass) →
-    // fall through to a no-op chain.
+    // fall through to a no-op chain. Safe to call from any thread —
+    // the actual GL work is deferred to the libretro_run thread on
+    // the next process() call.
     bool set_preset(std::string_view name);
 
-    // Currently active preset name. "" if no shader is active.
-    const std::string& active() const { return m_active_name; }
+    // Currently active preset name. "" if no shader is active. Read
+    // from any thread (the picker reads it to mark "Active").
+    std::string active() const;
 
     // Process one frame in place. `pixels` is RGBA8 of size w*h*4.
     // Returns false on any GL error; pixels are unchanged in that
@@ -115,12 +120,36 @@ private:
     std::string  m_active_name;
     std::uint64_t m_frame_count = 0;
 
+    // set_preset is called from the brls main thread (picker click),
+    // but every GL call needs to happen on the libretro_run thread
+    // that owns the EGL context. eglMakeCurrent allows the context to
+    // be current on only one thread at a time, so doing make_current
+    // from main while process() runs on libretro_run yanks the
+    // context out from under the in-flight GL calls and we crash
+    // inside the core ~1 frame later (PC=0). Queue the preset name
+    // here instead; process() applies it on the libretro_run thread
+    // at the start of the next frame.
+    std::mutex   m_pending_mu;
+    std::string  m_pending_preset;
+    bool         m_pending_preset_set = false;
+
     bool make_current();
     bool ensure_size(unsigned w, unsigned h);
     void destroy_chain();
     bool build_program(const std::string& fragment_src, Pass& out);
     bool load_lut(const std::string& name, const std::string& path,
                   bool linear);
+
+    // Apply m_pending_preset (drained under m_pending_mu) on the
+    // current thread. Called from process() at the start of every
+    // frame so the GL work always lands on the libretro_run thread
+    // that owns the EGL context.
+    void apply_pending_preset_locked();
+
+    // Synchronous preset apply. Runs the resolution chain (built-in
+    // -> .json -> .glsl) and does the GL work to populate m_chain.
+    // Must be called on the thread that owns the EGL context.
+    bool apply_preset_named(std::string_view name);
 
     // High-level loaders for each preset variant. Each fully populates
     // m_chain + m_luts on success and returns true.

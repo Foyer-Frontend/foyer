@@ -1,12 +1,10 @@
 # foyer.nro — the browser binary.
 #
-# 0.6.0 Phase A: app shell flips from the legacy nanovg-direct renderer to
-# borealis (XITRIX/borealis fork). This commit lands the build wiring + a
-# stub HomeActivity that proves brls boots on Switch. Existing service-layer
-# code (launch, mtp, seed_assets, session, switch_titles, library scanner,
-# updater) survives untouched. Legacy view code (views.cpp, theme.cpp,
-# boot_splash.cpp, hos_status.cpp) lives on disk but is NOT compiled — it'll
-# be cherry-picked back into the brls views in Phases B–E.
+# brls (XITRIX/borealis fork) app shell + per-activity sources. The legacy
+# nanovg-direct view code (views.cpp/theme.cpp/boot_splash.cpp/session.cpp/
+# switch_titles.cpp/seed_assets.cpp) was removed in v0.6.123 once the brls
+# carve-out activities (HomeActivity, SystemActivity, GameActivity, …)
+# covered every surface that used to live in views.cpp.
 
 include(FetchContent)
 
@@ -50,12 +48,6 @@ add_executable(foyer
 
     # borealis Switch platform glue (matches borealis_template demo).
     ${borealis_SOURCE_DIR}/library/lib/platforms/switch/switch_wrapper.c
-
-    # Still deferred from the brls build: mtp / seed_assets / session /
-    # switch_titles. They rely on the legacy nanovg paths (NACP icon
-    # handles, View enum from views.hpp) and need refactoring before
-    # they fit in. mtp and seed_assets come back in alpha.E; switch_titles
-    # rejoins with hos_status in Phase F.
 )
 
 target_include_directories(foyer PRIVATE

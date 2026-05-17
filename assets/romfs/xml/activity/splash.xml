@@ -21,7 +21,7 @@
         width="1280"
         height="720"
         scalingType="fill"
-        image="@res/splash_bg.png" />
+        image="@res/splash.png" />
 
     <!--
         Theme-aware dim. Both dark and light theme variants of

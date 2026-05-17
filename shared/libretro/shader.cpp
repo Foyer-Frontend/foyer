@@ -599,7 +599,42 @@ bool ShaderPipeline::load_json_manifest(const std::string& path) {
     return !m_chain.empty();
 }
 
+// Public entry point. Thread-safe queue-only: the actual GL work has
+// to happen on the libretro_run thread (the only one that owns the
+// EGL context), so just record the request here and let process()
+// drain it on the next frame.
 bool ShaderPipeline::set_preset(std::string_view name) {
+    std::scoped_lock lk{m_pending_mu};
+    m_pending_preset.assign(name);
+    m_pending_preset_set = true;
+    foyer::log::write("[shader] queued preset=%.*s\n",
+        (int)name.size(), name.data());
+    return true;
+}
+
+std::string ShaderPipeline::active() const {
+    // m_active_name is only written from the libretro_run thread
+    // (inside apply_preset_named, called from process()). The picker
+    // reads it from the brls main thread; a torn read is harmless
+    // because the picker just uses it to mark a row "Active".
+    return m_active_name;
+}
+
+void ShaderPipeline::apply_pending_preset_locked() {
+    std::string name;
+    {
+        std::scoped_lock lk{m_pending_mu};
+        if (!m_pending_preset_set) return;
+        name = std::move(m_pending_preset);
+        m_pending_preset.clear();
+        m_pending_preset_set = false;
+    }
+    apply_preset_named(name);
+}
+
+// Synchronous apply on the calling thread (libretro_run). Old public
+// set_preset body, unchanged below the rename.
+bool ShaderPipeline::apply_preset_named(std::string_view name) {
     if (!m_egl_context && !init()) return false;
     if (!make_current()) return false;
 
@@ -679,12 +714,129 @@ bool ShaderPipeline::ensure_size(unsigned w, unsigned h) {
     return true;
 }
 
+// CPU implementations of the built-in shaders. The GLES path crashes
+// the player on Switch — mesa-on-nouveau and deko3d (the brls
+// renderer) share the same nvhost channel under libnx, and even with
+// eglMakeCurrent(NO_CONTEXT) released after each frame the GLES
+// driver still corrupts the deko3d command pool inside ~1 second.
+// Switch SW cores are 256×240-ish, so a per-pixel CPU loop is the
+// cheapest possible fix and is plenty fast on the A57 cluster.
+namespace {
+
+inline void cpu_scanlines(std::uint8_t* p, unsigned w, unsigned h) {
+    for (unsigned y = 0; y < h; ++y) {
+        const bool odd = (y & 1u) != 0u;
+        if (!odd) continue;  // even rows full, odd rows dim
+        std::uint8_t* row = p + y * w * 4;
+        for (unsigned x = 0; x < w; ++x) {
+            row[x * 4 + 0] = static_cast<std::uint8_t>(row[x * 4 + 0] * 0.62f);
+            row[x * 4 + 1] = static_cast<std::uint8_t>(row[x * 4 + 1] * 0.62f);
+            row[x * 4 + 2] = static_cast<std::uint8_t>(row[x * 4 + 2] * 0.62f);
+        }
+    }
+}
+
+inline void cpu_crt_simple(std::uint8_t* p, unsigned w, unsigned h) {
+    for (unsigned y = 0; y < h; ++y) {
+        const float scan = (y & 1u) ? 0.62f : 1.05f;
+        std::uint8_t* row = p + y * w * 4;
+        for (unsigned x = 0; x < w; ++x) {
+            const unsigned ph = x % 3u;
+            const float mr = (ph == 0) ? 1.0f : 0.78f;
+            const float mg = (ph == 1) ? 1.0f : 0.78f;
+            const float mb = (ph == 2) ? 1.0f : 0.78f;
+            auto cl = [&](float v, float k) {
+                const float n = v * scan * k;
+                return static_cast<std::uint8_t>(n < 0.0f ? 0 :
+                                                 n > 255.0f ? 255 :
+                                                 static_cast<int>(n));
+            };
+            row[x * 4 + 0] = cl(row[x * 4 + 0], mr);
+            row[x * 4 + 1] = cl(row[x * 4 + 1], mg);
+            row[x * 4 + 2] = cl(row[x * 4 + 2], mb);
+        }
+    }
+}
+
+inline void cpu_lcd_grid(std::uint8_t* p, unsigned w, unsigned h) {
+    for (unsigned y = 0; y < h; ++y) {
+        const bool y_lit = (y & 1u) == 0u;
+        std::uint8_t* row = p + y * w * 4;
+        for (unsigned x = 0; x < w; ++x) {
+            const bool x_lit = (x & 1u) == 0u;
+            const float k = (x_lit && y_lit) ? 1.0f : 0.70f;
+            row[x * 4 + 0] = static_cast<std::uint8_t>(row[x * 4 + 0] * k);
+            row[x * 4 + 1] = static_cast<std::uint8_t>(row[x * 4 + 1] * k);
+            row[x * 4 + 2] = static_cast<std::uint8_t>(row[x * 4 + 2] * k);
+        }
+    }
+}
+
+inline void cpu_gb_dmg(std::uint8_t* p, unsigned w, unsigned h) {
+    static const std::uint8_t kPal[4][3] = {
+        { 155, 188,  15 },
+        { 139, 172,  15 },
+        {  48,  98,  48 },
+        {  15,  56,  15 },
+    };
+    const std::uint8_t* total = p + w * h * 4;
+    for (std::uint8_t* px = p; px < total; px += 4) {
+        const float luma = 0.299f * px[0] + 0.587f * px[1] + 0.114f * px[2];
+        int bin = 3 - static_cast<int>((luma / 255.0f) * 4.0f);
+        if (bin < 0) bin = 0; else if (bin > 3) bin = 3;
+        px[0] = kPal[bin][0];
+        px[1] = kPal[bin][1];
+        px[2] = kPal[bin][2];
+    }
+}
+
+inline void cpu_gba_correct(std::uint8_t* p, unsigned w, unsigned h) {
+    const std::uint8_t* total = p + w * h * 4;
+    for (std::uint8_t* px = p; px < total; px += 4) {
+        const float r = px[0], g = px[1], b = px[2];
+        const float nr = (0.80f * r + 0.10f * g + 0.10f * b) * 1.10f;
+        const float ng = (0.10f * r + 0.82f * g + 0.08f * b) * 1.10f;
+        const float nb = (0.18f * r + 0.18f * g + 0.64f * b) * 1.10f;
+        auto cl = [](float v) {
+            return static_cast<std::uint8_t>(v < 0.0f ? 0 :
+                                             v > 255.0f ? 255 :
+                                             static_cast<int>(v));
+        };
+        px[0] = cl(nr);
+        px[1] = cl(ng);
+        px[2] = cl(nb);
+    }
+}
+
+}  // namespace
+
 bool ShaderPipeline::process(std::uint8_t* pixels, unsigned w, unsigned h) {
     if (!pixels || w == 0 || h == 0) return false;
-    if (m_chain.empty()) return true;
-    if (m_active_name.empty() && m_chain.size() == 1) return true;
+    // Drain any preset switch queued from the picker — under the CPU
+    // path this is just a string move, no GL.
+    apply_pending_preset_locked();
+
+    if (m_active_name.empty() || m_active_name == "none") return true;
+
+    // Route built-in presets through their CPU implementations. The
+    // GLES pipeline is kept compiled but inert for now — see the
+    // namespace comment above for why.
+    if      (m_active_name == "scanlines")   cpu_scanlines  (pixels, w, h);
+    else if (m_active_name == "crt_simple")  cpu_crt_simple (pixels, w, h);
+    else if (m_active_name == "lcd_grid")    cpu_lcd_grid   (pixels, w, h);
+    else if (m_active_name == "gb_dmg")      cpu_gb_dmg     (pixels, w, h);
+    else if (m_active_name == "gba_correct") cpu_gba_correct(pixels, w, h);
+    else return true;  // unknown name (e.g. user .glsl) — no-op for now
+    return true;
+}
+
+bool ShaderPipeline::process_gles_unused(std::uint8_t* pixels, unsigned w, unsigned h) {
+    if (!pixels || w == 0 || h == 0) return false;
     if (!m_egl_context && !init()) return false;
     if (!make_current()) return false;
+    apply_pending_preset_locked();
+    if (m_chain.empty()) return true;
+    if (m_active_name.empty() && m_chain.size() == 1) return true;
     if (!ensure_size(w, h)) return false;
 
     // Upload the input frame to m_in_tex.
