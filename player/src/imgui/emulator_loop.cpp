@@ -1,5 +1,6 @@
 #include "imgui/emulator_loop.hpp"
 #include "imgui/imgui_switch_input.hpp"
+#include "imgui/modals.hpp"
 
 #include "library/config.hpp"
 #include "libretro/audio.hpp"
@@ -137,6 +138,12 @@ bool start(const foyer::player::imgui_shell::GlContext& gl,
         foyer::log::write("[player-imgui] queued saved shader preset=%s\n",
             s.c_str());
     }
+
+    // Wire the pause-modal: identify the rom + stash the back nro
+    // for the Quit cell. on_quit is left null; emulator_loop's
+    // shutdown does the real teardown when main_imgui breaks out.
+    foyer::player::imgui_shell::modals_install_quit_handler(nullptr, back_nro);
+    foyer::player::imgui_shell::modals_set_rom_id(g_original_rom_path, g_system_folder);
     return true;
 }
 
@@ -159,15 +166,29 @@ bool tick() {
 
     const bool combo = (held & HidNpadButton_StickL)
                     && (held & HidNpadButton_StickR);
-    if (combo && !g_pause_combo) {
-        foyer::log::write("[player-imgui] L3+R3 (pause TBD in Phase 4)\n");
+    using foyer::player::imgui_shell::Modal;
+    using foyer::player::imgui_shell::modals_active;
+    using foyer::player::imgui_shell::modals_input_blocked;
+    using foyer::player::imgui_shell::modals_open_pause;
+    using foyer::player::imgui_shell::modals_quit_requested;
+    if (combo && !g_pause_combo && modals_active() == Modal::None) {
+        modals_open_pause();
     }
     g_pause_combo = combo;
 
-    foyer::libretro::poll_input(*pad);
+    // Don't let libretro see UI keys while a modal is up — A on
+    // "Resume" was firing as JOYPAD_A inside the game and racing
+    // saves.
+    if (!modals_input_blocked()) {
+        foyer::libretro::poll_input(*pad);
+    } else {
+        // Send a zeroed pad to libretro so previously-held buttons
+        // don't stay latched across modal open.
+        foyer::libretro::Frontend::instance().input() = {};
+    }
 
     foyer::libretro::Frontend::instance().run_frame();
-    return g_exit_request;
+    return g_exit_request || modals_quit_requested();
 }
 
 void draw(float screen_w, float screen_h) {

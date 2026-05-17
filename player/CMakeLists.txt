@@ -127,6 +127,7 @@ if (PLAYER_IMGUI)
         src/imgui/emulator_loop.cpp
         src/imgui/imgui_switch_input.cpp
         src/imgui/imgui_theme.cpp
+        src/imgui/modals.cpp
     )
     target_include_directories(${_player} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include)

@@ -13,6 +13,7 @@
 #include "imgui/gl_context.hpp"
 #include "imgui/imgui_switch_input.hpp"
 #include "imgui/imgui_theme.hpp"
+#include "imgui/modals.hpp"
 
 #include "libretro/audio.hpp"
 #include "platform/log.hpp"
@@ -164,6 +165,8 @@ int main(int argc, char** argv) {
             ImGui::Text("FPS %.0f", io.Framerate);
             ImGui::End();
         }
+        modals_draw();
+        if (modals_quit_requested()) quit = true;
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
