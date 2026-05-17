@@ -38,9 +38,16 @@ out vec2 v_uv;
 const vec2 POS[4] = vec2[](
     vec2(-1.0, -1.0), vec2( 1.0, -1.0),
     vec2(-1.0,  1.0), vec2( 1.0,  1.0));
+// UV mapping is NOT y-flipped. libretro frames arrive row-major top-first;
+// glTexSubImage2D uploads row 0 to GL v=0 (which is the bottom edge by GL
+// convention) so the source's top row ends up at the texture's v=0 row.
+// Matching the clip-space Y mapping (UV[0]=(0,0) at clip (-1,-1)) makes
+// the FBO bottom-left = source top-left, which is upside-down vs the
+// source — then glReadPixels (also bottom-first) reads it back in the
+// row order the libretro frontend expects.
 const vec2 UV[4]  = vec2[](
-    vec2( 0.0,  1.0), vec2( 1.0,  1.0),
-    vec2( 0.0,  0.0), vec2( 1.0,  0.0));
+    vec2( 0.0,  0.0), vec2( 1.0,  0.0),
+    vec2( 0.0,  1.0), vec2( 1.0,  1.0));
 void main() {
     gl_Position = vec4(POS[gl_VertexID], 0.0, 1.0);
     v_uv        = UV[gl_VertexID];
@@ -745,7 +752,21 @@ bool ShaderPipeline::process(std::uint8_t* pixels, unsigned w, unsigned h) {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glBindVertexArray(0);
 
-    return glGetError() == GL_NO_ERROR;
+    const GLenum err = glGetError();
+
+    // Flush the pipeline and release the EGL current binding. Switch
+    // GLES (mesa-on-nouveau) and deko3d (the brls renderer) share the
+    // same nvhost channel underneath; leaving the GLES context current
+    // on the libretro thread starves deko3d frame submissions on the
+    // brls main thread and we crash inside the core ~1 s later with
+    // PC=0 (heap corruption from the driver's command-buffer pool).
+    // glFinish forces the readback to complete before we hand the GPU
+    // back; eglMakeCurrent(NO_CONTEXT) releases ownership cleanly.
+    glFinish();
+    eglMakeCurrent((EGLDisplay)m_egl_display,
+                   EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+
+    return err == GL_NO_ERROR;
 }
 
 std::vector<ShaderPipeline::PresetInfo> ShaderPipeline::available_presets() {
