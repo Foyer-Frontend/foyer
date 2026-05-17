@@ -151,6 +151,15 @@ private:
     // Must be called on the thread that owns the EGL context.
     bool apply_preset_named(std::string_view name);
 
+    // Old full-GLES process path. Kept compiled (referenced in
+    // shader.cpp) but unused: the brls player runs a CPU shader
+    // loop in process(), and the ImGui player will own the GL
+    // context end-to-end so Phase 3 will rewrite this into a
+    // process_texture(GLuint) entry point. The declaration lives
+    // here only to satisfy the linker for the dormant body in
+    // shader.cpp.
+    bool process_gles_unused(std::uint8_t* pixels, unsigned w, unsigned h);
+
     // High-level loaders for each preset variant. Each fully populates
     // m_chain + m_luts on success and returns true.
     bool load_builtin(std::string_view name);

@@ -28,6 +28,12 @@ set(_romfs    foyer_player_romfs_${FOYER_CORE})
 # foyer's libretro frontend lives in shared/ but only wires up here when the
 # player target needs it. We compile it as a small static lib alongside the
 # core so identical code is reused across player builds.
+#
+# Phase ImGui-1 skips this entire block — the "Hello foyer" boot doesn't
+# touch libretro yet, and the existing sources still call nanovg
+# (`nvgUpdateImage` etc.) which the ImGui shell won't provide until
+# Phase 2 brings in shared/libretro/video_gl.cpp.
+if (NOT PLAYER_IMGUI)
 add_library(${_frontend} STATIC
     ${CMAKE_SOURCE_DIR}/shared/libretro/frontend.cpp
     ${CMAKE_SOURCE_DIR}/shared/libretro/video.cpp
@@ -64,11 +70,21 @@ target_compile_definitions(${_frontend} PRIVATE
     # in-app per-core defaults can't apply.
     FOYER_CORE_NAME=${FOYER_CORE})
 
-# Pick the render shell for this player: borealis (Phase H) or the
-# legacy foyer_render (nanovg-deko3d App). The two cannot coexist —
-# they vendor different copies of nanovg-deko3d — so the choice
-# happens once per build.
-if (PLAYER_BRLS)
+# Pick the render shell for this player. 3-way:
+#   PLAYER_IMGUI  -> Dear ImGui + libnx-EGL (Phase ImGui-1+, see
+#                   docs/PLAYER_MIGRATION_PLAN.md)
+#   PLAYER_BRLS   -> borealis (Phase H, current default)
+#   neither       -> legacy foyer_render (nanovg-deko3d App)
+# brls and ImGui cannot coexist in one binary — they pull different
+# nanovg copies and fight the nvhost channel — so the top-level
+# CMakeLists.txt forces PLAYER_BRLS=OFF whenever PLAYER_IMGUI=ON.
+if (PLAYER_IMGUI)
+    # foyer_imgui already pulls EGL/GLESv2 + the OpenGL3 backend; the
+    # libretro frontend lib still needs GL symbols on Switch (HW
+    # render path through video_hw.cpp), so we leave the EGL/GLESv2/
+    # glapi/drm_nouveau libs linked below.
+    set(_render_lib foyer_imgui)
+elseif (PLAYER_BRLS)
     set(_render_lib borealis)
 else()
     set(_render_lib foyer_render)
@@ -91,11 +107,22 @@ target_link_libraries(${_frontend} PUBLIC
 )
 set_target_properties(${_frontend} PROPERTIES
     CXX_STANDARD 26)
+endif()  # NOT PLAYER_IMGUI
 
-# Player executable. PLAYER_BRLS swaps the window loop from the
-# nanovg-deko3d shell (main.cpp + foyer::App) to the brls-hosted
-# EmulatorActivity (main_brls.cpp + EmulatorView).
-if (PLAYER_BRLS)
+# Player executable. The render shell choice (above) swaps the entry
+# + activity sources. Each shell ships its own userAppInit/userAppExit:
+# borealis brings switch_wrapper.c; ImGui provides them inline in
+# main_imgui.cpp; foyer_render uses foyer_shared's services.cpp.
+if (PLAYER_IMGUI)
+    add_executable(${_player}
+        src/imgui/main_imgui.cpp
+        src/imgui/gl_context.cpp
+        src/imgui/imgui_switch_input.cpp
+        src/imgui/imgui_theme.cpp
+    )
+    target_include_directories(${_player} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include)
+elseif (PLAYER_BRLS)
     add_executable(${_player}
         src/main_brls.cpp
         src/emulator_activity.cpp
@@ -122,9 +149,26 @@ else()
         src/main.cpp
     )
 endif()
-target_link_libraries(${_player} PRIVATE
-    ${_frontend}
-)
+if (PLAYER_IMGUI)
+    # Phase ImGui-1 boots a black-screen "Hello foyer" without
+    # libretro. The frontend lib still uses nanovg APIs throughout
+    # (video.cpp::nvgUpdateImage etc.) which require either brls or
+    # foyer_render to provide nanovg; in ImGui-2 we replace those
+    # call sites with raw GLES via shared/libretro/video_gl.cpp and
+    # re-link the frontend.
+    target_link_libraries(${_player} PRIVATE
+        foyer_shared
+        foyer_imgui
+        EGL
+        GLESv2
+        glapi
+        drm_nouveau
+    )
+else()
+    target_link_libraries(${_player} PRIVATE
+        ${_frontend}
+    )
+endif()
 target_compile_definitions(${_player} PRIVATE
     FOYER_CORE_NAME=${FOYER_CORE})
 set_target_properties(${_player} PROPERTIES

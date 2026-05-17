@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(foyer
-    VERSION 0.6.123
+    VERSION 0.6.124
     LANGUAGES C CXX
 )
 
@@ -15,6 +15,17 @@ option(BUILD_PLAYER  "Build per-core player nros"      OFF)
 # EmulatorActivity that hosts a custom EmulatorView. Off by default
 # until the pause overlay + bezel + shader paths are reskinned.
 option(PLAYER_BRLS   "Build per-core players on borealis (Phase H)" ON)
+# PLAYER_IMGUI — ImGui + libnx-EGL render shell. Eventually replaces
+# PLAYER_BRLS so the player runs everything (libretro frame upload,
+# shader passes, UI) on a single GLES3 context — same model as
+# RetroArch. brls vs ImGui cannot coexist in one binary (they fight
+# over the nvhost channel under libnx + drag in two different nanovg
+# copies). When ON, PLAYER_BRLS is force-disabled below.
+# See docs/PLAYER_MIGRATION_PLAN.md for the rollout phases.
+option(PLAYER_IMGUI  "Build per-core players on Dear ImGui (Phase ImGui-1)" OFF)
+if (PLAYER_IMGUI)
+    set(PLAYER_BRLS OFF CACHE BOOL "" FORCE)
+endif()
 # FOYER_CORE = single core name (legacy single-build presets).
 set(FOYER_CORE  "" CACHE STRING
     "Single libretro core to build (e.g. fceumm). Used by Player-* presets.")
@@ -179,6 +190,55 @@ if (BUILD_BROWSER OR PLAYER_BRLS)
         target_include_directories(borealis SYSTEM PRIVATE
             $ENV{DEVKITPRO}/portlibs/switch/include)
     endif()
+endif()
+
+# ---------------------------------------------------------------------------
+# Dear ImGui — the new player render shell (Phase ImGui-1+). brls is OFF
+# whenever PLAYER_IMGUI is ON, so the two never coexist (they each vendor
+# their own copy of nanovg / pull different GPU stacks). Pull the core 4
+# TUs + the OpenGL3 backend; the libnx input + EGL backend lives in
+# player/src/imgui/ (~150 LOC, no upstream impl exists).
+# ---------------------------------------------------------------------------
+if (PLAYER_IMGUI)
+    FetchContent_Declare(imgui
+        GIT_REPOSITORY https://github.com/ocornut/imgui.git
+        GIT_TAG        v1.91.5-docking
+        GIT_SHALLOW    TRUE)
+    FetchContent_MakeAvailable(imgui)
+
+    add_library(foyer_imgui STATIC
+        ${imgui_SOURCE_DIR}/imgui.cpp
+        ${imgui_SOURCE_DIR}/imgui_draw.cpp
+        ${imgui_SOURCE_DIR}/imgui_tables.cpp
+        ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+        ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+    )
+    target_include_directories(foyer_imgui PUBLIC
+        ${imgui_SOURCE_DIR}
+        ${imgui_SOURCE_DIR}/backends)
+    # Switch portlibs ships <GLES3/gl3.h> + <EGL/egl.h> but the
+    # Switch.cmake toolchain doesn't add portlibs/switch/include to
+    # the default include path for arbitrary targets. Add it as a
+    # SYSTEM include so the imgui OpenGL3 backend (and our own
+    # gl_context.cpp) can `#include <GLES3/gl3.h>` without warnings.
+    if (DEFINED ENV{DEVKITPRO})
+        target_include_directories(foyer_imgui SYSTEM PUBLIC
+            $ENV{DEVKITPRO}/portlibs/switch/include)
+    endif()
+    # backends/imgui_impl_opengl3.cpp gates its GLES3 path on
+    # IMGUI_IMPL_OPENGL_ES3; the Switch portlibs ship <GLES3/gl3.h>
+    # which the loader maps onto. No glad / glew needed.
+    target_compile_definitions(foyer_imgui PUBLIC
+        IMGUI_IMPL_OPENGL_ES3=1
+        # Switch newlib has no execvp / waitpid; the default shell
+        # helper in imgui.cpp links against both. We never open URLs
+        # from the player anyway.
+        IMGUI_DISABLE_DEFAULT_SHELL_FUNCTIONS=1
+        # The same set of POSIX shims is missing for the default file
+        # helper (fopen/fread/etc. are fine, but the implementation
+        # touches popen). Disable for safety.
+        IMGUI_DISABLE_FILE_FUNCTIONS=0)
+    set_target_properties(foyer_imgui PROPERTIES CXX_STANDARD 17)
 endif()
 
 # ---------------------------------------------------------------------------
