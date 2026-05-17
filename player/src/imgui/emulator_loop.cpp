@@ -1,10 +1,12 @@
 #include "imgui/emulator_loop.hpp"
 #include "imgui/imgui_switch_input.hpp"
 
+#include "library/config.hpp"
 #include "libretro/audio.hpp"
 #include "libretro/bezel_gl.hpp"
 #include "libretro/frontend.hpp"
 #include "libretro/input.hpp"
+#include "libretro/shader.hpp"
 #include "libretro/video_gl.hpp"
 #include "platform/log.hpp"
 #include "util/archive.hpp"
@@ -44,7 +46,8 @@ bool ends_with_ci(std::string_view s, std::string_view suf) {
 
 }  // namespace
 
-bool start(const std::string& rom_path,
+bool start(const foyer::player::imgui_shell::GlContext& gl,
+           const std::string& rom_path,
            const std::string& back_nro,
            const std::string& system_folder) {
     g_rom_path          = rom_path;
@@ -61,6 +64,14 @@ bool start(const std::string& rom_path,
     }
     if (!foyer::libretro::bezel_gl_init()) {
         foyer::log::write("[player-imgui] bezel_gl init failed (non-fatal)\n");
+    }
+    // Hand the player's owned EGL context to the shader pipeline so
+    // the chain runs on this thread / context (no second context,
+    // no nvhost contention). Non-fatal: shaders just stay inert if
+    // this fails.
+    if (!foyer::libretro::shader_pipeline().init_borrowed(
+            gl.display, gl.context, gl.surface)) {
+        foyer::log::write("[player-imgui] shader init_borrowed failed\n");
     }
 
     auto& fe = foyer::libretro::Frontend::instance();
@@ -115,6 +126,16 @@ bool start(const std::string& rom_path,
     if (!foyer::libretro::AudioSink::instance().init((unsigned)fe.sample_rate())) {
         foyer::log::write("[player-imgui] audio init failed @ %u Hz — silent run\n",
             (unsigned)fe.sample_rate());
+    }
+
+    // Apply the persisted shader preset from config so a user who
+    // picked one in the brls player keeps it after the migration.
+    // Empty / "none" stays a no-op inside set_preset.
+    const auto& s = foyer::library::config().shader_name;
+    if (!s.empty() && s != "none") {
+        foyer::libretro::shader_pipeline().set_preset(s);
+        foyer::log::write("[player-imgui] queued saved shader preset=%s\n",
+            s.c_str());
     }
     return true;
 }

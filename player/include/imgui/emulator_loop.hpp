@@ -15,11 +15,14 @@
 // Phase 4 will plumb a pause-modal callback so the loop can keep
 // ticking under the modal.
 
+#include "imgui/gl_context.hpp"
+
 #include <string>
 
 namespace foyer::player::emulator {
 
-bool start(const std::string& rom_path,
+bool start(const foyer::player::imgui_shell::GlContext& gl,
+           const std::string& rom_path,
            const std::string& back_nro,
            const std::string& system_folder);
 

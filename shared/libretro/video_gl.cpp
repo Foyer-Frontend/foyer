@@ -296,9 +296,19 @@ void VideoSinkGl::draw(float screen_w, float screen_h) {
     const float nw = (draw_w / screen_w) * 2.0f;
     const float nh = (draw_h / screen_h) * 2.0f;
 
+    // Route through the shader pipeline if a preset is active. It
+    // returns 0 when there's no work to do (no preset / "none" / not
+    // borrowed-initialised), in which case we sample the raw upload
+    // texture directly. Otherwise the returned handle is one of the
+    // pipeline's ping-pong textures; pipeline owns lifetime.
+    GLuint draw_tex = m_tex;
+    if (const auto shaded = shader_pipeline().process_texture(m_tex, m_w, m_h)) {
+        draw_tex = (GLuint)shaded;
+    }
+
     glUseProgram(m_program);
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, m_tex);
+    glBindTexture(GL_TEXTURE_2D, draw_tex);
     if (m_loc_tex   >= 0) glUniform1i(m_loc_tex, 0);
     if (m_loc_pos   >= 0) glUniform2f(m_loc_pos, nx, ny);
     if (m_loc_scale >= 0) glUniform2f(m_loc_scale, nw, nh);

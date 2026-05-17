@@ -52,7 +52,24 @@ public:
     // Bring up EGL + GLES3 + the fixed fullscreen-quad VAO. Returns
     // false on any failure; the caller should treat that as "shaders
     // unavailable" and skip the post-process step entirely.
+    //
+    // Standalone init (creates its own EGL context). Used by the
+    // legacy CPU shader path under PLAYER_BRLS — that path never
+    // actually calls into GL, so init() is only kept here to keep
+    // the API surface stable while the brls player gets retired.
     bool init();
+
+    // Borrowed init: takes an EGL display + context + surface owned
+    // by the caller (the ImGui player shell). The pipeline does NOT
+    // call eglCreateContext / eglCreatePbufferSurface — it just
+    // sticks the handles into m_egl_* and runs the same GL-resource
+    // bring-up as init() (VAO, FBOs, ping-pong textures). Must be
+    // called while the supplied context is already current on the
+    // calling thread. Used by PLAYER_IMGUI; share the one context
+    // we own for everything (no nvhost contention).
+    bool init_borrowed(void* egl_display,
+                       void* egl_context,
+                       void* egl_surface);
 
     // Switch to a preset by name. Resolution order: built-in →
     // <name>.json (multi-pass) → <name>.glsl (single-pass) →
@@ -69,7 +86,20 @@ public:
     // Returns false on any GL error; pixels are unchanged in that
     // case. No-op (returns true unchanged) when the active preset
     // is "none" or the chain is empty.
+    //
+    // CPU implementation path for PLAYER_BRLS (mesa-on-Switch GLES
+    // can't coexist with deko3d on the same nvhost channel). The
+    // ImGui shell should call process_texture() instead.
     bool process(std::uint8_t* pixels, unsigned w, unsigned h);
+
+    // GL-native processing path for PLAYER_IMGUI. Takes a source
+    // GLES texture (RGBA8, the libretro frame upload), runs the
+    // active chain, returns the GL texture handle holding the final
+    // output. Zero CPU readback. The returned texture is owned by
+    // the pipeline (one of m_pp_tex[]) — caller must NOT delete it.
+    // Returns 0 when no shader is active OR on any GL error (caller
+    // falls back to sampling `src_tex` directly).
+    unsigned process_texture(unsigned src_tex, unsigned w, unsigned h);
 
     struct PresetInfo { std::string name; std::string label; };
     static std::vector<PresetInfo> available_presets();

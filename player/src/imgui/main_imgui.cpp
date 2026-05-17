@@ -98,7 +98,7 @@ int main(int argc, char** argv) {
             (argc >= 3) ? normalise_argv_path(argv[2]) : std::string{};
         const std::string sys_folder = derive_system_folder(rom_path);
 
-        if (foyer::player::emulator::start(rom_path, back_nro, sys_folder)) {
+        if (foyer::player::emulator::start(gl, rom_path, back_nro, sys_folder)) {
             game_running = true;
         } else {
             foyer::log::write("[player-imgui] emulator start failed\n");

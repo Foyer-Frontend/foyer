@@ -382,6 +382,28 @@ bool ShaderPipeline::init() {
     return load_builtin("none");
 }
 
+bool ShaderPipeline::init_borrowed(void* egl_display,
+                                   void* egl_context,
+                                   void* egl_surface) {
+    if (m_egl_context) return true;
+    if (!egl_display || !egl_context) return false;
+    m_egl_display = egl_display;
+    m_egl_context = egl_context;
+    m_egl_surface = egl_surface;
+
+    // No make_current — the supplied context is already bound by
+    // the player shell on this thread. Just allocate the GL
+    // resources the pipeline needs.
+    glGenVertexArrays(1, &m_vao);
+    glGenTextures(1, &m_in_tex);
+    glGenFramebuffers(2, m_pp_fbo);
+    glGenTextures(2, m_pp_tex);
+
+    foyer::log::write("[shader] init_borrowed ok (display=%p ctx=%p)\n",
+        egl_display, egl_context);
+    return load_builtin("none");
+}
+
 bool ShaderPipeline::make_current() {
     return eglMakeCurrent((EGLDisplay)m_egl_display,
                           (EGLSurface)m_egl_surface,
@@ -947,6 +969,102 @@ std::vector<ShaderPipeline::PresetInfo> ShaderPipeline::available_presets() {
         ::closedir(d);
     }
     return out;
+}
+
+unsigned ShaderPipeline::process_texture(unsigned src_tex,
+                                         unsigned w, unsigned h) {
+    if (!m_egl_context) return 0;
+    if (src_tex == 0 || w == 0 || h == 0) return 0;
+
+    apply_pending_preset_locked();
+    if (m_chain.empty()) return 0;
+    if (m_active_name.empty() || m_active_name == "none") return 0;
+
+    // Ensure ping-pong textures + FBOs are sized for the current
+    // frame. Reuses the same helper the CPU path used to (no-op if
+    // size hasn't changed). NO make_current — caller owns the
+    // context.
+    if (m_w != w || m_h != h) {
+        auto setup = [&](unsigned tex) {
+            glBindTexture(GL_TEXTURE_2D, tex);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, (GLsizei)w, (GLsizei)h,
+                         0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        };
+        setup(m_pp_tex[0]);
+        setup(m_pp_tex[1]);
+        for (int i = 0; i < 2; i++) {
+            glBindFramebuffer(GL_FRAMEBUFFER, m_pp_fbo[i]);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                                   GL_TEXTURE_2D, m_pp_tex[i], 0);
+            if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+                foyer::log::write("[shader] process_texture: FBO %d incomplete\n", i);
+                glBindFramebuffer(GL_FRAMEBUFFER, 0);
+                return 0;
+            }
+        }
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        m_w = w;
+        m_h = h;
+    }
+
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+    glDisable(GL_CULL_FACE);
+    glViewport(0, 0, (GLsizei)w, (GLsizei)h);
+    glBindVertexArray(m_vao);
+    m_frame_count++;
+
+    const std::size_t n = m_chain.size();
+    for (std::size_t i = 0; i < n; i++) {
+        auto& pass = m_chain[i];
+        // Pass 0 samples the caller's src_tex, subsequent passes
+        // sample the previous ping-pong target. The destination is
+        // always the other ping-pong texture.
+        const unsigned src = (i == 0) ? src_tex : m_pp_tex[i & 1];
+        const unsigned dst_fbo = m_pp_fbo[(i + 1) & 1];
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, src);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                        pass.filter_linear ? GL_LINEAR : GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
+                        pass.filter_linear ? GL_LINEAR : GL_NEAREST);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, dst_fbo);
+        glUseProgram(pass.program);
+        if (pass.loc_tex   >= 0) glUniform1i(pass.loc_tex, 0);
+        if (pass.loc_size  >= 0) glUniform2f(pass.loc_size,  (float)w, (float)h);
+        if (pass.loc_orig  >= 0) glUniform2f(pass.loc_orig,  (float)w, (float)h);
+        if (pass.loc_frame >= 0) glUniform1f(pass.loc_frame, (float)m_frame_count);
+        for (auto& [_, pp] : pass.params) {
+            if (pp.loc >= 0) glUniform1f(pp.loc, pp.value);
+        }
+        for (auto& [name, unit] : pass.lut_locs) {
+            for (auto& l : m_luts) {
+                if (l.name == name) {
+                    glActiveTexture(GL_TEXTURE0 + unit);
+                    glBindTexture(GL_TEXTURE_2D, l.texture);
+                    break;
+                }
+            }
+        }
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindVertexArray(0);
+
+    const GLenum err = glGetError();
+    if (err != GL_NO_ERROR) {
+        foyer::log::write("[shader] process_texture gl_err=0x%x\n",
+            (unsigned)err);
+        return 0;
+    }
+    return m_pp_tex[n & 1];
 }
 
 ShaderPipeline& shader_pipeline() {
