@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <vector>
 
 namespace foyer::libretro {
 
@@ -53,6 +54,22 @@ struct Cheevos {
     // the browser can render "X/Y achievements" without making a network
     // call. No-op when the sidecar wasn't set.
     void persist_progress() const;
+
+    // One row in the player's Achievements picker. Snapshot of the
+    // rcheevos in-memory set at the moment list() was called — the
+    // caller doesn't need to worry about the underlying
+    // rc_client_achievement_list_t allocation.
+    struct AchievementRow {
+        std::string title;
+        std::string description;
+        int         points    = 0;
+        bool        unlocked  = false;
+    };
+
+    // Walk rcheevos's achievement set for the currently-loaded game,
+    // collapsing the bucket layout into a flat unlocked-first list.
+    // Empty when no game is identified or the user isn't logged in.
+    std::vector<AchievementRow> list() const;
 
 private:
     Cheevos() = default;

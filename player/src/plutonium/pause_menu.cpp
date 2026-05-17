@@ -2,6 +2,7 @@
 #include "library/config.hpp"
 #include "libretro/bezel_sdl.hpp"
 #include "libretro/cheats.hpp"
+#include "libretro/cheevos.hpp"
 #include "libretro/core_options.hpp"
 #include "libretro/frontend.hpp"
 #include "libretro/savestate.hpp"
@@ -136,6 +137,7 @@ void PauseMenu::Populate(pu::ui::elm::Menu::Ref& menu) {
         case PauseMode::DisplayBezel:  PopulateDisplayBezel(menu);       break;
         case PauseMode::CoreOptions:   PopulateCoreOptions(menu);        break;
         case PauseMode::Cheats:        PopulateCheats(menu);             break;
+        case PauseMode::Achievements:  PopulateAchievements(menu);       break;
         case PauseMode::Pause:
         default:                       PopulatePauseRoot(menu);          break;
     }
@@ -171,6 +173,21 @@ void PauseMenu::PopulatePauseRoot(pu::ui::elm::Menu::Ref& menu) {
     add("Display options", [this]() { ChangeMode(PauseMode::Display); });
     add("Shaders",       [this]() { ChangeMode(PauseMode::Shaders); });
     add("Cheats",        [this]() { ChangeMode(PauseMode::Cheats); });
+    // Only surface Achievements when rcheevos identified a set for
+    // the current rom — otherwise the row would open an empty list
+    // and confuse the user about whether their RA creds are wired
+    // up. Label includes the running unlocked/total counter so the
+    // user can see progress without entering the picker.
+    {
+        const auto& ch = foyer::libretro::Cheevos::instance();
+        if (ch.active() && ch.total_count() > 0) {
+            char lbl[64];
+            std::snprintf(lbl, sizeof(lbl),
+                "Achievements (%d/%d)",
+                ch.unlocked_count(), ch.total_count());
+            add(lbl, [this]() { ChangeMode(PauseMode::Achievements); });
+        }
+    }
     add("Quit to foyer", [this]() {
         foyer::libretro::Frontend::instance().flush_sram();
         if (!back_nro.empty()) {
@@ -376,6 +393,34 @@ void PauseMenu::PopulateCoreOptions(pu::ui::elm::Menu::Ref& menu) {
             co_ref.set(key, choices[next]);
             if (on_mode_changed) on_mode_changed();
         });
+        menu->AddItem(item);
+    }
+}
+
+void PauseMenu::PopulateAchievements(pu::ui::elm::Menu::Ref& menu) {
+    const auto rows = foyer::libretro::Cheevos::instance().list();
+    if (rows.empty()) {
+        auto item = pu::ui::elm::MenuItem::New(
+            "(no achievements identified for this rom)");
+        item->SetColor({ 0xA0, 0xA0, 0xA8, 0xFF });
+        menu->AddItem(item);
+        return;
+    }
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        const auto& r = rows[i];
+        char buf[256];
+        // Leading glyph: filled circle when unlocked, hollow when
+        // still locked. Plutonium's font ships UTF-8 so the bullets
+        // render natively; no special font setup needed.
+        const char* mark = r.unlocked ? "\xE2\x97\x8F" /* ● */
+                                       : "\xE2\x97\x8B" /* ○ */;
+        std::snprintf(buf, sizeof(buf), "%s  %s   (%d pts)",
+            mark, r.title.c_str(), r.points);
+        auto item = pu::ui::elm::MenuItem::New(buf);
+        item->SetColor(r.unlocked ? theme_item_text()
+                                  : pu::ui::Color{ 0xA0, 0xA0, 0xA8, 0xFF });
+        const std::size_t idx = i;
+        item->AddOnKey([this, idx]() { last_selected_idx = (int)idx; });
         menu->AddItem(item);
     }
 }

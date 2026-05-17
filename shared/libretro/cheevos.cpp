@@ -214,4 +214,41 @@ void Cheevos::mark_failed() {
     m_active = false;
 }
 
+std::vector<Cheevos::AchievementRow> Cheevos::list() const {
+    std::vector<AchievementRow> out;
+    if (!m_client) return out;
+    auto* client = static_cast<rc_client_t*>(m_client);
+    auto* lst = rc_client_create_achievement_list(client,
+        RC_CLIENT_ACHIEVEMENT_CATEGORY_CORE,
+        RC_CLIENT_ACHIEVEMENT_LIST_GROUPING_LOCK_STATE);
+    if (!lst) return out;
+
+    // Bucket layout already orders LOCKED before UNLOCKED, then by
+    // recency within each bucket. We flip the visible order so the
+    // user sees their earned achievements first.
+    auto append_bucket = [&](int target_state) {
+        for (uint32_t b = 0; b < lst->num_buckets; ++b) {
+            const auto& bk = lst->buckets[b];
+            if ((int)bk.bucket_type != target_state) continue;
+            for (uint32_t i = 0; i < bk.num_achievements; ++i) {
+                const auto* a = bk.achievements[i];
+                if (!a) continue;
+                AchievementRow r;
+                r.title       = a->title       ? a->title       : "";
+                r.description = a->description ? a->description : "";
+                r.points      = (int)a->points;
+                r.unlocked    = a->unlocked != 0;
+                out.push_back(std::move(r));
+            }
+        }
+    };
+    append_bucket(RC_CLIENT_ACHIEVEMENT_BUCKET_UNLOCKED);
+    append_bucket(RC_CLIENT_ACHIEVEMENT_BUCKET_RECENTLY_UNLOCKED);
+    append_bucket(RC_CLIENT_ACHIEVEMENT_BUCKET_LOCKED);
+    append_bucket(RC_CLIENT_ACHIEVEMENT_BUCKET_UNSUPPORTED);
+
+    rc_client_destroy_achievement_list(lst);
+    return out;
+}
+
 } // namespace foyer::libretro

@@ -30,6 +30,7 @@ enum class PauseMode {
     DisplayBezel,      // Bezel picker (list of available bezel PNGs)
     CoreOptions,
     Cheats,
+    Achievements,
 };
 
 class PauseMenu {
@@ -102,6 +103,7 @@ private:
     void PopulateDisplayBezel(pu::ui::elm::Menu::Ref& menu);
     void PopulateCoreOptions(pu::ui::elm::Menu::Ref& menu);
     void PopulateCheats(pu::ui::elm::Menu::Ref& menu);
+    void PopulateAchievements(pu::ui::elm::Menu::Ref& menu);
 
     PauseMode   mode = PauseMode::Pause;
     QuitFn      on_quit;
