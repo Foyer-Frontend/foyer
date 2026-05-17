@@ -91,6 +91,7 @@ std::vector<Cheat> load_cheats_for(std::string_view system_folder,
         if (auto it = kv.find(k_en);   it != kv.end()) c.enabled = to_bool(it->second);
         if (c.code.empty()) continue; // skip incomplete entries
         if (c.desc.empty()) c.desc = "Cheat " + std::to_string(i + 1);
+        c.file_idx = i;
         out.push_back(std::move(c));
     }
     foyer::log::write("[cheats] %s -> %zu entries\n", path.c_str(), out.size());
@@ -126,6 +127,19 @@ void save_cheats_for(std::string_view system_folder,
     // Preserve the existing file format — just rewrite the _enable
     // lines for indices that match. Any non-cheat content (top-level
     // comments, custom keys) survives the round-trip.
+    //
+    // The `cheats` vector is compacted (load_cheats_for skips entries
+    // with empty codes) so the file's cheatN row does NOT line up with
+    // cheats[N]. Look up by file_idx instead, otherwise toggling the
+    // last visible cheat updates whichever struct happens to land at
+    // cheats[N], which is the wrong entry whenever any earlier file
+    // row was skipped during load.
+    std::unordered_map<int, const Cheat*> by_file_idx;
+    by_file_idx.reserve(cheats.size());
+    for (const auto& c : cheats) {
+        if (c.file_idx >= 0) by_file_idx.emplace(c.file_idx, &c);
+    }
+
     std::stringstream ss;
     std::string line;
     while (std::getline(in, line)) {
@@ -137,9 +151,9 @@ void save_cheats_for(std::string_view system_folder,
                 try {
                     const auto us = key.find('_');
                     int n = std::stoi(key.substr(5, us - 5));
-                    if (n >= 0 && (std::size_t)n < cheats.size()) {
+                    if (auto it = by_file_idx.find(n); it != by_file_idx.end()) {
                         ss << "cheat" << n << "_enable = \""
-                           << (cheats[n].enabled ? "true" : "false") << "\"\n";
+                           << (it->second->enabled ? "true" : "false") << "\"\n";
                         continue;
                     }
                 } catch (...) {}

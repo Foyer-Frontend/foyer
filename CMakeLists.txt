@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(foyer
-    VERSION 0.6.130
+    VERSION 0.7.0
     LANGUAGES C CXX
 )
 
@@ -23,6 +23,16 @@ option(PLAYER_BRLS   "Build per-core players on borealis (Phase H)" ON)
 # copies). When ON, PLAYER_BRLS is force-disabled below.
 # See docs/PLAYER_MIGRATION_PLAN.md for the rollout phases.
 option(PLAYER_IMGUI  "Build per-core players on Dear ImGui (Phase ImGui-1)" OFF)
+# PLAYER_PLUTONIUM — XorTroll/Plutonium (SDL2-based) replacement for the
+# ImGui shell. Same single-GLES-context model so the libretro shader
+# pipeline keeps working without nvhost contention; the difference is
+# Plutonium's retained-mode widgets look like the Goldleaf / uLaunch
+# Switch homebrew UIs out of the box.
+option(PLAYER_PLUTONIUM "Build per-core players on Plutonium (Phase P1+)" OFF)
+if (PLAYER_PLUTONIUM)
+    set(PLAYER_BRLS  OFF CACHE BOOL "" FORCE)
+    set(PLAYER_IMGUI OFF CACHE BOOL "" FORCE)
+endif()
 if (PLAYER_IMGUI)
     set(PLAYER_BRLS OFF CACHE BOOL "" FORCE)
 endif()
@@ -190,6 +200,47 @@ if (BUILD_BROWSER OR PLAYER_BRLS)
         target_include_directories(borealis SYSTEM PRIVATE
             $ENV{DEVKITPRO}/portlibs/switch/include)
     endif()
+endif()
+
+# ---------------------------------------------------------------------------
+# Plutonium — Switch homebrew UI framework on SDL2 (XorTroll). Used by
+# Goldleaf / uLaunch. PLAYER_PLUTONIUM picks this shell. Plutonium ships
+# only a Makefile upstream, so we vendor the source via FetchContent and
+# compile it ourselves into a static lib alongside our player target.
+# SDL2 + SDL2_image + SDL2_ttf + SDL2_mixer + SDL2_gfx come from the
+# devkitpro switch portlibs.
+# ---------------------------------------------------------------------------
+if (PLAYER_PLUTONIUM)
+    FetchContent_Declare(plutonium
+        GIT_REPOSITORY https://github.com/XorTroll/Plutonium.git
+        GIT_TAG        1.0.0
+        GIT_SHALLOW    TRUE)
+    FetchContent_MakeAvailable(plutonium)
+
+    # Plutonium ships a custom SDL2_ttf "C++ pointer attach" wrapper
+    # as a .c source under sdl2/sdl2_CustomTtf.c — needed by every
+    # font path. Glob both .cpp + .c.
+    file(GLOB_RECURSE _plutonium_sources
+        ${plutonium_SOURCE_DIR}/Plutonium/source/*.cpp
+        ${plutonium_SOURCE_DIR}/Plutonium/source/*.c)
+    add_library(foyer_plutonium STATIC ${_plutonium_sources})
+    target_include_directories(foyer_plutonium PUBLIC
+        ${plutonium_SOURCE_DIR}/Plutonium/include)
+    if (DEFINED ENV{DEVKITPRO})
+        target_include_directories(foyer_plutonium SYSTEM PUBLIC
+            $ENV{DEVKITPRO}/portlibs/switch/include
+            $ENV{DEVKITPRO}/portlibs/switch/include/SDL2
+            $ENV{DEVKITPRO}/portlibs/switch/include/freetype2)
+    endif()
+    set_target_properties(foyer_plutonium PROPERTIES CXX_STANDARD 17)
+
+    # SDL2 family link surface for everything that pulls foyer_plutonium.
+    target_link_libraries(foyer_plutonium PUBLIC
+        SDL2_mixer SDL2_image SDL2_ttf SDL2_gfx SDL2
+        EGL GLESv2 glapi drm_nouveau
+        freetype harfbuzz png jpeg webp bz2 z
+        opusfile opus modplug mpg123 vorbisidec
+        m)
 endif()
 
 # ---------------------------------------------------------------------------

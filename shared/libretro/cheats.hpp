@@ -16,6 +16,12 @@ struct Cheat {
     std::string desc;
     std::string code;
     bool        enabled = false;
+    // Original index inside the .cht file. Needed for save_cheats_for
+    // to update the right `cheatN_enable` row even after empty / no-
+    // code entries have been compacted out of the display vector
+    // (otherwise toggling the last visible cheat updated the next-to-
+    // last file entry).
+    int         file_idx = -1;
 };
 
 // Loads cheats for the currently-running rom. Path resolution:

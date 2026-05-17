@@ -69,19 +69,30 @@ void SplashActivity::onContentAvailable() {
     SplashActivity* self = this;
     m_worker->start([self](::foyer::library::Worker& w) {
         w.set_status("Starting…");
-        self->m_progress_done.store(0, std::memory_order_release);
-        self->m_progress_total.store(5, std::memory_order_release);
 
-        // Switch title enumeration + library scan — moved here from
-        // main() so the main thread reaches brls::Application::mainLoop
-        // immediately and the splash actually renders. On first boot
-        // after the v0.6.71 NS init fix, this runs ~200
+        // Fixed slot layout — the byte-progress slicer in tick()
+        // assumes the currently-running step occupies [done/total ..
+        // (done+1)/total]. Letting manifest_cache::prefetch overwrite
+        // top-level done/total used to push done up to total before
+        // the update download even started, which made the byte slice
+        // begin at 1.0 and the bar overflowed its track. Now every
+        // major phase has its own fixed slot, manifest progress is
+        // demoted to m_sub_*, and the update download lands in slot 3.
+        constexpr int kStepSwitchTitles = 0;
+        constexpr int kStepLibrary      = 1;
+        constexpr int kStepManifests    = 2;
+        constexpr int kStepUpdate       = 3;
+        constexpr int kStepSettle       = 4;
+        constexpr int kStepTotal        = 5;
+        self->m_progress_total.store(kStepTotal, std::memory_order_release);
+        self->m_progress_done.store(kStepSwitchTitles, std::memory_order_release);
+
+        // Step 0 — Switch title enumeration. On first boot after the
+        // v0.6.71 NS init fix, this runs ~200
         // nsGetApplicationControlData IPCs which can take 5–10 s; the
-        // sub-step counters below give the bar per-title motion so
-        // the user doesn't stare at "0%" for the whole scan.
+        // m_sub_* counters give the bar per-title motion so the user
+        // doesn't stare at the slot's "step_lo" line.
         w.set_status("Reading installed Switch titles…");
-        // Treat the title scan as step 0 of the total; bar slice
-        // [0..1/total] tracks idx/total within the scan.
         foyer::library::load_switch_titles(
             [self, &w](int idx, int total) {
                 if (total <= 0) return;
@@ -94,24 +105,33 @@ void SplashActivity::onContentAvailable() {
             });
         self->m_sub_total.store(0, std::memory_order_release);
         self->m_sub_done.store(0, std::memory_order_release);
+        self->m_progress_done.store(kStepLibrary, std::memory_order_release);
+
+        // Step 1 — library scan.
         w.set_status("Scanning library…");
         ::foyer::browser::library_state::rescan();
+        self->m_progress_done.store(kStepManifests, std::memory_order_release);
 
+        // Step 2 — manifests prefetch. Manifest-cache's per-step
+        // callback drives m_sub_* (not top-level done/total) so the
+        // outer slot stays at kStepManifests for the entire phase.
         ::foyer::browser::manifest_cache::prefetch(
             [self, &w](int done, int total, const char* label) {
-                self->m_progress_done.store(done, std::memory_order_release);
-                self->m_progress_total.store(total, std::memory_order_release);
+                self->m_sub_done.store(done, std::memory_order_release);
+                self->m_sub_total.store(total, std::memory_order_release);
                 w.set_status(label);
             });
+        self->m_sub_done.store(0, std::memory_order_release);
+        self->m_sub_total.store(0, std::memory_order_release);
+        self->m_progress_done.store(kStepUpdate, std::memory_order_release);
 
-        // Boot-time update check, gated on the user's toggle. Runs
-        // INLINE here so the splash stays visible while the user
-        // decides whether to update — otherwise the Yes/No dialog
-        // would land on top of Home, with boot already complete.
-        // The check posts dialogs back to the main thread; we
-        // wait on a condvar until update_check signals "user is
-        // back in control" (Later picked, or after the download
-        // + restart prompt resolved).
+        // Step 3 — boot update check. Runs inline so the splash
+        // stays visible while the user decides whether to update;
+        // otherwise the Yes/No dialog would land on top of Home with
+        // boot already complete. The actual update DOWNLOAD (if the
+        // user accepts) shows up via net::current_download in the
+        // byte-progress branch of tick(), slotted into [3/5..4/5]
+        // because done is fixed at kStepUpdate for the whole phase.
         if (::foyer::library::config().update_check_on_boot) {
             w.set_status("Checking for foyer updates…");
             std::mutex             mu;
@@ -130,13 +150,12 @@ void SplashActivity::onContentAvailable() {
                 cv.wait(lk, [&done] { return done; });
             }
         }
+        self->m_progress_done.store(kStepSettle, std::memory_order_release);
 
-        // 400 ms floor so a fully-cached prefetch still gives the
-        // brand half a second of screen time.
+        // Step 4 — 400 ms floor so a fully-cached prefetch still
+        // gives the brand half a second of screen time.
         svcSleepThread(400'000'000ULL);
-        self->m_progress_done.store(
-            self->m_progress_total.load(std::memory_order_acquire),
-            std::memory_order_release);
+        self->m_progress_done.store(kStepTotal, std::memory_order_release);
         w.set_status("Ready");
     });
 
@@ -193,6 +212,7 @@ void SplashActivity::tick() {
         // the prior target. Animatable::reset() drops any queued
         // steps but keeps the current value; addStep + start then
         // glide from there. Easing matches brls's own slider feel.
+        target = std::min(1.0f, target);
         if (target > m_anim_target + 0.001f) {
             m_anim_target = target;
             m_anim_pct.reset();
@@ -200,7 +220,7 @@ void SplashActivity::tick() {
                                brls::EasingFunction::quadraticOut);
             m_anim_pct.start();
         }
-        const float pct = static_cast<float>(m_anim_pct);
+        const float pct = std::min(1.0f, static_cast<float>(m_anim_pct));
         bar_fill->setWidth(kBarTrackWidth * pct);
     }
 

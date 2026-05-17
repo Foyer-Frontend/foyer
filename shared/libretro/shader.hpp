@@ -92,14 +92,44 @@ public:
     // ImGui shell should call process_texture() instead.
     bool process(std::uint8_t* pixels, unsigned w, unsigned h);
 
-    // GL-native processing path for PLAYER_IMGUI. Takes a source
-    // GLES texture (RGBA8, the libretro frame upload), runs the
-    // active chain, returns the GL texture handle holding the final
-    // output. Zero CPU readback. The returned texture is owned by
-    // the pipeline (one of m_pp_tex[]) — caller must NOT delete it.
-    // Returns 0 when no shader is active OR on any GL error (caller
-    // falls back to sampling `src_tex` directly).
+    // GL-native processing path. Takes a source GLES texture
+    // (RGBA8, the libretro frame upload), runs the active chain,
+    // returns the GL texture handle holding the final output.
+    // The returned texture is owned by the pipeline; caller must
+    // NOT delete it. Returns 0 when no shader is active OR on any
+    // GL error (caller falls back to sampling `src_tex` directly).
     unsigned process_texture(unsigned src_tex, unsigned w, unsigned h);
+
+    // Read the last process_texture() output back into a RGBA8
+    // CPU buffer. Used by the SDL2 path (PLAYER_PLUTONIUM) to feed
+    // the shader result back into an SDL_Texture for SDL_RenderCopy.
+    // Returns false when there's no output or process_texture
+    // hasn't run yet. w/h must match the last process_texture call.
+    bool readback_last_output(unsigned char* dst, unsigned w, unsigned h);
+
+    // GL texture name of the last process_texture() output, or 0
+    // when the chain hasn't produced one. Pipeline-owned, do not
+    // delete.
+    unsigned last_output_texture() const;
+
+    // Release GL resources while the borrowed EGL context is still
+    // alive. Call BEFORE the owner (SDL) tears the context down,
+    // otherwise the implicit ~ShaderPipeline tries to glDelete
+    // against a stale/destroyed context and crashes. After this
+    // call set_preset() / process_texture() are no-ops.
+    void release_borrowed();
+
+    // True when init_borrowed() succeeded AND a preset other than
+    // "none" / empty is queued or active. Used by video_sdl::upload
+    // to gate the GL upload + readback round-trip.
+    bool active_borrowed() const;
+
+    // True when init_borrowed() succeeded (regardless of which
+    // preset is queued). Used by callers that want to upload to a
+    // GL texture even when no shader is active yet, so they can
+    // run the chain later on demand (live preview from the paused
+    // shader picker).
+    bool has_borrowed_context() const;
 
     struct PresetInfo { std::string name; std::string label; };
     static std::vector<PresetInfo> available_presets();
@@ -149,6 +179,10 @@ private:
 
     std::string  m_active_name;
     std::uint64_t m_frame_count = 0;
+    // Index into m_pp_tex/m_pp_fbo for the last process_texture
+    // output (n & 1). Used by readback_last_output to find which
+    // FBO holds the result.
+    unsigned     m_last_output_idx = 0;
 
     // set_preset is called from the brls main thread (picker click),
     // but every GL call needs to happen on the libretro_run thread

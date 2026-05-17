@@ -209,7 +209,7 @@ int main(int argc, char* argv[])
     // Return-from-core fast path. launch_game writes
     // /foyer/data/cache/last_session.txt with the system folder +
     // game path before chain-launching the core. If that marker
-    // exists and is recent (<5 min) we infer "user just came back
+    // exists and is recent (<24 h) we infer "user just came back
     // from a game" and skip the network-heavy splash entirely:
     //   - library_state::rescan inline (cache fast-path, ~100 ms)
     //   - push Home → SystemActivity(folder) → GameActivity(path)
@@ -220,8 +220,14 @@ int main(int argc, char* argv[])
     {
         constexpr const char* kMarker = "/foyer/data/cache/last_session.txt";
         struct stat mst{};
+        // 86400s window covers an overnight gap between "user quit
+        // the core, console went to sleep, user woke it up the next
+        // morning" — the original 300s gate dropped them on Home
+        // even though they very clearly wanted to keep playing the
+        // same rom. The marker is unlinked on consume below, so a
+        // stale marker can only ever fire once.
         if (::stat(kMarker, &mst) == 0
-            && std::time(nullptr) - mst.st_mtime < 300) {
+            && std::time(nullptr) - mst.st_mtime < 86400) {
             if (auto* m = std::fopen(kMarker, "rb")) {
                 char buf[512];
                 const auto n = std::fread(buf, 1, sizeof(buf) - 1, m);

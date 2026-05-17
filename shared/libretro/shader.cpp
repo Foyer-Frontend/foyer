@@ -32,25 +32,34 @@ namespace {
 
 // ----------------------------- shaders -----------------------------------
 
+// mesa-on-Switch (libnx + nouveau) miscompiles `const vec2[]` lookups
+// via gl_VertexID — the same bug we hit in video_gl. Derive both
+// position and UV with bitwise arithmetic on gl_VertexID so the
+// driver never indexes a global array. Indices map:
+//   0 -> (-1,-1) / (0,0)
+//   1 -> ( 1,-1) / (1,0)
+//   2 -> (-1, 1) / (0,1)
+//   3 -> ( 1, 1) / (1,1)
+// glTexSubImage2D upload puts source-row-0 at texture v=0; matching
+// FBO v=0 to UV.y=0 at clip (-1,-1) keeps source orientation through
+// the chain. glReadPixels then reads bottom-first, dst[row 0] = FBO
+// v=0 = source-row-0 = SDL_Texture-row-0. No extra flip.
+// Raw-GL path (PLAYER_PLUTONIUM video_sdl): no glReadPixels round
+// trip — process_texture's FBO output is sampled directly by the
+// present quad. Keep UV.y untouched so glTexImage2D's v=0 row
+// (which holds source-top from the CPU upload) lines up with
+// FBO v=0 after the shader pass, and the present quad's
+// screen-top samples that same v=0 row. The readback / SDL_Texture
+// path is gone in the SDL2 player; the legacy ImGui + brls paths
+// don't use this vertex shader.
 constexpr const char* kVertexSrc = R"(#version 300 es
 precision highp float;
 out vec2 v_uv;
-const vec2 POS[4] = vec2[](
-    vec2(-1.0, -1.0), vec2( 1.0, -1.0),
-    vec2(-1.0,  1.0), vec2( 1.0,  1.0));
-// UV mapping is NOT y-flipped. libretro frames arrive row-major top-first;
-// glTexSubImage2D uploads row 0 to GL v=0 (which is the bottom edge by GL
-// convention) so the source's top row ends up at the texture's v=0 row.
-// Matching the clip-space Y mapping (UV[0]=(0,0) at clip (-1,-1)) makes
-// the FBO bottom-left = source top-left, which is upside-down vs the
-// source — then glReadPixels (also bottom-first) reads it back in the
-// row order the libretro frontend expects.
-const vec2 UV[4]  = vec2[](
-    vec2( 0.0,  0.0), vec2( 1.0,  0.0),
-    vec2( 0.0,  1.0), vec2( 1.0,  1.0));
 void main() {
-    gl_Position = vec4(POS[gl_VertexID], 0.0, 1.0);
-    v_uv        = UV[gl_VertexID];
+    float x = float(gl_VertexID & 1);
+    float y = float((gl_VertexID >> 1) & 1);
+    gl_Position = vec4(x * 2.0 - 1.0, y * 2.0 - 1.0, 0.0, 1.0);
+    v_uv        = vec2(x, y);
 }
 )";
 
@@ -382,6 +391,49 @@ bool ShaderPipeline::init() {
     return load_builtin("none");
 }
 
+bool ShaderPipeline::has_borrowed_context() const {
+    return m_egl_context != nullptr;
+}
+
+bool ShaderPipeline::active_borrowed() const {
+    if (!m_egl_context) return false;
+    // Active name covers preset that has already been applied.
+    if (!m_active_name.empty() && m_active_name != "none") return true;
+    // Pending may be set just-after set_preset() before drain.
+    // Read without locking — at worst we miss the first frame of
+    // a new preset.
+    if (m_pending_preset_set && m_pending_preset != "none"
+            && !m_pending_preset.empty()) return true;
+    return false;
+}
+
+void ShaderPipeline::release_borrowed() {
+    if (!m_egl_display) return;
+    // Delete GL resources while context is still current.
+    destroy_chain();
+    for (auto& l : m_luts) {
+        if (l.texture) glDeleteTextures(1, &l.texture);
+    }
+    m_luts.clear();
+    if (m_vao)         glDeleteVertexArrays(1, &m_vao);
+    if (m_in_tex)      glDeleteTextures(1, &m_in_tex);
+    for (int i = 0; i < 2; i++) {
+        if (m_pp_fbo[i]) glDeleteFramebuffers(1, &m_pp_fbo[i]);
+        if (m_pp_tex[i]) glDeleteTextures(1, &m_pp_tex[i]);
+        m_pp_fbo[i] = 0;
+        m_pp_tex[i] = 0;
+    }
+    m_vao = 0;
+    m_in_tex = 0;
+    // Clear borrowed handles so the destructor below skips its own
+    // GL teardown.
+    m_egl_display = nullptr;
+    m_egl_context = nullptr;
+    m_egl_surface = nullptr;
+    m_active_name.clear();
+    foyer::log::write("[shader] release_borrowed ok\n");
+}
+
 bool ShaderPipeline::init_borrowed(void* egl_display,
                                    void* egl_context,
                                    void* egl_surface) {
@@ -625,10 +677,19 @@ bool ShaderPipeline::load_json_manifest(const std::string& path) {
 // to happen on the libretro_run thread (the only one that owns the
 // EGL context), so just record the request here and let process()
 // drain it on the next frame.
+//
+// We ALSO update m_active_name eagerly so UI queries (the pause
+// menu's "(active)" tag) reflect the new pick immediately, even
+// while the player is paused and process_texture isn't running.
+// The GL compile still happens later on the libretro thread when
+// retro_run resumes; if compile fails m_chain stays empty and
+// process_texture returns 0, so the worst case is the game shows
+// raw frames until the user picks a different preset.
 bool ShaderPipeline::set_preset(std::string_view name) {
     std::scoped_lock lk{m_pending_mu};
     m_pending_preset.assign(name);
     m_pending_preset_set = true;
+    m_active_name = std::string{name};
     foyer::log::write("[shader] queued preset=%.*s\n",
         (int)name.size(), name.data());
     return true;
@@ -657,17 +718,43 @@ void ShaderPipeline::apply_pending_preset_locked() {
 // Synchronous apply on the calling thread (libretro_run). Old public
 // set_preset body, unchanged below the rename.
 bool ShaderPipeline::apply_preset_named(std::string_view name) {
-    if (!m_egl_context && !init()) return false;
-    if (!make_current()) return false;
-
-    // 1. Built-in name.
+    // Try the GL path first. If the pipeline was init_borrowed()
+    // (PLAYER_PLUTONIUM hands SDL's EGL context), build_program
+    // compiles the fragment shader against that context. If not
+    // (PLAYER_BRLS / legacy), fall back to setting m_active_name
+    // for the CPU built-in dispatcher in process(uint8_t*).
     if (find_builtin(name)) {
-        if (!load_builtin(name)) return false;
-        m_active_name = name;
-        foyer::log::write("[shader] active=%.*s (built-in, 1 pass)\n",
+        if (m_egl_context) {
+            // GL path: compile + populate m_chain.
+            if (!make_current()) {
+                foyer::log::write("[shader] apply: make_current failed for %.*s\n",
+                    (int)name.size(), name.data());
+                return false;
+            }
+            const GLubyte* gv  = glGetString(GL_VERSION);
+            const GLubyte* gsl = glGetString(GL_SHADING_LANGUAGE_VERSION);
+            foyer::log::write("[shader] apply: GL_VERSION=%s GLSL=%s\n",
+                gv ? (const char*)gv : "(null)",
+                gsl ? (const char*)gsl : "(null)");
+            if (!load_builtin(name)) {
+                foyer::log::write("[shader] apply: load_builtin %.*s FAILED\n",
+                    (int)name.size(), name.data());
+                return false;
+            }
+            m_active_name = name;
+            foyer::log::write("[shader] active=%.*s (built-in, GL, chain=%zu)\n",
+                (int)name.size(), name.data(), m_chain.size());
+            return true;
+        }
+        // CPU fallback when no GL context is available.
+        m_active_name = std::string{name};
+        foyer::log::write("[shader] active=%.*s (built-in, CPU)\n",
             (int)name.size(), name.data());
         return true;
     }
+
+    if (!m_egl_context && !init()) return false;
+    if (!make_current()) return false;
 
     // 2. JSON multi-pass manifest.
     char buf[512];
@@ -1064,7 +1151,24 @@ unsigned ShaderPipeline::process_texture(unsigned src_tex,
             (unsigned)err);
         return 0;
     }
-    return m_pp_tex[n & 1];
+    m_last_output_idx = (unsigned)(n & 1);
+    return m_pp_tex[m_last_output_idx];
+}
+
+bool ShaderPipeline::readback_last_output(unsigned char* dst,
+                                          unsigned w, unsigned h) {
+    if (!dst || w == 0 || h == 0) return false;
+    if (m_pp_fbo[m_last_output_idx] == 0) return false;
+    glBindFramebuffer(GL_FRAMEBUFFER, m_pp_fbo[m_last_output_idx]);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glReadPixels(0, 0, (GLsizei)w, (GLsizei)h,
+                 GL_RGBA, GL_UNSIGNED_BYTE, dst);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    return glGetError() == GL_NO_ERROR;
+}
+
+unsigned ShaderPipeline::last_output_texture() const {
+    return m_pp_tex[m_last_output_idx];
 }
 
 ShaderPipeline& shader_pipeline() {

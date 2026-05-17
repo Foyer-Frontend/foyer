@@ -29,32 +29,51 @@ set(_romfs    foyer_player_romfs_${FOYER_CORE})
 # player target needs it. We compile it as a small static lib alongside the
 # core so identical code is reused across player builds.
 #
-# PLAYER_IMGUI swaps the nanovg-shaped sources (video.cpp + bezel.cpp +
-# overlay.cpp) for their GL-direct siblings (video_gl.cpp + bezel_gl.cpp).
-# overlay.cpp is dropped entirely — the ImGui shell paints its overlay
-# via ImGui modals, not the legacy nanovg overlay system.
-if (PLAYER_IMGUI)
+# Per-shell source swaps:
+#   PLAYER_PLUTONIUM -> SDL2 path: video_sdl + bezel_sdl + audio_sdl
+#                        + input_sdl (replace audio.cpp + input.cpp).
+#   PLAYER_IMGUI     -> GLES quad: video_gl + bezel_gl (audio/input
+#                        stay on libnx audrv + pad).
+#   else             -> nanovg path: video + bezel + overlay.
+if (PLAYER_PLUTONIUM)
+    # input_sdl.cpp (SDL_GameController) was misreading L3 as the A
+    # button on switch-sdl2 — the port's default GameController
+    # mapping has the stick-click slot wrong. Use libnx pad directly
+    # via the shared input.cpp; SDL2 still owns the controller for
+    # Plutonium's nav, but the libretro layer pulls raw HID.
+    set(_render_specific_sources
+        ${CMAKE_SOURCE_DIR}/shared/libretro/video_sdl.cpp
+        ${CMAKE_SOURCE_DIR}/shared/libretro/bezel_sdl.cpp
+        ${CMAKE_SOURCE_DIR}/shared/libretro/audio_sdl.cpp
+        ${CMAKE_SOURCE_DIR}/shared/libretro/input.cpp)
+    set(_audio_input_sources)
+elseif (PLAYER_IMGUI)
     set(_render_specific_sources
         ${CMAKE_SOURCE_DIR}/shared/libretro/video_gl.cpp
         ${CMAKE_SOURCE_DIR}/shared/libretro/bezel_gl.cpp)
+    set(_audio_input_sources
+        ${CMAKE_SOURCE_DIR}/shared/libretro/audio.cpp
+        ${CMAKE_SOURCE_DIR}/shared/libretro/input.cpp)
 else()
     set(_render_specific_sources
         ${CMAKE_SOURCE_DIR}/shared/libretro/video.cpp
         ${CMAKE_SOURCE_DIR}/shared/libretro/bezel.cpp
         ${CMAKE_SOURCE_DIR}/shared/libretro/overlay.cpp)
+    set(_audio_input_sources
+        ${CMAKE_SOURCE_DIR}/shared/libretro/audio.cpp
+        ${CMAKE_SOURCE_DIR}/shared/libretro/input.cpp)
 endif()
 
 add_library(${_frontend} STATIC
     ${CMAKE_SOURCE_DIR}/shared/libretro/frontend.cpp
     ${CMAKE_SOURCE_DIR}/shared/libretro/video_hw.cpp
-    ${CMAKE_SOURCE_DIR}/shared/libretro/audio.cpp
-    ${CMAKE_SOURCE_DIR}/shared/libretro/input.cpp
     ${CMAKE_SOURCE_DIR}/shared/libretro/savestate.cpp
     ${CMAKE_SOURCE_DIR}/shared/libretro/cheevos.cpp
     ${CMAKE_SOURCE_DIR}/shared/libretro/core_options.cpp
     ${CMAKE_SOURCE_DIR}/shared/libretro/cheats.cpp
     ${CMAKE_SOURCE_DIR}/shared/libretro/shader.cpp
     ${_render_specific_sources}
+    ${_audio_input_sources}
 )
 target_include_directories(${_frontend} PUBLIC
     ${CMAKE_SOURCE_DIR}/shared/libretro
@@ -78,19 +97,17 @@ target_compile_definitions(${_frontend} PRIVATE
     # in-app per-core defaults can't apply.
     FOYER_CORE_NAME=${FOYER_CORE})
 
-# Pick the render shell for this player. 3-way:
-#   PLAYER_IMGUI  -> Dear ImGui + libnx-EGL (Phase ImGui-1+, see
-#                   docs/PLAYER_MIGRATION_PLAN.md)
-#   PLAYER_BRLS   -> borealis (Phase H, current default)
-#   neither       -> legacy foyer_render (nanovg-deko3d App)
-# brls and ImGui cannot coexist in one binary — they pull different
-# nanovg copies and fight the nvhost channel — so the top-level
-# CMakeLists.txt forces PLAYER_BRLS=OFF whenever PLAYER_IMGUI=ON.
-if (PLAYER_IMGUI)
-    # foyer_imgui already pulls EGL/GLESv2 + the OpenGL3 backend; the
-    # libretro frontend lib still needs GL symbols on Switch (HW
-    # render path through video_hw.cpp), so we leave the EGL/GLESv2/
-    # glapi/drm_nouveau libs linked below.
+# Pick the render shell for this player. 4-way:
+#   PLAYER_PLUTONIUM -> XorTroll/Plutonium on SDL2 (Phase P1+, see
+#                       docs/PLAYER_MIGRATION_PLAN.md)
+#   PLAYER_IMGUI     -> Dear ImGui + libnx-EGL (older ImGui phases)
+#   PLAYER_BRLS      -> borealis (Phase H, current default)
+#   neither          -> legacy foyer_render (nanovg-deko3d App)
+# Only one render shell at a time — top-level CMakeLists.txt forces
+# the others OFF when one is ON.
+if (PLAYER_PLUTONIUM)
+    set(_render_lib foyer_plutonium)
+elseif (PLAYER_IMGUI)
     set(_render_lib foyer_imgui)
 elseif (PLAYER_BRLS)
     set(_render_lib borealis)
@@ -120,7 +137,16 @@ set_target_properties(${_frontend} PROPERTIES
 # + activity sources. Each shell ships its own userAppInit/userAppExit:
 # borealis brings switch_wrapper.c; ImGui provides them inline in
 # main_imgui.cpp; foyer_render uses foyer_shared's services.cpp.
-if (PLAYER_IMGUI)
+if (PLAYER_PLUTONIUM)
+    add_executable(${_player}
+        src/plutonium/main_plutonium.cpp
+        src/plutonium/main_application.cpp
+        src/plutonium/emulator_element.cpp
+        src/plutonium/pause_menu.cpp
+    )
+    target_include_directories(${_player} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include)
+elseif (PLAYER_IMGUI)
     add_executable(${_player}
         src/imgui/main_imgui.cpp
         src/imgui/gl_context.cpp
@@ -158,7 +184,15 @@ else()
         src/main.cpp
     )
 endif()
-if (PLAYER_IMGUI)
+if (PLAYER_PLUTONIUM)
+    # Phase P2: link the libretro frontend (built with the _sdl
+    # sources) + Plutonium together. SDL2 family + EGL/GLES symbols
+    # come transitively from foyer_plutonium.
+    target_link_libraries(${_player} PRIVATE
+        ${_frontend}
+        foyer_plutonium
+    )
+elseif (PLAYER_IMGUI)
     # Phase ImGui-2: link the libretro frontend (now compiled with
     # video_gl.cpp + bezel_gl.cpp instead of the nanovg-shaped
     # video.cpp / bezel.cpp) and ImGui together. EGL/GLES symbols
