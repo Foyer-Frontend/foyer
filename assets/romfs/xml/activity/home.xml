@@ -1,19 +1,17 @@
 <!--
     foyer Home — borealis edition.
 
-    Top bar: profile placeholder · spacer · status cluster
-    (clock · wifi · battery, top-right).
+    Switch-Home-style layout: per-system backdrop full-screen,
+    minimal top bar (profile + status), then carousel of system
+    tiles sitting just above the vertical centre with the round
+    action buttons (Settings · Power) tucked directly underneath
+    (mirrors HOS's "row of game tiles, action row immediately
+    below" stacking). Hint bar pinned to the bottom.
 
-    Centre: horizontal system carousel populated by
-    HomeActivity::onContentAvailable() from foyer's system_db.
-
-    Below the carousel: HOS-style round action row. Phase B ships
-    only Settings; News / eShop / Album / Controllers / Power land
-    in alpha.11+ when their handlers exist.
-
-    The full-screen Image at the back is the per-system backdrop —
-    HomeActivity swaps its source on tile focus changes so the
-    backdrop matches the system the user is hovering.
+    HomeActivity populates foyer/profiles, foyer/focus_logo,
+    foyer/carousel and foyer/action_row from system_db on
+    onContentAvailable(); the backdrop Image swaps as the user
+    scrolls the carousel.
 -->
 <brls:Box
     width="auto"
@@ -54,9 +52,7 @@
 
         <!-- Focused-system logo — fills in as the user scrolls the
              carousel. HomeActivity::onSystemFocused points at
-             theme/foyer/systems/<folder>/logo_(dark|light).png.
-             v0.6.98's blue centered focus label is gone; the logo
-             carries the affordance now. -->
+             theme/foyer/systems/<folder>/logo_(dark|light).png. -->
         <brls:Image
             id="foyer/focus_logo"
             width="auto"
@@ -93,15 +89,44 @@
         </brls:Box>
     </brls:Box>
 
-    <!-- HOS-style round action buttons — pinned just below the top
-         bar's separator. Populated by HomeActivity. -->
+    <!-- Upper flex spacer — grow=2 above and grow=1 below biases
+         the carousel + action-row stack toward the upper-middle of
+         the screen (matches HOS Home's "tiles slightly above
+         centre, action row directly under"). -->
+    <brls:Box
+        width="auto"
+        height="auto"
+        grow="2.0" />
+
+    <!-- System carousel — vertically centred with the action row
+         directly underneath. -->
+    <brls:HScrollingFrame
+        id="foyer/carousel_scroll"
+        width="100%"
+        height="320"
+        scrollingBehavior="centered">
+
+        <brls:Box
+            id="foyer/carousel"
+            width="auto"
+            height="auto"
+            axis="row"
+            alignItems="center"
+            justifyContent="center"
+            paddingLeft="48"
+            paddingRight="48" />
+
+    </brls:HScrollingFrame>
+
+    <!-- HOS-style round action buttons — pinned directly below the
+         carousel so the eye flow is tile → action. -->
     <brls:Box
         width="auto"
         height="auto"
         axis="row"
         alignItems="center"
         justifyContent="center"
-        marginTop="16"
+        marginTop="24"
         marginBottom="16">
 
         <brls:Box
@@ -113,34 +138,13 @@
 
     </brls:Box>
 
-    <!-- Empty middle band — backdrop shows through. -->
+    <!-- Lower flex spacer. -->
     <brls:Box
         width="auto"
         height="auto"
         grow="1.0" />
 
-    <!-- System carousel — pinned just above the bottom hint bar. -->
-    <brls:HScrollingFrame
-        id="foyer/carousel_scroll"
-        width="100%"
-        height="264"
-        marginBottom="8"
-        scrollingBehavior="centered">
-
-        <brls:Box
-            id="foyer/carousel"
-            width="auto"
-            height="auto"
-            axis="row"
-            alignItems="flexEnd"
-            paddingLeft="48"
-            paddingRight="48" />
-
-    </brls:HScrollingFrame>
-
-    <!-- Bottom hint bar — brls Hints (the controller button hints,
-         e.g. A: OK, B: Back). No top divider; the backdrop bands
-         provide the visual separation. -->
+    <!-- Bottom hint bar — brls Hints (controller button hints). -->
     <brls:Box
         width="auto"
         height="@style/brls/applet_frame/footer_height"

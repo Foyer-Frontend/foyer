@@ -63,4 +63,12 @@ using CompletionListener = std::function<void(const std::string& tag)>;
 int  subscribe(CompletionListener cb);
 void unsubscribe(int id);
 
+// Suppress the queue's progress toasts (and update_check's parallel
+// toasts) during the splash worker — we don't want "Update v… ready"
+// and "Installed manifest" bubbles drawn on top of the splash bar
+// while the user hasn't even reached Home. SplashActivity::onContent
+// flips this on; handoff() flips it off.
+void set_toasts_muted(bool muted);
+bool toasts_muted();
+
 }  // namespace foyer::browser::install_queue

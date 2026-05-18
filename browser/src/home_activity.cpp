@@ -51,8 +51,8 @@ public:
                std::string_view title, std::size_t game_count)
         : m_host(host), m_folder(folder), m_title(title)
     {
-        constexpr float kSquare    = 175.0f;
-        constexpr float kBannerH   = 36.0f;
+        constexpr float kSquare    = 240.0f;
+        constexpr float kBannerH   = 42.0f;
 
         this->setWidth(kSquare);
         this->setHeight(kSquare);

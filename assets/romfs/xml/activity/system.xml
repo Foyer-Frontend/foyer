@@ -1,14 +1,12 @@
 <!--
     foyer System view — borealis edition.
 
-    Mirrors home.xml's chrome so the user keeps the same mental
-    model when navigating into a system: status cluster top-right,
-    matching dividers, action row up top, cover-flow carousel along
-    the bottom edge. The only system-specific content is the logo
-    in the middle band and the per-game cover tiles in the
-    carousel.
+    Mirrors home.xml's HOS-style stacking: status cluster top-right,
+    cover-flow carousel vertically centred, system-specific round
+    action buttons (Scrape, Scan, Search, Settings) tucked directly
+    under the carousel. Hint bar pinned to the bottom.
 
-    SystemActivity populates foyer/logo, foyer/action_row and
+    SystemActivity populates foyer/logo_holder, foyer/action_row and
     foyer/carousel from the focused system's data; the backdrop
     Image is set from `themes/foyer/systems/<folder>/background.jpg`
     in onContentAvailable().
@@ -20,11 +18,6 @@
     axis="column">
 
     <!-- Per-system app backdrop — same crop as Home. -->
-    <!-- Full-screen so the translucent overlay bars at the top
-         (height 80) and bottom (footer_height ~73) have something
-         to tint. v0.6.94's bar_overlay tint was rendering against
-         raw scrim because the backdrop only spanned the middle
-         band; ext to 0..720 + bars sit absolute on top. -->
     <brls:Image
         id="foyer/backdrop"
         positionType="absolute"
@@ -35,9 +28,7 @@
         scalingType="fill" />
 
     <!-- Top bar — system logo on the left, clock / wifi / battery
-         on the right (mirrors home.xml's chrome placement). No
-         divider line; the backdrop's middle band provides the
-         visual separation. -->
+         on the right (mirrors home.xml's chrome placement). -->
     <brls:Box
         width="auto"
         height="80"
@@ -82,15 +73,42 @@
         </brls:Box>
     </brls:Box>
 
+    <!-- Upper flex spacer — biases carousel + action row toward
+         upper-middle to match home.xml. -->
+    <brls:Box
+        width="auto"
+        height="auto"
+        grow="2.0" />
+
+    <!-- Game cover-flow carousel — vertically centred, action row
+         directly underneath. -->
+    <brls:HScrollingFrame
+        id="foyer/carousel_scroll"
+        width="100%"
+        height="320"
+        scrollingBehavior="centered">
+
+        <brls:Box
+            id="foyer/carousel"
+            width="auto"
+            height="auto"
+            axis="row"
+            alignItems="center"
+            justifyContent="center"
+            paddingLeft="48"
+            paddingRight="48" />
+
+    </brls:HScrollingFrame>
+
     <!-- Action row — system-specific buttons (Scrape, Scan,
-         Per-system settings). Populated by SystemActivity. -->
+         Per-system settings). Pinned directly under the carousel. -->
     <brls:Box
         width="auto"
         height="auto"
         axis="row"
         alignItems="center"
         justifyContent="center"
-        marginTop="16"
+        marginTop="24"
         marginBottom="16">
 
         <brls:Box
@@ -102,36 +120,14 @@
 
     </brls:Box>
 
-    <!-- Empty middle band — backdrop shows through. -->
+    <!-- Lower flex spacer. -->
     <brls:Box
         width="auto"
         height="auto"
         grow="1.0" />
 
-    <!-- Game cover-flow carousel — pinned right above the bottom
-         hint bar. Frame height matches the tallest tile (280px
-         portrait) + 7px top margin; the bottom margin is small so
-         the cover-flow baseline sits flush with the hint-bar top. -->
-    <brls:HScrollingFrame
-        id="foyer/carousel_scroll"
-        width="100%"
-        height="288"
-        marginBottom="8"
-        scrollingBehavior="centered">
-
-        <brls:Box
-            id="foyer/carousel"
-            width="auto"
-            height="auto"
-            axis="row"
-            alignItems="flexEnd"
-            paddingLeft="48"
-            paddingRight="48" />
-
-    </brls:HScrollingFrame>
-
     <!-- Bottom bar — scrape progress label on the left, brls
-         button hints on the right. No divider, matches home.xml. -->
+         button hints on the right. -->
     <brls:Box
         width="auto"
         height="@style/brls/applet_frame/footer_height"

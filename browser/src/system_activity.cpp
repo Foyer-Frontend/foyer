@@ -639,7 +639,7 @@ void SystemActivity::populateCarousel() {
     // platform at the same resolution; pulling that from the
     // hardcoded kBoxSizes table is more reliable than probing
     // the on-disk files (which can include hand-edited crops).
-    constexpr float kMaxSide = 200.0f;
+    constexpr float kMaxSide = 280.0f;
 
     // For real systems every game shares the same box dims (the
     // system's SS box-2D ratio). For the virtual carousels

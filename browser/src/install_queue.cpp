@@ -4,6 +4,7 @@
 
 #include <borealis.hpp>
 
+#include <atomic>
 #include <deque>
 #include <memory>
 #include <mutex>
@@ -29,6 +30,18 @@ brls::RepeatingTimer*                            g_timer = nullptr;
 std::mutex                                       g_listeners_mu;
 std::vector<std::pair<int, CompletionListener>>  g_listeners;
 int                                              g_next_listener_id = 1;
+
+// Set by SplashActivity for the duration of the splash worker.
+// While true every call below routes through notify_unmuted() which
+// short-circuits before brls::Application::notify, keeping the
+// splash bar clean. update_check.cpp reads the same flag via
+// toasts_muted() so its parallel notify calls also stay quiet.
+std::atomic<bool>                                g_toasts_muted{false};
+
+void notify_unmuted(const std::string& msg) {
+    if (g_toasts_muted.load(std::memory_order_acquire)) return;
+    brls::Application::notify(msg);
+}
 
 [[maybe_unused]] void fire_completion(const std::string& tag) {
     // Snapshot listeners under lock so a listener that calls
@@ -74,7 +87,7 @@ void start_next_locked() {
         else if (t == "foyer "                 // foyer-update check
               || t.rfind("foyer ", 0) == 0)    starting = "Downloading " + t + "…";
         else                                   starting = "Installing " + t;
-        brls::Application::notify(starting);
+        notify_unmuted(starting);
     }
     foyer::log::write("[install_queue] start tag=%s (depth=%zu)\n",
         g_active_tag.c_str(), g_queue.size());
@@ -86,7 +99,7 @@ void poll_tick() {
     const std::string snap = g_worker->status_snapshot();
     if (!snap.empty() && snap != g_last_status) {
         g_last_status = snap;
-        brls::Application::notify(snap);
+        notify_unmuted(snap);
     }
     if (!g_worker->done()) return;
     g_worker->finish();
@@ -104,7 +117,7 @@ void poll_tick() {
         else if (t.rfind("Check ", 0) == 0)    done_msg = t + " done";
         else if (t.rfind("foyer ", 0) == 0)    done_msg = t + " downloaded";
         else                                   done_msg = "Installed " + t;
-        brls::Application::notify(done_msg);
+        notify_unmuted(done_msg);
     }
     start_next_locked();
     // NOTE: completion listeners were temporarily disabled — when
@@ -140,12 +153,12 @@ std::size_t enqueue(std::string tag, JobBody body) {
     // user sees the same "Queued — N ahead" they would have seen
     // had they been the first to enqueue.
     if (g_worker && g_active_tag == tag) {
-        brls::Application::notify(tag + " is already installing");
+        notify_unmuted(tag + " is already installing");
         return g_queue.size() + 1;
     }
     for (std::size_t i = 0; i < g_queue.size(); ++i) {
         if (g_queue[i].tag == tag) {
-            brls::Application::notify(
+            notify_unmuted(
                 tag + " is already queued (#" + std::to_string(i + 1) + ")");
             return g_queue.size() + (g_worker ? 1 : 0);
         }
@@ -157,7 +170,7 @@ std::size_t enqueue(std::string tag, JobBody body) {
         ensure_timer_locked();
         start_next_locked();
     } else {
-        brls::Application::notify(
+        notify_unmuted(
             "Queued — " + std::to_string(depth - 1) + " ahead");
     }
     return depth;
@@ -227,6 +240,14 @@ Snapshot snapshot() {
     s.pending_tags.reserve(g_queue.size());
     for (const auto& j : g_queue) s.pending_tags.push_back(j.tag);
     return s;
+}
+
+void set_toasts_muted(bool muted) {
+    g_toasts_muted.store(muted, std::memory_order_release);
+}
+
+bool toasts_muted() {
+    return g_toasts_muted.load(std::memory_order_acquire);
 }
 
 }  // namespace foyer::browser::install_queue

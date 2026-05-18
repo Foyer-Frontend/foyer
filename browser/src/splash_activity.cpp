@@ -1,6 +1,7 @@
 #include "activity/splash_activity.hpp"
 
 #include "activity/home_activity.hpp"
+#include "install_queue.hpp"
 #include "library_state.hpp"
 #include "manifest_cache.hpp"
 #include "net/http.hpp"
@@ -63,6 +64,13 @@ void SplashActivity::onContentAvailable() {
     }
 
     if (m_worker) return;
+
+    // Mute the install_queue / update_check toast surface for the
+    // duration of the splash worker. Without this the boot update
+    // check + manifest prefetch fire "Update v… ready" / "Installed
+    // manifest" toasts onto the top-right of the splash, on top of
+    // the brand. Cleared in handoff() once Home takes over.
+    ::foyer::browser::install_queue::set_toasts_muted(true);
 
     foyer::log::write("[splash] kicking worker\n");
     m_worker = std::make_unique<::foyer::library::Worker>();
@@ -234,6 +242,9 @@ void SplashActivity::tick() {
 void SplashActivity::handoff() {
     foyer::log::write("[splash] handoff — pushing Home\n");
     m_worker->finish();
+    // Re-enable the toast surface now that Home is taking over — any
+    // post-handoff install/update activity should be visible again.
+    ::foyer::browser::install_queue::set_toasts_muted(false);
 
     if (m_tick) {
         m_tick->stop();

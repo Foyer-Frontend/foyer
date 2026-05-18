@@ -25,6 +25,21 @@
 #include <memory>
 #include <string>
 
+namespace {
+
+// Mirror of install_queue's notify gate so the boot-time update
+// check (kick_boot) doesn't paint "Update v… ready" / "Update
+// download failed" toasts on top of the splash bar. SplashActivity
+// flips the install_queue mute on for the duration of the splash
+// worker; once it hands off to Home the flag clears and these
+// route to brls::Application::notify normally.
+void notify_unmuted(const std::string& msg) {
+    if (foyer::browser::install_queue::toasts_muted()) return;
+    brls::Application::notify(msg);
+}
+
+}  // namespace
+
 namespace foyer::browser::update_check {
 
 namespace {
@@ -200,10 +215,10 @@ void enqueue_download(const ::foyer::library::FoyerManifest mf) {
             const std::string version = mf.version;
             brls::sync([ok, version]() {
                 if (ok) {
-                    brls::Application::notify("Update v" + version + " ready");
+                    notify_unmuted("Update v" + version + " ready");
                     prompt_restart();
                 } else {
-                    brls::Application::notify("Update download failed");
+                    notify_unmuted("Update download failed");
                 }
             });
         });
@@ -305,12 +320,12 @@ void kick_boot(std::function<void()> on_done) {
                             const std::string version = mf.version;
                             brls::sync([ok, version]() {
                                 if (!ok) {
-                                    brls::Application::notify(
+                                    notify_unmuted(
                                         "Update download failed");
                                     boot_done();
                                     return;
                                 }
-                                brls::Application::notify(
+                                notify_unmuted(
                                     "Update v" + version + " ready");
                                 auto* rdlg = new brls::Dialog(
                                     "Update downloaded. Restart foyer now?");
@@ -345,13 +360,13 @@ bool kick(bool verbose) {
                 FOYER_VERSION, mf.version);
             brls::sync([ok, newer, verbose, mf]() {
                 if (!ok) {
-                    if (verbose) brls::Application::notify("Update check failed");
+                    if (verbose) notify_unmuted("Update check failed");
                     return;
                 }
                 if (newer) {
                     prompt_download(mf.version, mf);
                 } else if (verbose) {
-                    brls::Application::notify(
+                    notify_unmuted(
                         "Foyer up to date (v" + std::string(FOYER_VERSION) + ")");
                 }
             });
@@ -395,10 +410,10 @@ bool kick_content(Section s) {
                     case Section::Cheats: n = buckets.cheats.size(); break;
                 }
                 if (n == 0) {
-                    brls::Application::notify(
+                    notify_unmuted(
                         std::string("All ") + lbl + " up to date");
                 } else {
-                    brls::Application::notify(
+                    notify_unmuted(
                         std::to_string(n) + " " + lbl + " update"
                         + (n == 1 ? "" : "s") + " available");
                 }
