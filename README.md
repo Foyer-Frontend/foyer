@@ -283,7 +283,7 @@ detail section under the heading breaks it down.
 | [`fceumm`](#fceumm) | NES | ✅ | ✅ | ✅ | ✅ |
 | [`nestopia`](#nestopia) | NES | ✅ | ✅ | ✅ | ✅ |
 | [`mesen`](#mesen) | NES | 🟡 | ✅ | ✅ | ❌ |
-| `snes9x` | SNES | ✅ | 🟡 | 🟡 | ⬜ |
+| [`snes9x`](#snes9x) | SNES | ✅ | ✅ | ✅ | ✅ |
 | `snes9x2010` | SNES | ⬜ | ⬜ | ⬜ | ⬜ |
 | `bsnes_hd_beta` | SNES | ⬜ | ⬜ | ⬜ | ⬜ |
 | `gambatte` | GB / GBC | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -391,6 +391,22 @@ Recommended when you want sub-frame audio + ppu accuracy.
 Accuracy-leaning NES core. Use when fceumm/nestopia can't run a
 specific homebrew or mapper edge case; expect lower framerate
 than the other two on Switch.
+
+#### `snes9x`
+
+| Feature | Status | Notes |
+|---|---|---|
+| Boots          | ✅ | SNES roms boot directly into gameplay |
+| Audio          | ✅ | 48 kHz via SDL2 audio sink |
+| SRAM           | ✅ | .srm round-trip across chain-launch |
+| Save state     | ✅ | slot picker round-trips |
+| Bezel          | ✅ | per-system + per-game bezels render |
+| Shader         | ✅ | live preview against frozen pause frame |
+| Cheats         | ✅ | retroarch .cht round-trip working |
+| RetroAchievements | ⬜ | not yet exercised |
+
+Recommended default for SNES. Full feature row green on 0.7.5
+hardware.
 
 #### `ppsspp`
 
