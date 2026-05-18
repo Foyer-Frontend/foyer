@@ -404,9 +404,12 @@ than the other two on Switch.
 | Shader         | ✅ | live preview against frozen pause frame |
 | Cheats         | ✅ | retroarch .cht round-trip working |
 | RetroAchievements | ⬜ | not yet exercised |
+| Quit to foyer  | ❌ | foyer crashes on chain-launch back from snes9x — teardown-side bug, gameplay itself stable |
 
-Recommended default for SNES. Full feature row green on 0.7.5
-hardware.
+Recommended default for SNES gameplay. Watch out for the
+Quit-to-foyer crash: hold the Home button + back-to-applet via
+HOS rather than hitting Quit until the chain-launch teardown is
+fixed.
 
 #### `snes9x2010`
 
@@ -420,6 +423,7 @@ hardware.
 | Shader         | ✅ | live preview against frozen pause frame |
 | Cheats         | ❌ | retro_cheat_set call lands but no in-game effect — same symptom mesen has on NES; needs a per-core dig |
 | RetroAchievements | ⬜ | not yet exercised |
+| Quit to foyer  | ❌ | same chain-launch crash as snes9x — both SNES cores hit the teardown path that the rest of the matrix doesn't |
 
 Older snes9x port, kept for perf-constrained roms. Use snes9x
 when you need full feature coverage; reach for snes9x2010 only
