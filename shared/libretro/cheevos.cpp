@@ -133,9 +133,23 @@ bool Cheevos::init(NotifyCb on_unlock) {
     rc_client_enable_logging(client, RC_CLIENT_LOG_LEVEL_INFO, log_callback);
     rc_client_set_hardcore_enabled(client, 0);
 
-    rc_client_begin_login_with_token(client,
-        a.user.c_str(), a.token.c_str(),
-        on_login_done, nullptr);
+    // Prefer password login when the user filled in the password
+    // field. rcheevos exchanges it for a session token on first
+    // request — the alternative `rc_client_begin_login_with_token`
+    // expects a pre-obtained Connect API Token, NOT the "Web API
+    // Key" on RA's settings page (those are different secrets and
+    // login_with_token silently fails when fed the Web API Key).
+    if (!a.password.empty()) {
+        foyer::log::write("[ra] login via password as %s\n", a.user.c_str());
+        rc_client_begin_login_with_password(client,
+            a.user.c_str(), a.password.c_str(),
+            on_login_done, nullptr);
+    } else {
+        foyer::log::write("[ra] login via token as %s\n", a.user.c_str());
+        rc_client_begin_login_with_token(client,
+            a.user.c_str(), a.token.c_str(),
+            on_login_done, nullptr);
+    }
     return true;
 }
 

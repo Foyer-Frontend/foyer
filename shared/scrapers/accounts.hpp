@@ -13,8 +13,18 @@ namespace foyer::scrapers {
 //     "screenscraper":   { "devid": "", "devpassword": "",
 //                          "ssid":  "", "sspassword":  "" },
 //     "steamgriddb":     { "api_key": "" },
-//     "retroachievements": { "user":  "", "token":     "" }
+//     "retroachievements": { "user":     "",
+//                             "password": "",   // plaintext (preferred)
+//                             "token":    "" }  // or pre-obtained connect token
 //   }
+//
+// retroachievements.password is the natural field — paste your RA web
+// password and the player exchanges it for a session token on first
+// run. retroachievements.token is the legacy field, only useful if
+// you already have a Connect API Token from RetroArch's config.
+// (Note: the "Web API Key" on the RA settings page is a DIFFERENT
+// thing, used only by the REST stats API — it will not log a client
+// in. Don't paste that here.)
 struct Accounts {
     struct ScreenScraper {
         std::string devid;
@@ -34,8 +44,11 @@ struct Accounts {
     };
     struct RetroAchievements {
         std::string user;
-        std::string token;
-        bool ready() const { return !user.empty() && !token.empty(); }
+        std::string password;   // plaintext RA web password (preferred)
+        std::string token;      // pre-obtained Connect API Token (legacy)
+        bool ready() const {
+            return !user.empty() && (!token.empty() || !password.empty());
+        }
     };
 
     ScreenScraper     screenscraper;

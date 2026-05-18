@@ -30,8 +30,9 @@ constexpr const char* kStub =
     "        \"api_key\": \"\"\n"
     "    },\n"
     "    \"retroachievements\": {\n"
-    "        \"user\":  \"\",\n"
-    "        \"token\": \"\"\n"
+    "        \"user\":     \"\",\n"
+    "        \"password\": \"\",\n"
+    "        \"token\":    \"\"\n"
     "    }\n"
     "}\n";
 
@@ -114,8 +115,9 @@ void load_locked() {
         g_accounts.steamgriddb.api_key = get_str(sg_obj, "api_key");
     }
     if (auto* ra_obj = yyjson_obj_get(root, "retroachievements")) {
-        g_accounts.retroachievements.user  = get_str(ra_obj, "user");
-        g_accounts.retroachievements.token = get_str(ra_obj, "token");
+        g_accounts.retroachievements.user     = get_str(ra_obj, "user");
+        g_accounts.retroachievements.password = get_str(ra_obj, "password");
+        g_accounts.retroachievements.token    = get_str(ra_obj, "token");
     }
     yyjson_doc_free(doc);
 
@@ -165,8 +167,9 @@ void write_locked() {
     out << "        \"api_key\": \"" << g_accounts.steamgriddb.api_key << "\"\n";
     out << "    },\n";
     out << "    \"retroachievements\": {\n";
-    out << "        \"user\":  \"" << g_accounts.retroachievements.user << "\",\n";
-    out << "        \"token\": \"" << g_accounts.retroachievements.token << "\"\n";
+    out << "        \"user\":     \"" << g_accounts.retroachievements.user     << "\",\n";
+    out << "        \"password\": \"" << g_accounts.retroachievements.password << "\",\n";
+    out << "        \"token\":    \"" << g_accounts.retroachievements.token    << "\"\n";
     out << "    }\n";
     out << "}\n";
 }
@@ -182,8 +185,9 @@ void set_account_field(std::string_view path, std::string_view value) {
     else if (path == "screenscraper.ssid")        g_accounts.screenscraper.ssid        = v;
     else if (path == "screenscraper.sspassword")  g_accounts.screenscraper.sspassword  = v;
     else if (path == "steamgriddb.api_key")       g_accounts.steamgriddb.api_key       = v;
-    else if (path == "retroachievements.user")    g_accounts.retroachievements.user    = v;
-    else if (path == "retroachievements.token")   g_accounts.retroachievements.token   = v;
+    else if (path == "retroachievements.user")     g_accounts.retroachievements.user     = v;
+    else if (path == "retroachievements.password") g_accounts.retroachievements.password = v;
+    else if (path == "retroachievements.token")    g_accounts.retroachievements.token    = v;
     else return;
     write_locked();
 }
