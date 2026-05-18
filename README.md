@@ -286,9 +286,9 @@ detail section under the heading breaks it down.
 | [`snes9x`](#snes9x) | SNES | ✅ | ✅ | ✅ | ✅ |
 | [`snes9x2010`](#snes9x2010) | SNES | ✅ | ✅ | ✅ | ❌ |
 | [`bsnes_hd_beta`](#bsnes_hd_beta) | SNES | 🟡 | ✅ | ❌ | ❌ |
-| `gambatte` | GB / GBC | ⬜ | ⬜ | ⬜ | ⬜ |
-| `sameboy` | GB / GBC | ⬜ | ⬜ | ⬜ | ⬜ |
-| `tgbdual` | GB / GBC | ⬜ | ⬜ | ⬜ | ⬜ |
+| [`gambatte`](#gambatte) | GB / GBC | ✅ | ✅ | ✅ | ✅ |
+| [`sameboy`](#sameboy) | GB / GBC | 🟡 | ✅ | ✅ | ✅ |
+| [`tgbdual`](#tgbdual) | GB / GBC | ✅ | ✅ | ✅ | ✅ |
 | `mgba` | GBA | ⬜ | ⬜ | ⬜ | ⬜ |
 | `gpsp` | GBA | ⬜ | ⬜ | ⬜ | ⬜ |
 | `vba_next` | GBA | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -446,6 +446,58 @@ bsnes HD beta — accuracy-leaning + HD widescreen patches.
 Use when you need sub-frame ppu accuracy and can tolerate
 half-speed framerate; reach for snes9x for anything else.
 Avoid shaders until the HW-render crash is fixed.
+
+#### `gambatte`
+
+| Feature | Status | Notes |
+|---|---|---|
+| Boots          | ✅ | GB / GBC roms boot directly into gameplay |
+| Audio          | ✅ | 48 kHz via SDL2 audio sink |
+| SRAM           | ✅ | .srm round-trip across chain-launch |
+| Save state     | ✅ | slot picker round-trips |
+| Bezel          | ✅ | per-system + per-game bezels render |
+| Shader         | ✅ | live preview against frozen pause frame |
+| Cheats         | ✅ | retroarch .cht round-trip working |
+| RetroAchievements | ⬜ | not yet exercised |
+
+Recommended default for GB / GBC. Full feature row green on
+0.7.6 hardware.
+
+#### `sameboy`
+
+| Feature | Status | Notes |
+|---|---|---|
+| Boots          | ✅ | GB / GBC roms boot directly into gameplay |
+| Audio          | ❌ | silent / glitched — sameboy's sample-rate or output format doesn't line up with our SDL2 audio sink. Needs a per-core probe |
+| SRAM           | ✅ | .srm round-trip across chain-launch |
+| Save state     | ✅ | slot picker round-trips |
+| Bezel          | ✅ | per-system + per-game bezels render |
+| Shader         | ✅ | live preview against frozen pause frame |
+| Cheats         | ✅ | retroarch .cht round-trip working |
+| RetroAchievements | ⬜ | not yet exercised |
+
+Highly-accurate GB core. Use only when you need the extra
+audio + behavior fidelity AND can mute — audio is broken on
+0.7.6 against the SDL2 sink. gambatte is the better daily
+driver until the audio probe lands.
+
+#### `tgbdual`
+
+| Feature | Status | Notes |
+|---|---|---|
+| Boots          | ✅ | GB / GBC roms boot directly into gameplay |
+| Audio          | ✅ | 48 kHz via SDL2 audio sink |
+| SRAM           | ✅ | .srm round-trip across chain-launch |
+| Save state     | ✅ | slot picker round-trips |
+| Bezel          | ✅ | per-system + per-game bezels render |
+| Shader         | ✅ | live preview against frozen pause frame |
+| Cheats         | ✅ | retroarch .cht round-trip working |
+| RetroAchievements | ⬜ | not yet exercised |
+
+Dual-cart link-cable GB core — single-game mode covered by the
+full feature row on 0.7.6 hardware. Useful when you want
+gambatte-equivalent accuracy with the option to wire two roms
+together later.
 
 #### `ppsspp`
 
