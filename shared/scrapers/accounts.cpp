@@ -148,6 +148,27 @@ void reload_accounts() {
 
 namespace {
 
+// Minimal JSON string escape — covers the four characters a user
+// can plausibly type into a Settings input that would otherwise
+// break the file: `"` (closes the string early), `\` (eats the
+// next character), `\n` / `\r` (a multi-line paste would split
+// the value across JSON tokens). Tabs come through unchanged
+// inside strings.
+std::string json_escape(std::string_view s) {
+    std::string out;
+    out.reserve(s.size() + 4);
+    for (char c : s) {
+        switch (c) {
+            case '"':  out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\n': out += "\\n";  break;
+            case '\r': out += "\\r";  break;
+            default:   out += c;      break;
+        }
+    }
+    return out;
+}
+
 // Re-emit the JSONC file from g_accounts. Keeps section ordering stable.
 void write_locked() {
     std::ofstream out{kPath, std::ios::trunc};
@@ -155,21 +176,24 @@ void write_locked() {
         foyer::log::write("[accounts] could not write %s\n", kPath);
         return;
     }
+    const auto& s  = g_accounts.screenscraper;
+    const auto& g  = g_accounts.steamgriddb;
+    const auto& ra = g_accounts.retroachievements;
     out << "// foyer scraper credentials.\n";
     out << "{\n";
     out << "    \"screenscraper\": {\n";
-    out << "        \"devid\":       \"" << g_accounts.screenscraper.devid << "\",\n";
-    out << "        \"devpassword\": \"" << g_accounts.screenscraper.devpassword << "\",\n";
-    out << "        \"ssid\":        \"" << g_accounts.screenscraper.ssid << "\",\n";
-    out << "        \"sspassword\":  \"" << g_accounts.screenscraper.sspassword << "\"\n";
+    out << "        \"devid\":       \"" << json_escape(s.devid)       << "\",\n";
+    out << "        \"devpassword\": \"" << json_escape(s.devpassword) << "\",\n";
+    out << "        \"ssid\":        \"" << json_escape(s.ssid)        << "\",\n";
+    out << "        \"sspassword\":  \"" << json_escape(s.sspassword)  << "\"\n";
     out << "    },\n";
     out << "    \"steamgriddb\": {\n";
-    out << "        \"api_key\": \"" << g_accounts.steamgriddb.api_key << "\"\n";
+    out << "        \"api_key\": \"" << json_escape(g.api_key) << "\"\n";
     out << "    },\n";
     out << "    \"retroachievements\": {\n";
-    out << "        \"user\":     \"" << g_accounts.retroachievements.user     << "\",\n";
-    out << "        \"password\": \"" << g_accounts.retroachievements.password << "\",\n";
-    out << "        \"token\":    \"" << g_accounts.retroachievements.token    << "\"\n";
+    out << "        \"user\":     \"" << json_escape(ra.user)     << "\",\n";
+    out << "        \"password\": \"" << json_escape(ra.password) << "\",\n";
+    out << "        \"token\":    \"" << json_escape(ra.token)    << "\"\n";
     out << "    }\n";
     out << "}\n";
 }
