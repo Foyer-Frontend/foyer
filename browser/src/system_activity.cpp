@@ -391,23 +391,34 @@ void SystemActivity::refreshScrapeStatus() {
 
 void SystemActivity::onResume() {
     brls::Activity::onResume();
-    // A scrape kicked from GameActivity (Y rescrape) writes fresh
-    // assets into /foyer/assets/system/<sys>/<stem>/ but the
-    // cover-flow tiles we built on first onContentAvailable point
-    // at whatever box_art existed at that time. Rebuild the carousel
-    // in place so the newly-downloaded cover lands when the user
-    // pops back to System view. Same for a Settings-triggered
-    // rescan that added/removed games.
-    if (carousel) {
-        const auto focus_idx = m_loaded_until;
-        carousel->clearViews();
-        populateCarousel();
-        // populateCarousel re-runs the initial preload window;
-        // m_loaded_until is reset implicitly. The auto-focus that
-        // brls re-applies on resume targets the first focusable,
-        // which sits inside the freshly-built carousel.
-        (void)focus_idx;
-    }
+    // GameActivity's Y rescrape writes fresh assets into
+    // /foyer/assets/system/<sys>/<stem>/ — but our cover-flow tiles
+    // were built with whatever box_art existed at first
+    // onContentAvailable. Rebuild on every reappear so the new
+    // cover shows up the moment the user pops back.
+    //
+    // Sequence matters: brls's popActivity restores focus to the
+    // GameTile that was focused before the push. If we clearViews()
+    // while that tile is the active focus, the next frame
+    // dereferences a freed View (PC=0x30 vtable miss — same class
+    // of crash that bit the install_queue completion path). Move
+    // focus to actionRow first so the carousel can be torn down
+    // without the focus pointer dangling, defer the rebuild a
+    // frame via brls::sync to let pop's focus-restore drain, then
+    // hand focus back to the freshly-built first tile.
+    if (!carousel) return;
+    if (actionRow) brls::Application::giveFocus(actionRow);
+
+    auto* self = this;
+    brls::sync([self]() {
+        if (!self || !self->carousel) return;
+        self->carousel->clearViews();
+        self->populateCarousel();
+        const auto& kids = self->carousel->getChildren();
+        if (!kids.empty()) {
+            brls::Application::giveFocus(kids.front());
+        }
+    });
 }
 
 void SystemActivity::onContentAvailable() {
