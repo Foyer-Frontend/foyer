@@ -285,7 +285,7 @@ detail section under the heading breaks it down.
 | [`mesen`](#mesen) | NES | 🟡 | ✅ | ✅ | ❌ |
 | [`snes9x`](#snes9x) | SNES | ✅ | ✅ | ✅ | ✅ |
 | [`snes9x2010`](#snes9x2010) | SNES | ✅ | ✅ | ✅ | ❌ |
-| `bsnes_hd_beta` | SNES | ⬜ | ⬜ | ⬜ | ⬜ |
+| [`bsnes_hd_beta`](#bsnes_hd_beta) | SNES | 🟡 | ✅ | ❌ | ❌ |
 | `gambatte` | GB / GBC | ⬜ | ⬜ | ⬜ | ⬜ |
 | `sameboy` | GB / GBC | ⬜ | ⬜ | ⬜ | ⬜ |
 | `tgbdual` | GB / GBC | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -428,6 +428,24 @@ fixed.
 Older snes9x port, kept for perf-constrained roms. Use snes9x
 when you need full feature coverage; reach for snes9x2010 only
 when a specific game runs better here.
+
+#### `bsnes_hd_beta`
+
+| Feature | Status | Notes |
+|---|---|---|
+| Boots          | 🟡 | runs but performance-bound — full-fat bsnes ~30 fps on Switch |
+| Audio          | ✅ | 48 kHz via SDL2 audio sink |
+| SRAM           | ✅ | .srm round-trip across chain-launch |
+| Save state     | ✅ | slot picker round-trips |
+| Bezel          | ✅ | per-system + per-game bezels render |
+| Shader         | ❌ | applying a shader crashes the player — bsnes' HW-render output mode collides with our GL state save/restore brackets |
+| Cheats         | ❌ | retro_cheat_set call lands but no in-game effect |
+| RetroAchievements | ⬜ | not yet exercised |
+
+bsnes HD beta — accuracy-leaning + HD widescreen patches.
+Use when you need sub-frame ppu accuracy and can tolerate
+half-speed framerate; reach for snes9x for anything else.
+Avoid shaders until the HW-render crash is fixed.
 
 #### `ppsspp`
 
