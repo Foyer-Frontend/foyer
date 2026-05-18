@@ -2,6 +2,7 @@
 
 #include "libretro/audio_sdl.hpp"
 #include "libretro/bezel_sdl.hpp"
+#include "libretro/cheevos.hpp"
 #include "libretro/frontend.hpp"
 #include "libretro/input.hpp"
 #include "libretro/shader.hpp"
@@ -134,11 +135,27 @@ bool EmulatorElement::BootGame(const std::string& rom_path,
         foyer::log::write("[player-plutonium] queued shader preset=%s\n",
             s.c_str());
     }
+
+    // RetroAchievements — login + hash the loaded rom + fetch the
+    // achievement set. No-op (mark_failed inside) when the user has
+    // no creds in accounts.jsonc, when the rom hash isn't in the RA
+    // database, or when the network is offline. Sidecar persists
+    // unlocked/total back to the per-game metadata so the browser
+    // can render "X/Y achievements" without hitting the network.
+    {
+        auto& ch = foyer::libretro::Cheevos::instance();
+        ch.set_progress_sidecar(m_system_folder, stem);
+        ch.init([](const std::string& title) {
+            foyer::log::write("[ra] unlocked: %s\n", title.c_str());
+        });
+        ch.identify_game(m_rom_path);
+    }
     return true;
 }
 
 void EmulatorElement::Shutdown() {
     if (!m_game_ok) return;
+    foyer::libretro::Cheevos::instance().shutdown();
     foyer::libretro::AudioSinkSdl::instance().shutdown();
     foyer::libretro::bezel_sdl_shutdown();
     foyer::libretro::VideoSinkSdl::instance().shutdown();
@@ -167,6 +184,7 @@ void EmulatorElement::OnInput(const u64 /*keys_down*/,
     padUpdate(&m_pad);
     foyer::libretro::poll_input(m_pad);
     foyer::libretro::Frontend::instance().run_frame();
+    foyer::libretro::Cheevos::instance().do_frame();
 }
 
 void EmulatorElement::OnRender(pu::ui::render::Renderer::Ref& /*drawer*/,
