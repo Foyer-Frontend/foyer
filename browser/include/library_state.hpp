@@ -2,6 +2,7 @@
 
 #include "library/scanner.hpp"
 
+#include <cstdint>
 #include <string_view>
 #include <vector>
 
@@ -23,5 +24,10 @@ const std::vector<::foyer::library::System>& systems();
 // Lookup a System by folder name. Returns nullptr if the folder
 // has no scanned games (system was empty or absent on disk).
 const ::foyer::library::System* find_system(std::string_view folder);
+
+// Monotonic counter bumped on every rescan/rescan_forced. Activities
+// snapshot it on build and compare on willReappear so they re-render
+// after a rescan triggered from a tab they weren't displaying.
+std::uint32_t generation();
 
 }  // namespace foyer::browser::library_state

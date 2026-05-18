@@ -2,6 +2,8 @@
 
 #include <borealis.hpp>
 
+#include <cstdint>
+
 namespace foyer::browser {
 
 // Home view: top bar (status cluster + Settings button) + horizontal
@@ -15,6 +17,10 @@ public:
 
     ~HomeActivity() override;
     void onContentAvailable() override;
+    // Re-check library_state generation on every reappear so a
+    // Settings → Rescan triggered while Home was hidden surfaces
+    // the new system tiles when the user comes back.
+    void onResume() override;
 
     // Reflow chrome for the just-focused system: swap the
     // backdrop image to its background.jpg and update the title
@@ -32,6 +38,7 @@ public:
 
 private:
     brls::RepeatingTask* clockTask = nullptr;
+    std::uint32_t        m_library_gen = 0;
 
     void populateCarousel();
     void buildActionRow();

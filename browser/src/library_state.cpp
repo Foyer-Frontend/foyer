@@ -8,6 +8,12 @@ namespace {
 
 std::vector<::foyer::library::System> g_systems;
 
+// Monotonic counter bumped on every rescan. Activities snapshot the
+// counter when they build their carousel and re-check on willReappear
+// — if it has moved, they rebuild. Lets the Settings → Rescan button
+// surface freshly-discovered roms back on Home without a foyer reboot.
+std::uint32_t g_generation = 0;
+
 }  // namespace
 
 void rescan() {
@@ -16,6 +22,7 @@ void rescan() {
     opts.recurse      = false;
     opts.force_rescan = false;
     g_systems = ::foyer::library::scan_library(opts);
+    g_generation++;
 }
 
 void rescan_forced() {
@@ -28,7 +35,10 @@ void rescan_forced() {
     opts.recurse      = false;
     opts.force_rescan = true;
     g_systems = ::foyer::library::scan_library(opts);
+    g_generation++;
 }
+
+std::uint32_t generation() { return g_generation; }
 
 const std::vector<::foyer::library::System>& systems() {
     return g_systems;

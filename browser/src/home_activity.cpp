@@ -152,6 +152,7 @@ void HomeActivity::onContentAvailable() {
         clockTask->run();
     }
     populateCarousel();
+    m_library_gen = library_state::generation();
     foyer::log::write("[home] populateCarousel done\n");
     buildActionRow();
     foyer::log::write("[home] buildActionRow done\n");
@@ -266,6 +267,23 @@ void HomeActivity::onContentAvailable() {
         foyer::log::write("[home] no content view to register B on\n");
     }
     foyer::log::write("[home] onContentAvailable done\n");
+}
+
+void HomeActivity::onResume() {
+    brls::Activity::onResume();
+    // If the library was rescanned (Settings, sort cycle, etc.)
+    // while Home was hidden behind another activity, the carousel
+    // we built on first onContentAvailable is stale. Compare the
+    // generation we snapshot at build time against the current
+    // one and rebuild if it moved.
+    const auto gen = library_state::generation();
+    if (gen != m_library_gen && carousel) {
+        foyer::log::write("[home] onResume: library generation %u -> %u — repopulating\n",
+            m_library_gen, gen);
+        carousel->clearViews();
+        populateCarousel();
+        m_library_gen = gen;
+    }
 }
 
 void HomeActivity::populateCarousel() {
