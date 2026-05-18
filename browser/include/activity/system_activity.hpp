@@ -61,6 +61,11 @@ private:
     // focus crosses (m_loaded_until - kThreshold).
     int m_loaded_until = 0;
 
+    // Last GameTile index reported via onTileFocused. Stashed so
+    // onResume's rebuild can return focus to the same tile the
+    // user was on before pushing GameActivity / rescraping.
+    int m_last_focus_idx = 0;
+
     void buildLogo();
     void buildActionRow();
     void populateCarousel();

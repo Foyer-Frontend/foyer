@@ -416,7 +416,15 @@ void SystemActivity::onResume() {
         self->populateCarousel();
         const auto& kids = self->carousel->getChildren();
         if (!kids.empty()) {
-            brls::Application::giveFocus(kids.front());
+            // Restore focus to the tile the user was on before
+            // pushing GameActivity (tracked via onTileFocused).
+            // Clamp in case the rescan dropped tiles that pushed
+            // the count below the cached index.
+            const int n = (int)kids.size();
+            int idx = self->m_last_focus_idx;
+            if (idx < 0) idx = 0;
+            if (idx >= n) idx = n - 1;
+            brls::Application::giveFocus(kids[idx]);
         }
     });
 }
@@ -737,6 +745,7 @@ void SystemActivity::populateCarousel() {
 
 void SystemActivity::onTileFocused(int idx) {
     if (!carousel) return;
+    m_last_focus_idx = idx;
     constexpr int kThreshold = 5;   // start preloading 5 tiles ahead of edge
     constexpr int kBatch     = 10;
     const int n = (int)carousel->getChildren().size();
