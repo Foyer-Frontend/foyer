@@ -284,7 +284,7 @@ detail section under the heading breaks it down.
 | [`nestopia`](#nestopia) | NES | ✅ | ✅ | ✅ | ✅ |
 | [`mesen`](#mesen) | NES | 🟡 | ✅ | ✅ | ❌ |
 | [`snes9x`](#snes9x) | SNES | ✅ | ✅ | ✅ | ✅ |
-| `snes9x2010` | SNES | ⬜ | ⬜ | ⬜ | ⬜ |
+| [`snes9x2010`](#snes9x2010) | SNES | ✅ | ✅ | ✅ | ❌ |
 | `bsnes_hd_beta` | SNES | ⬜ | ⬜ | ⬜ | ⬜ |
 | `gambatte` | GB / GBC | ⬜ | ⬜ | ⬜ | ⬜ |
 | `sameboy` | GB / GBC | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -407,6 +407,23 @@ than the other two on Switch.
 
 Recommended default for SNES. Full feature row green on 0.7.5
 hardware.
+
+#### `snes9x2010`
+
+| Feature | Status | Notes |
+|---|---|---|
+| Boots          | ✅ | SNES roms boot directly into gameplay |
+| Audio          | ✅ | 48 kHz via SDL2 audio sink |
+| SRAM           | ✅ | .srm round-trip across chain-launch |
+| Save state     | ✅ | slot picker round-trips |
+| Bezel          | ✅ | per-system + per-game bezels render |
+| Shader         | ✅ | live preview against frozen pause frame |
+| Cheats         | ❌ | retro_cheat_set call lands but no in-game effect — same symptom mesen has on NES; needs a per-core dig |
+| RetroAchievements | ⬜ | not yet exercised |
+
+Older snes9x port, kept for perf-constrained roms. Use snes9x
+when you need full feature coverage; reach for snes9x2010 only
+when a specific game runs better here.
 
 #### `ppsspp`
 
