@@ -244,15 +244,35 @@ int main(int argc, char* argv[])
                     foyer::log::write(
                         "[boot] return-from-core: folder=%s path=%s\n",
                         folder.c_str(), path.c_str());
-                    foyer::library::load_switch_titles();
-                    foyer::browser::library_state::rescan();
-                    brls::Application::pushActivity(
-                        new ::foyer::browser::HomeActivity());
-                    brls::Application::pushActivity(
-                        new ::foyer::browser::SystemActivity(folder, folder));
-                    brls::Application::pushActivity(
-                        new ::foyer::browser::GameActivity(folder, path));
-                    fast_returned = true;
+                    // Bail from the fast-path if the switch_titles
+                    // cache is empty / missing — load_switch_titles
+                    // would otherwise enumerate 200 installed
+                    // applications via nsGetApplicationControlData
+                    // synchronously (~1 min) before pushing Home
+                    // and the user sees nothing rendered. The splash
+                    // path has a progress callback wired to the bar,
+                    // so route through it instead.
+                    struct stat cst{};
+                    const bool cache_warm =
+                        ::stat("/foyer/data/cache/switch_titles.cache", &cst) == 0
+                        && cst.st_size > 16;
+                    if (!cache_warm) {
+                        foyer::log::write(
+                            "[boot] return-from-core: switch_titles "
+                            "cache cold — falling through to splash\n");
+                        // Leave fast_returned=false so the main
+                        // else-branch below runs the full splash.
+                    } else {
+                        foyer::library::load_switch_titles();
+                        foyer::browser::library_state::rescan();
+                        brls::Application::pushActivity(
+                            new ::foyer::browser::HomeActivity());
+                        brls::Application::pushActivity(
+                            new ::foyer::browser::SystemActivity(folder, folder));
+                        brls::Application::pushActivity(
+                            new ::foyer::browser::GameActivity(folder, path));
+                        fast_returned = true;
+                    }
                 }
             }
         }
