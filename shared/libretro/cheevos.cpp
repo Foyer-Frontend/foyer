@@ -96,8 +96,18 @@ void on_load_done(int result, const char* error_message,
         RC_CLIENT_ACHIEVEMENT_CATEGORY_CORE,
         RC_CLIENT_ACHIEVEMENT_LIST_GROUPING_LOCK_STATE);
     if (list) {
+        // Match Cheevos::list()'s filter — RA injects a 101000001
+        // "Warning: Unsupported Emulator" placeholder which we don't
+        // surface in the picker, so it shouldn't count toward the
+        // "N/M" badge on the pause-root row either.
+        constexpr uint32_t kRaUnsupportedEmulatorId = 101000001;
         for (uint32_t b = 0; b < list->num_buckets; b++) {
-            total += (int)list->buckets[b].num_achievements;
+            const auto& bk = list->buckets[b];
+            for (uint32_t i = 0; i < bk.num_achievements; ++i) {
+                const auto* a = bk.achievements[i];
+                if (!a || a->id == kRaUnsupportedEmulatorId) continue;
+                total++;
+            }
         }
         rc_client_destroy_achievement_list(list);
     }
@@ -240,6 +250,14 @@ std::vector<Cheevos::AchievementRow> Cheevos::list() const {
     // Bucket layout already orders LOCKED before UNLOCKED, then by
     // recency within each bucket. We flip the visible order so the
     // user sees their earned achievements first.
+    // RA injects a synthetic 0-pt achievement with id 101000001
+    // titled "Warning: Unsupported Emulator" into every game's set
+    // when the client's User-Agent isn't on their allowlist. foyer
+    // isn't (yet) — filed-and-pending. Hardcore is already off in
+    // init(), so the warning's "Hardcore unlocks cannot be earned
+    // using this emulator" description doesn't apply to us; filter
+    // the row out of the picker so it doesn't confuse the user.
+    constexpr uint32_t kRaUnsupportedEmulatorId = 101000001;
     auto append_bucket = [&](int target_state) {
         for (uint32_t b = 0; b < lst->num_buckets; ++b) {
             const auto& bk = lst->buckets[b];
@@ -247,6 +265,7 @@ std::vector<Cheevos::AchievementRow> Cheevos::list() const {
             for (uint32_t i = 0; i < bk.num_achievements; ++i) {
                 const auto* a = bk.achievements[i];
                 if (!a) continue;
+                if (a->id == kRaUnsupportedEmulatorId) continue;
                 AchievementRow r;
                 r.title       = a->title       ? a->title       : "";
                 r.description = a->description ? a->description : "";
