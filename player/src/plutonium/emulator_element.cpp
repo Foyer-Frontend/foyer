@@ -145,8 +145,9 @@ bool EmulatorElement::BootGame(const std::string& rom_path,
     {
         auto& ch = foyer::libretro::Cheevos::instance();
         ch.set_progress_sidecar(m_system_folder, stem);
-        ch.init([](const std::string& title) {
+        ch.init([this](const std::string& title) {
             foyer::log::write("[ra] unlocked: %s\n", title.c_str());
+            this->PushToast(title);
         });
         ch.identify_game(m_rom_path);
     }
@@ -187,7 +188,7 @@ void EmulatorElement::OnInput(const u64 /*keys_down*/,
     foyer::libretro::Cheevos::instance().do_frame();
 }
 
-void EmulatorElement::OnRender(pu::ui::render::Renderer::Ref& /*drawer*/,
+void EmulatorElement::OnRender(pu::ui::render::Renderer::Ref& drawer,
                                const pu::i32 /*x*/, const pu::i32 /*y*/) {
     if (!m_game_ok) return;
     foyer::libretro::VideoSinkSdl::instance().draw(
@@ -196,6 +197,79 @@ void EmulatorElement::OnRender(pu::ui::render::Renderer::Ref& /*drawer*/,
     foyer::libretro::bezel_sdl_draw(
         pu::ui::render::ScreenWidth,
         pu::ui::render::ScreenHeight);
+
+    // Toast overlay — top-right pill that fades the oldest entry
+    // out after kVisibleMs and removes after kFadeMs. Stack down
+    // when multiple unlocks fire quickly.
+    constexpr int kVisibleMs = 3500;
+    constexpr int kFadeMs    = 600;
+    constexpr int kLifeMs    = kVisibleMs + kFadeMs;
+    constexpr pu::i32 kPad = 18;
+    constexpr pu::i32 kRowH = 64;
+    constexpr pu::i32 kGap  = 8;
+    constexpr pu::i32 kRight = 32;
+    constexpr pu::i32 kTop   = 32;
+
+    std::vector<Toast> snapshot;
+    {
+        std::scoped_lock lk{m_toast_mu};
+        // Drop expired entries
+        const auto now = std::chrono::steady_clock::now();
+        while (!m_toasts.empty()) {
+            const auto age = std::chrono::duration_cast<std::chrono::milliseconds>(
+                now - m_toasts.front().ts).count();
+            if (age > kLifeMs) m_toasts.pop_front();
+            else break;
+        }
+        snapshot.assign(m_toasts.begin(), m_toasts.end());
+    }
+    if (snapshot.empty()) return;
+
+    const std::string font_name = pu::ui::MakeDefaultFontName(
+        pu::ui::DefaultFontSizes[(int)pu::ui::DefaultFontSize::Medium]);
+    const auto now = std::chrono::steady_clock::now();
+    pu::i32 y_off = kTop;
+    for (const auto& t : snapshot) {
+        const auto age_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - t.ts).count();
+        float alpha = 1.0f;
+        if (age_ms > kVisibleMs) {
+            alpha = 1.0f - (float)(age_ms - kVisibleMs) / (float)kFadeMs;
+            if (alpha < 0.0f) alpha = 0.0f;
+        }
+        const u8 a = (u8)(alpha * 0xFF);
+        if (a == 0) { y_off += kRowH + kGap; continue; }
+
+        pu::i32 tw = 0, th = 0;
+        pu::ui::render::GetTextDimensions(font_name, t.msg, tw, th);
+        const pu::i32 w = tw + kPad * 2;
+        const pu::i32 x = pu::ui::render::ScreenWidth - kRight - w;
+
+        // Panel + accent bar.
+        drawer->RenderRectangleFill(
+            pu::ui::Color{ 0x18, 0x18, 0x1A, (u8)(a * 0xE6 / 0xFF) },
+            x, y_off, w, kRowH);
+        drawer->RenderRectangleFill(
+            pu::ui::Color{ 0xF5, 0xB3, 0x42, a },
+            x, y_off, 4, kRowH);
+
+        auto txt = pu::ui::render::RenderText(font_name, t.msg,
+            pu::ui::Color{ 0xF8, 0xF8, 0xFA, a });
+        if (txt) {
+            const pu::i32 tx = x + kPad;
+            const pu::i32 ty = y_off + (kRowH - th) / 2;
+            drawer->RenderTexture(txt, tx, ty);
+            pu::ui::render::DeleteTexture(txt);
+        }
+        y_off += kRowH + kGap;
+    }
+}
+
+void EmulatorElement::PushToast(const std::string& msg) {
+    std::scoped_lock lk{m_toast_mu};
+    m_toasts.push_back({ msg, std::chrono::steady_clock::now() });
+    // Cap the queue — runaway unlock storm shouldn't keep growing.
+    while (m_toasts.size() > 6) m_toasts.pop_front();
 }
 
 void EmulatorElement::SetAspect(foyer::libretro::AspectMode m) {

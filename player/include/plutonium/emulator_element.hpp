@@ -8,6 +8,9 @@
 
 #include <switch.h>
 #include <pu/Plutonium>
+#include <chrono>
+#include <deque>
+#include <mutex>
 #include <string>
 
 namespace foyer::player::plut {
@@ -51,7 +54,20 @@ public:
     const std::string& BackNro()         const { return m_back_nro; }
     const std::string& SystemFolder()    const { return m_system_folder; }
 
+    // Queue an in-game toast — drawn in OnRender as a top-right
+    // pill that fades out after ~4 s. Used by the RetroAchievements
+    // unlock callback so the user sees the trigger without leaving
+    // the rom. Thread-safe; rcheevos's event handler runs on the
+    // libretro frame thread which is the same as our OnInput, but
+    // pause-time async (e.g. server callbacks) may differ.
+    void PushToast(const std::string& msg);
+
 private:
+    struct Toast {
+        std::string                                          msg;
+        std::chrono::steady_clock::time_point                ts;
+    };
+
     bool        m_game_ok       = false;
     bool        m_paused        = false;
     bool        m_pad_inited    = false;
@@ -60,6 +76,9 @@ private:
     std::string m_original_rom_path;
     std::string m_back_nro;
     std::string m_system_folder;
+
+    std::mutex         m_toast_mu;
+    std::deque<Toast>  m_toasts;
 };
 
 }  // namespace foyer::player::plut
