@@ -61,6 +61,8 @@ uint32_t rc_console_for_folder(std::string_view folder) {
         {"colecovision",     RC_CONSOLE_COLECOVISION},
         {"msx",              RC_CONSOLE_MSX},
         {"msx2",             RC_CONSOLE_MSX},
+        {"msx2plus",         RC_CONSOLE_MSX},
+        {"msxturbor",        RC_CONSOLE_MSX},
         {"amstradcpc",       RC_CONSOLE_AMSTRAD_PC},
         {"c64",              RC_CONSOLE_COMMODORE_64},
         {"amiga",            RC_CONSOLE_AMIGA},

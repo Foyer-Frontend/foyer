@@ -311,6 +311,18 @@ constexpr SystemDef kSystems[] = {
       "Microsoft - MSX2",
       "rom|ri|mx1|mx2|col|dsk|cas|sg|sc|m3u", kCoresMsx },
 
+    // MSX2+ and TurboR — fMSX handles both transparently. Folders
+    // kept distinct so users with separate ROM collections can sort
+    // by hardware revision; the libretro core picks the right
+    // machine from rom-format heuristics.
+    { "msx2plus",     "MSX2+",                        "MSX2+",
+      "Microsoft - MSX2+",
+      "rom|ri|mx1|mx2|col|dsk|cas|sg|sc|m3u", kCoresMsx },
+
+    { "msxturbor",    "MSX TurboR",                   "TurboR",
+      "Microsoft - MSX TurboR",
+      "rom|ri|mx1|mx2|col|dsk|cas|sg|sc|m3u", kCoresMsx },
+
     { "3do",          "3DO",                          "3DO",
       "The 3DO Company - 3DO",
       "iso|chd|cue|m3u",   kCores3do },

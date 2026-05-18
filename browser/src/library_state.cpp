@@ -19,7 +19,7 @@ std::uint32_t g_generation = 0;
 void rescan() {
     ::foyer::library::ScanOptions opts{};
     opts.rom_root     = ::foyer::library::config().rom_root;
-    opts.recurse      = false;
+    opts.recurse      = true;
     opts.force_rescan = false;
     g_systems = ::foyer::library::scan_library(opts);
     g_generation++;
@@ -32,7 +32,7 @@ void rescan_forced() {
     // cache fast-path used at boot for sub-second startup.
     ::foyer::library::ScanOptions opts{};
     opts.rom_root     = ::foyer::library::config().rom_root;
-    opts.recurse      = false;
+    opts.recurse      = true;
     opts.force_rescan = true;
     g_systems = ::foyer::library::scan_library(opts);
     g_generation++;
