@@ -450,11 +450,22 @@ FoyerAccountsTab::FoyerAccountsTab() {
         }, "Account username", "", 64);
     host->addView(ra_user);
 
+    // Web password for the user's RA account. rcheevos exchanges it
+    // for a session token on first login. The Token field below is
+    // the legacy fallback for users who already have a Connect API
+    // Token; it stays available but isn't the primary entry.
+    auto* ra_pass = new MaskedInputCell();
+    ra_pass->init("Password", acc.retroachievements.password,
+        [](std::string v) {
+            ::foyer::scrapers::set_account_field("retroachievements.password", v);
+        }, "Tap to set", "RA web password", 64);
+    host->addView(ra_pass);
+
     auto* ra_token = new MaskedInputCell();
-    ra_token->init("Token", acc.retroachievements.token,
+    ra_token->init("Token (advanced)", acc.retroachievements.token,
         [](std::string v) {
             ::foyer::scrapers::set_account_field("retroachievements.token", v);
-        }, "Tap to set", "Web API token", 64);
+        }, "Optional", "Connect API Token", 64);
     host->addView(ra_token);
 
     wrap_with_scroll(host, this);
