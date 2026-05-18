@@ -272,7 +272,7 @@ needs a pass.
 | Core | System(s) | Boots | Audio | SRAM | Save state | Bezel | Shader | Cheats |
 |---|---|---|---|---|---|---|---|---|
 | `fceumm` | NES | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `nestopia` | NES | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| `nestopia` | NES | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `mesen` | NES | 🟡 slow | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ❌ | ⬜ |
 | `snes9x` | SNES | ✅ | ✅ | 🟡 v0.6.116 fix | ⬜ | ✅ | ⬜ | ⬜ |
 | `snes9x2010` | SNES | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
