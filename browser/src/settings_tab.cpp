@@ -468,6 +468,18 @@ FoyerAccountsTab::FoyerAccountsTab() {
         }, "Optional", "Connect API Token", 64);
     host->addView(ra_token);
 
+    // Web API Key — REST stats only. Used by the browser to pre-fill
+    // achievement progress on game detail views before the user has
+    // booted the rom. Distinct from the Password / Token fields
+    // above (which are for the rcheevos client login). RA settings
+    // page → Keys section → "Web API Key".
+    auto* ra_webapi = new MaskedInputCell();
+    ra_webapi->init("Web API Key", acc.retroachievements.web_api_key,
+        [](std::string v) {
+            ::foyer::scrapers::set_account_field("retroachievements.web_api_key", v);
+        }, "Tap to set", "REST stats only", 64);
+    host->addView(ra_webapi);
+
     wrap_with_scroll(host, this);
 }
 brls::View* FoyerAccountsTab::create() { return new FoyerAccountsTab(); }

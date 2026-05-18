@@ -44,10 +44,16 @@ struct Accounts {
     };
     struct RetroAchievements {
         std::string user;
-        std::string password;   // plaintext RA web password (preferred)
-        std::string token;      // pre-obtained Connect API Token (legacy)
+        std::string password;     // plaintext RA web password (preferred for login)
+        std::string token;        // pre-obtained Connect API Token (legacy login path)
+        std::string web_api_key;  // RA Web API Key — REST stats only (settings → Keys)
         bool ready() const {
             return !user.empty() && (!token.empty() || !password.empty());
+        }
+        // True when the browser can hit the REST API for pre-play
+        // achievement progress on a game the user hasn't booted yet.
+        bool rest_ready() const {
+            return !user.empty() && !web_api_key.empty();
         }
     };
 

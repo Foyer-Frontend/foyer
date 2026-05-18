@@ -6,7 +6,9 @@
 #include "library_state.hpp"
 #include "library/game_meta.hpp"
 #include "library/per_game.hpp"
+#include "library/ra_progress.hpp"
 #include "library/scrape_job.hpp"
+#include "scrapers/accounts.hpp"
 #include "library/switch_titles.hpp"
 #include "library/worker.hpp"
 #include "platform/log.hpp"
@@ -25,6 +27,7 @@
 #include <iomanip>
 #include <memory>
 #include <sstream>
+#include <thread>
 #include <unistd.h>
 #include <vector>
 #include <sys/stat.h>
@@ -240,6 +243,38 @@ void GameActivity::onContentAvailable() {
 
     buildMetaPanel();
 
+    // Pre-play RA progress prefetch — kick a detached worker that
+    // hashes the rom, asks RA for the matching game id, then pulls
+    // the user's current progress and writes it to the per-rom
+    // metadata sidecar. On success we re-render the meta panel via
+    // brls::sync so the "Achievements N/M" row pops in without the
+    // user needing to leave + re-enter the page.
+    //
+    // Bails immediately when the user hasn't set
+    // accounts.retroachievements.{user, web_api_key} or the sidecar
+    // already has cheevos counts (player binary populates these on
+    // every unlock — REST is just the cold-boot fallback).
+    {
+        const auto& ra = ::foyer::scrapers::accounts().retroachievements;
+        const auto cur = ::foyer::library::load_meta(
+            m_system_folder, m_game_stem);
+        if (ra.rest_ready() && cur.cheevos_total < 0) {
+            const std::string sys  = m_system_folder;
+            const std::string stem = m_game_stem;
+            const std::string path = m_game_path;
+            std::thread([sys, stem, path]() {
+                const bool ok = ::foyer::library::fetch_progress(
+                    sys, stem, path);
+                if (!ok) return;
+                brls::sync([]() {
+                    auto* a = dynamic_cast<GameActivity*>(
+                        brls::Application::getActivitiesStack().back());
+                    if (a) a->refreshMetaPanel();
+                });
+            }).detach();
+        }
+    }
+
     // Gamepad shortcuts for the game-detail view. No on-screen
     // buttons; the actions live as brls hint chips on the bottom
     // bar. Avoids the focus-fall-through bug too — actions on the
@@ -442,6 +477,12 @@ void GameActivity::show_slide(int idx) {
             kind + "   " + std::to_string(idx + 1)
             + "/" + std::to_string(m_slides.size()));
     }
+}
+
+void GameActivity::refreshMetaPanel() {
+    if (!metaHolder) return;
+    metaHolder->clearViews();
+    buildMetaPanel();
 }
 
 void GameActivity::buildMetaPanel() {

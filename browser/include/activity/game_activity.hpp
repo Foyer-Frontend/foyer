@@ -59,6 +59,11 @@ private:
     void show_slide(int idx);
 
 public:
+    // Drop + rebuild the metadata sidebar in place. Used after the
+    // detached RA progress prefetch finishes so the new
+    // "Achievements N/M" row appears without leaving the page.
+    void refreshMetaPanel();
+
     // Called from the rescrape worker's completion lambda (via
     // brls::sync) so the live game-details view picks up the
     // freshly downloaded metadata + screenshots WITHOUT needing

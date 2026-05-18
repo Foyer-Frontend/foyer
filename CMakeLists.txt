@@ -224,6 +224,11 @@ endif()
 # ---------------------------------------------------------------------------
 add_subdirectory(shared)
 
+# rcheevos is needed by both the player (full rc_client + memory model
+# + frame triggers) and the browser (rc_hash for pre-play progress
+# prefetch against RA's REST API). Declare once at top level.
+include(${FOYER_CORES_DIR}/recipes/rcheevos.cmake)
+
 if (BUILD_BROWSER)
     add_subdirectory(browser)
 endif()
@@ -236,10 +241,6 @@ if (BUILD_PLAYER)
     else()
         set(_foyer_player_cores ${FOYER_CORE})
     endif()
-
-    # rcheevos is shared by every player binary — declare it once so we don't
-    # collide on target name when looping the player subdir.
-    include(${FOYER_CORES_DIR}/recipes/rcheevos.cmake)
 
     foreach(_foyer_core IN LISTS _foyer_player_cores)
         set(FOYER_CORE ${_foyer_core})

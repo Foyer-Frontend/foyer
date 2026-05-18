@@ -27,6 +27,7 @@ add_library(foyer_shared STATIC
     library/bezel_installer.cpp
     library/foyer_updater.cpp
     library/foyer_update_job.cpp
+    library/ra_progress.cpp
     library/scrape_job.cpp
     library/skipped_versions.cpp
     library/switch_titles.cpp
@@ -61,6 +62,11 @@ target_link_libraries(foyer_shared PUBLIC
     zstd
     lz4
     ZLIB::ZLIB
+    # rcheevos for rc_hash_generate_from_buffer (used by ra_progress
+    # to pre-fetch RA progress for the browser). The player binary
+    # also pulls this transitively via the libretro frontend, so the
+    # shared static-link surface stays small.
+    rcheevos
 )
 
 # Compile flags shared with consumers
