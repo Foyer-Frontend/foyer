@@ -170,18 +170,23 @@ GameActivity::~GameActivity() {
 }
 
 void GameActivity::onContentAvailable() {
+    foyer::log::write("[game] onContentAvailable sys=%s stem=%s path=%s\n",
+        m_system_folder.c_str(), m_game_stem.c_str(), m_game_path.c_str());
     g_live_activity = this;
     g_live_game_path = m_game_path;
 
     const auto bundle = ::foyer::scrapers::game_asset_dir(
         m_system_folder, m_game_stem);
+    foyer::log::write("[game] bundle=%s\n", bundle.c_str());
 
     // Fanart background. JPEG without a region tag.
     if (fanart) {
         const std::string fart = bundle + "fanart.jpg";
         struct stat st{};
         if (::stat(fart.c_str(), &st) == 0) {
+            foyer::log::write("[game] fanart load %s\n", fart.c_str());
             fanart->setImageFromFile(fart);
+            foyer::log::write("[game] fanart ok\n");
         }
     }
 
@@ -209,6 +214,7 @@ void GameActivity::onContentAvailable() {
     const auto wheel_path = ::foyer::scrapers::find_in_dir(
         bundle_dir, "wheel");
     if (!wheel_path.empty() && gameWheel && gameTitle) {
+        foyer::log::write("[game] wheel load %s\n", wheel_path.c_str());
         gameWheel->setImageFromFile(wheel_path);
         gameWheel->setVisibility(brls::Visibility::VISIBLE);
         gameTitle->setVisibility(brls::Visibility::GONE);
@@ -219,8 +225,10 @@ void GameActivity::onContentAvailable() {
         }
         if (gameWheel) gameWheel->setVisibility(brls::Visibility::GONE);
     }
+    foyer::log::write("[game] header done\n");
 
     buildGallery();
+    foyer::log::write("[game] gallery done\n");
 
     if (clock && !m_clockTask) {
         m_clockTask = new ClockTask(this->clock);
@@ -242,6 +250,7 @@ void GameActivity::onContentAvailable() {
     }
 
     buildMetaPanel();
+    foyer::log::write("[game] meta done\n");
 
     // Pre-play RA progress prefetch — kick a detached worker that
     // hashes the rom, asks RA for the matching game id, then pulls
@@ -359,6 +368,7 @@ void GameActivity::onContentAvailable() {
                 return true;
             }, false, false, brls::SOUND_CLICK);
     }
+    foyer::log::write("[game] onContentAvailable done\n");
 }
 
 void GameActivity::rebuildGalleryContent() {
