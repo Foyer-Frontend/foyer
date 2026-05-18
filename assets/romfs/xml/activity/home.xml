@@ -50,6 +50,16 @@
             axis="row"
             alignItems="center" />
 
+        <!-- Focused-system logo — fills in as the user scrolls the
+             carousel. HomeActivity::onSystemFocused points at
+             theme/foyer/systems/<folder>/logo_(dark|light).png. -->
+        <brls:Image
+            id="foyer/focus_logo"
+            width="auto"
+            height="56"
+            marginLeft="20"
+            scalingType="fit" />
+
         <brls:Box width="auto" height="auto" grow="1.0" />
 
         <!-- Status cluster: clock · wifi · battery (left → right) -->
@@ -85,24 +95,6 @@
         width="auto"
         height="auto"
         grow="1.0" />
-
-    <!-- Centred focused-system logo, sitting directly above the
-         tile row (mirrors how the Switch Home screen labels the
-         focused game above its tile). HomeActivity::onSystemFocused
-         swaps the src as the user scrolls the carousel. -->
-    <brls:Box
-        width="auto"
-        height="80"
-        axis="row"
-        alignItems="center"
-        justifyContent="center"
-        marginBottom="8">
-        <brls:Image
-            id="foyer/focus_logo"
-            width="auto"
-            height="72"
-            scalingType="fit" />
-    </brls:Box>
 
     <!-- System carousel — centred with the action row directly
          underneath. The HScrollingFrame's `scrollingBehavior=
