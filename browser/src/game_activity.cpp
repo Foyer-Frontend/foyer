@@ -4,6 +4,7 @@
 #include "install_queue.hpp"
 #include "launch.hpp"
 #include "library_state.hpp"
+#include "library/game_meta.hpp"
 #include "library/per_game.hpp"
 #include "library/scrape_job.hpp"
 #include "library/switch_titles.hpp"
@@ -484,6 +485,24 @@ void GameActivity::buildMetaPanel() {
     add_meta_row(metaHolder, "Rating",       read_meta_field(bundle, "rating"));
     add_meta_row(metaHolder, "Genre",        read_meta_field(bundle, "genre"));
     add_meta_row(metaHolder, "Release date", read_meta_field(bundle, "release_date"));
+
+    // RetroAchievements progress, sourced from the per-rom sidecar
+    // written by the player on every unlock. Empty when the rom
+    // hasn't been booted with valid RA creds yet; the REST prefetch
+    // (rcheevos hash → API_GetGameInfoAndUserProgress) below pops
+    // a row in once the worker fills the sidecar.
+    {
+        const auto meta = ::foyer::library::load_meta(
+            m_system_folder, m_game_stem);
+        if (meta.cheevos_total > 0) {
+            const int pct = (int)((100.0 * meta.cheevos_unlocked)
+                                 / meta.cheevos_total + 0.5);
+            std::string v = std::to_string(meta.cheevos_unlocked)
+                + " / " + std::to_string(meta.cheevos_total)
+                + "   (" + std::to_string(pct) + "%)";
+            add_meta_row(metaHolder, "Achievements", v);
+        }
+    }
 
     // Synopsis spans full width, multi-line.
     const auto synopsis = read_meta_field(bundle, "synopsis");
