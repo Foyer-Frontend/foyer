@@ -289,9 +289,9 @@ detail section under the heading breaks it down.
 | [`gambatte`](#gambatte) | GB / GBC | ✅ | ✅ | ✅ | ✅ |
 | [`sameboy`](#sameboy) | GB / GBC | 🟡 | ✅ | ✅ | ✅ |
 | [`tgbdual`](#tgbdual) | GB / GBC | ✅ | ✅ | ✅ | ✅ |
-| `mgba` | GBA | ⬜ | ⬜ | ⬜ | ⬜ |
+| [`mgba`](#mgba) | GBA | 🟡 | ⬜ | ⬜ | ⬜ |
 | `gpsp` | GBA | ⬜ | ⬜ | ⬜ | ⬜ |
-| `vba_next` | GBA | ⬜ | ⬜ | ⬜ | ⬜ |
+| [`vba_next`](#vba_next) | GBA | ❌ | — | — | — |
 | `melonds` | NDS | ⬜ | ⬜ | ⬜ | ⬜ |
 | `mupen64plus` | N64 | ⬜ | ⬜ | ⬜ | ⬜ |
 | `pokemini` | Pokemon Mini | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -498,6 +498,39 @@ Dual-cart link-cable GB core — single-game mode covered by the
 full feature row on 0.7.6 hardware. Useful when you want
 gambatte-equivalent accuracy with the option to wire two roms
 together later.
+
+#### `mgba`
+
+| Feature | Status | Notes |
+|---|---|---|
+| Boots          | ✅ | GBA roms boot directly into gameplay |
+| Audio          | ⬜ | not yet exercised |
+| SRAM           | ⬜ | not yet exercised |
+| Save state     | ⬜ | not yet exercised |
+| Bezel          | ⬜ | not yet exercised |
+| Shader         | ⬜ | not yet exercised |
+| Cheats         | ⬜ | not yet exercised |
+| RetroAchievements | ⬜ | not yet exercised |
+
+Boot pass landed on 0.7.7. Rest of the feature row still
+pending a deeper hardware run.
+
+#### `vba_next`
+
+| Feature | Status | Notes |
+|---|---|---|
+| Boots          | ❌ | launching the core leaves foyer on a blank screen — chain-launch back to the browser also blanks out, suggesting a libretro frontend abort that hbloader can't recover from cleanly |
+| Audio          | — | — |
+| SRAM           | — | — |
+| Save state     | — | — |
+| Bezel          | — | — |
+| Shader         | — | — |
+| Cheats         | — | — |
+
+Don't pick vba_next as a per-system core override until the
+boot crash is investigated — once selected, even falling back
+to mgba/gpsp requires manually editing per_game.jsonc since
+foyer's UI sits behind the blank screen.
 
 #### `ppsspp`
 

@@ -18,6 +18,18 @@ void rescan() {
     g_systems = ::foyer::library::scan_library(opts);
 }
 
+void rescan_forced() {
+    // Settings → Library → Rescan calls this. force_rescan=true
+    // makes scan_library bypass the on-disk cache and re-stat
+    // every rom folder; the regular rescan() above shares the
+    // cache fast-path used at boot for sub-second startup.
+    ::foyer::library::ScanOptions opts{};
+    opts.rom_root     = ::foyer::library::config().rom_root;
+    opts.recurse      = false;
+    opts.force_rescan = true;
+    g_systems = ::foyer::library::scan_library(opts);
+}
+
 const std::vector<::foyer::library::System>& systems() {
     return g_systems;
 }

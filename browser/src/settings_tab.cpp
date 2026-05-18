@@ -503,7 +503,7 @@ FoyerLibraryTab::FoyerLibraryTab() {
     rescan->title->setText("Rescan");
     rescan->detail->setText("Scan now");
     rescan->registerClickAction([](brls::View*) {
-        library_state::rescan();
+        library_state::rescan_forced();
         brls::Application::notify("Library rescanned");
         return true;
     });

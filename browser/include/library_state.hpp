@@ -11,6 +11,10 @@ namespace foyer::browser::library_state {
 // scan_library() result with the scan output; subsequent calls
 // re-scan from disk (used by an explicit "Rescan" action later).
 void rescan();
+// Force a full disk re-scan, bypassing the on-disk library cache.
+// Used by the Settings → Library → Rescan button so the user can
+// pick up newly-added roms without rebooting foyer.
+void rescan_forced();
 
 // Read-only access to the cached scan result. Activities pull
 // games for a given system folder via find_system().
