@@ -19,6 +19,12 @@ public:
     ~SystemActivity() override;
 
     void onContentAvailable() override;
+    // Rebuild the cover-flow carousel on every reappear so a
+    // single-game rescrape (kicked from GameActivity) surfaces the
+    // freshly-downloaded box art / wheel / fanart when the user
+    // pops back. Cheap — populateCarousel re-uses the cached
+    // library_state vector and rebuilds tiles in place.
+    void onResume() override;
 
     // Cancels + joins the file-static scrape job if one is active.
     // Called from HomeActivity's Quit handler so foyer doesn't tear

@@ -389,6 +389,27 @@ void SystemActivity::refreshScrapeStatus() {
     }
 }
 
+void SystemActivity::onResume() {
+    brls::Activity::onResume();
+    // A scrape kicked from GameActivity (Y rescrape) writes fresh
+    // assets into /foyer/assets/system/<sys>/<stem>/ but the
+    // cover-flow tiles we built on first onContentAvailable point
+    // at whatever box_art existed at that time. Rebuild the carousel
+    // in place so the newly-downloaded cover lands when the user
+    // pops back to System view. Same for a Settings-triggered
+    // rescan that added/removed games.
+    if (carousel) {
+        const auto focus_idx = m_loaded_until;
+        carousel->clearViews();
+        populateCarousel();
+        // populateCarousel re-runs the initial preload window;
+        // m_loaded_until is reset implicitly. The auto-focus that
+        // brls re-applies on resume targets the first focusable,
+        // which sits inside the freshly-built carousel.
+        (void)focus_idx;
+    }
+}
+
 void SystemActivity::onContentAvailable() {
     foyer::log::write("[system] content available %s\n", m_folder.c_str());
 
