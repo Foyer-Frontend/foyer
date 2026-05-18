@@ -53,10 +53,13 @@ constexpr SystemMap kMap[] = {
     { "ngpc",            82  },
     { "__switch",        225 },  // ScreenScraper "Nintendo Switch"
     { "atari2600",       26  },
+    { "atari800",        43  },   // Atari 800 / 8-bit family
     { "atari5200",       40  },
     { "atari7800",       41  },
-    { "lynx",            28  },
-    { "jaguar",          27  },
+    { "atarilynx",       28  },   // foyer folder name; was "lynx" before — never hit
+    { "atarijaguar",     27  },   // foyer folder name; was "jaguar" before — never hit
+    { "lynx",            28  },   // legacy alias for users who pre-date the rename
+    { "jaguar",          27  },   // legacy alias for users who pre-date the rename
     { "virtualboy",      11  },
     { "wonderswan",      45  },
     { "wonderswancolor", 46  },
@@ -75,6 +78,9 @@ constexpr SystemMap kMap[] = {
     { "amigacd32",       130 },
     { "c64",             66  },
     { "msx",             113 },
+    { "msx2",            116 },
+    { "msx2plus",        116 },   // SS doesn't split MSX2+ from MSX2
+    { "msxturbor",       118 },
     { "zxspectrum",      76  },
     { "gw",              52  },
     { "pokemini",        211 },
