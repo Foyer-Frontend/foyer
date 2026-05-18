@@ -1,8 +1,10 @@
 name: Release
 
 # Builds foyer.nro (browser) for the Switch and attaches it to a
-# GitHub release. The browser preset has BUILD_PLAYER=OFF, so this
-# workflow never needs the foyer-cores recipes repo.
+# GitHub release. Since 0.7.5 the browser also needs the rcheevos
+# recipe from foyer-cores (linked into foyer_shared for the
+# pre-play RA progress prefetch), so we also clone foyer-cores
+# as a sibling — same layout the local builds use.
 #
 # Triggers on tag push v*.*.*; can also be run manually for dry-runs
 # (no release published in that case).
@@ -48,6 +50,12 @@ jobs:
         with:
           fetch-depth: 0   # so `git rev-parse --short HEAD` works
 
+      - name: Checkout foyer-cores
+        uses: actions/checkout@v5
+        with:
+          repository: Foyer-Frontend/foyer-cores
+          path: foyer-cores-deps
+
       - name: Trust the workspace inside container
         run: git config --global --add safe.directory '*'
 
@@ -74,6 +82,12 @@ jobs:
       - name: Configure
         env:
           DEVKITPRO: /opt/devkitpro
+          # foyer-cores is in a sibling-ish dir under the workspace
+          # (actions/checkout can't write outside $GITHUB_WORKSPACE,
+          # so we put it under foyer-cores-deps/ and point CMake at
+          # it explicitly — the default sibling search wouldn't find
+          # it otherwise).
+          FOYER_CORES_DIR: ${{ github.workspace }}/foyer-cores-deps
         run: |
           cmake --preset Release \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
