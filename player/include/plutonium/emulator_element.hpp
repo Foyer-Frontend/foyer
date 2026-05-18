@@ -5,7 +5,9 @@
 // frame + bezel onto the SDL renderer.
 
 #include "libretro/aspect.hpp"
+#include "libretro/cheevos.hpp"
 
+#include <SDL2/SDL.h>
 #include <switch.h>
 #include <pu/Plutonium>
 #include <chrono>
@@ -55,16 +57,20 @@ public:
     const std::string& SystemFolder()    const { return m_system_folder; }
 
     // Queue an in-game toast — drawn in OnRender as a top-right
-    // pill that fades out after ~4 s. Used by the RetroAchievements
+    // pill that fades out after ~5 s. Used by the RetroAchievements
     // unlock callback so the user sees the trigger without leaving
     // the rom. Thread-safe; rcheevos's event handler runs on the
     // libretro frame thread which is the same as our OnInput, but
     // pause-time async (e.g. server callbacks) may differ.
-    void PushToast(const std::string& msg);
+    void PushToast(const foyer::libretro::Cheevos::Unlock& ev);
 
 private:
     struct Toast {
-        std::string                                          msg;
+        std::string                                          title;
+        std::string                                          subtitle;   // "<points> pts" or empty
+        std::string                                          badge_url;
+        SDL_Texture*                                         badge   = nullptr;  // lazily loaded
+        bool                                                 fetched = false;     // worker has started or finished
         std::chrono::steady_clock::time_point                ts;
     };
 

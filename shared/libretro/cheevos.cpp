@@ -61,12 +61,21 @@ void event_handler(const rc_client_event_t* ev, rc_client_t* /*client*/) {
     auto& self = Cheevos::instance();
     if (ev->type == RC_CLIENT_EVENT_ACHIEVEMENT_TRIGGERED) {
         if (ev->achievement && ev->achievement->title) {
-            self.on_unlock(std::string{"\xF0\x9F\x8F\x86 "} +
-                           ev->achievement->title);
-            foyer::log::write("[ra] unlocked: %s\n", ev->achievement->title);
+            Cheevos::Unlock u;
+            u.title       = ev->achievement->title;
+            u.description = ev->achievement->description
+                ? ev->achievement->description : "";
+            u.points      = (int)ev->achievement->points;
+            u.badge_url   = ev->achievement->badge_url
+                ? ev->achievement->badge_url : "";
+            foyer::log::write("[ra] unlocked: %s (%d pts)\n",
+                u.title.c_str(), u.points);
+            self.on_unlock_full(u);
         }
     } else if (ev->type == RC_CLIENT_EVENT_GAME_COMPLETED) {
-        self.on_unlock("All achievements unlocked!");
+        Cheevos::Unlock u;
+        u.title = "All achievements unlocked!";
+        self.on_unlock_full(u);
     }
 }
 
@@ -212,9 +221,9 @@ void Cheevos::persist_progress() const {
     library::save_meta(m_sidecar_sys, m_sidecar_stem, meta);
 }
 
-void Cheevos::on_unlock(const std::string& title) {
+void Cheevos::on_unlock_full(const Unlock& ev) {
     m_unlocked++;
-    if (m_on_unlock) m_on_unlock(title);
+    if (m_on_unlock) m_on_unlock(ev);
     persist_progress();
 }
 

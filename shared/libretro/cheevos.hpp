@@ -21,8 +21,24 @@ namespace foyer::libretro {
 struct Cheevos {
     static Cheevos& instance();
 
-    // Forward decl callback; pause overlay subscribes to display unlock toasts.
-    using NotifyCb = std::function<void(const std::string& title)>;
+    // Unlock event payload. badge_url points at the achievement's
+    // earned-state icon on RA's CDN (e.g.
+    // https://media.retroachievements.org/Badge/12345.png). Empty
+    // string when rcheevos didn't expose one for this event.
+    struct Unlock {
+        std::string title;
+        std::string description;
+        int         points    = 0;
+        std::string badge_url;
+    };
+
+    // Unlock callback — fired from the libretro frame thread after
+    // a trigger lands.
+    using NotifyCb = std::function<void(const Unlock& ev)>;
+
+    // Mutator path called by the rcheevos event handler — public so
+    // the C trampoline in cheevos.cpp can hand the full payload up.
+    void on_unlock_full(const Unlock& ev);
 
     bool init(NotifyCb on_unlock);
     void shutdown();
@@ -46,7 +62,6 @@ struct Cheevos {
     // Mutators reached from the rcheevos C callbacks. Public so the
     // anonymous-namespace trampoline functions in cheevos.cpp can update
     // state without a friend declaration.
-    void on_unlock(const std::string& title);
     void mark_loaded(int total);
     void mark_failed();
 
