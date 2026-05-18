@@ -273,7 +273,7 @@ needs a pass.
 |---|---|---|---|---|---|---|---|---|
 | `fceumm` | NES | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `nestopia` | NES | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `mesen` | NES | 🟡 slow | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ❌ | ⬜ |
+| `mesen` | NES | 🟡 slow | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ⬜ |
 | `snes9x` | SNES | ✅ | ✅ | 🟡 v0.6.116 fix | ⬜ | ✅ | ⬜ | ⬜ |
 | `snes9x2010` | SNES | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | `bsnes_hd_beta` | SNES | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
