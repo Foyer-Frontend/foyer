@@ -38,6 +38,8 @@ public:
     BRLS_BIND(brls::Box,   carousel,      "foyer/carousel");
     BRLS_BIND(brls::HScrollingFrame, carouselScroll, "foyer/carousel_scroll");
     BRLS_BIND(brls::Label, scrapeStatus,  "foyer/scrape_status");
+    BRLS_BIND(brls::Box,   topBar,        "foyer/top_bar");
+    BRLS_BIND(brls::Box,   bottomBar,     "foyer/bottom_bar");
 
     // Called from the scrape-status RepeatingTask to refresh the
     // foyer/scrape_status label from the in-flight ScrapeJob's
@@ -96,6 +98,9 @@ private:
     // synchronously in onContentAvailable, or lazily in onResume).
     bool m_defer_population = false;
     bool m_populated        = false;
+    // theme_change subscription id; refreshes top/bottom bar bg
+    // when HOS theme variant flips.
+    int  m_theme_sub        = -1;
 
     void buildLogo();
     void buildActionRow();

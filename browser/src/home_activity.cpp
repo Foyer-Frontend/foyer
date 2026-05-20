@@ -5,6 +5,7 @@
 #include "activity/system_activity.hpp"
 #include "install_queue.hpp"
 #include "mtp.hpp"
+#include "theme_change.hpp"
 #include "theme_watcher.hpp"
 #include "update_check.hpp"
 
@@ -143,6 +144,7 @@ HomeActivity::~HomeActivity() {
         delete clockTask;
         clockTask = nullptr;
     }
+    theme_change::unsubscribe(m_theme_sub);
 }
 
 void HomeActivity::onContentAvailable() {
@@ -150,6 +152,27 @@ void HomeActivity::onContentAvailable() {
         clockTask = new ClockTask(this->clock);
         clockTask->start();
         clockTask->run();
+    }
+
+    // Theme-flip live refresh. brls's XML attr cache freezes the
+    // resolved NVGcolor for backgroundColor="@theme/foyer/bar_overlay"
+    // at parse time, so the top/bottom bars don't follow HOS Light↔
+    // Dark flips on their own. Subscribe to theme_change and re-set
+    // the bar bg + re-pick the focus-logo variant from C++ side.
+    if (m_theme_sub < 0) {
+        m_theme_sub = theme_change::subscribe(
+            [this](brls::ThemeVariant) {
+                const auto bar = brls::Application::getTheme()
+                    .getColor("foyer/bar_overlay");
+                if (topBar)    topBar->setBackgroundColor(bar);
+                if (bottomBar) bottomBar->setBackgroundColor(bar);
+                if (!m_last_focused_folder.empty()) {
+                    // Re-pick the logo variant for the currently-
+                    // focused system tile so the dark/light artwork
+                    // flips immediately, not on next focus.
+                    onSystemFocused(m_last_focused_folder, {});
+                }
+            });
     }
 
     // Deferred population: skip the heavy populate/build/focus
@@ -373,6 +396,7 @@ void HomeActivity::populateCarousel() {
 void HomeActivity::onSystemFocused(std::string_view folder,
                                    std::string_view /*display_name*/)
 {
+    m_last_focused_folder = std::string{folder};
     if (backdrop) {
         backdrop->setImageFromFile(
             ::foyer::library::asset_system_background(art_dir_for(folder)));

@@ -15,6 +15,7 @@
 #include "library/system_db.hpp"
 #include "scrapers/cache.hpp"
 #include "platform/log.hpp"
+#include "theme_change.hpp"
 #include "widgets/action_button.hpp"
 
 #include <algorithm>
@@ -365,6 +366,7 @@ SystemActivity::~SystemActivity() {
         delete m_scrapeStatusTask;
         m_scrapeStatusTask = nullptr;
     }
+    ::foyer::browser::theme_change::unsubscribe(m_theme_sub);
 }
 
 void SystemActivity::refreshScrapeStatus() {
@@ -471,6 +473,21 @@ void SystemActivity::onContentAvailable() {
         m_clockTask = new ClockTask(this->clock);
         m_clockTask->start();
         m_clockTask->run();
+    }
+
+    // Re-skin the bar overlay (and the system logo, which is also
+    // theme-aware via buildLogo) when HOS theme variant flips —
+    // brls's XML @theme cache otherwise freezes the bg colour at
+    // parse time.
+    if (m_theme_sub < 0) {
+        m_theme_sub = ::foyer::browser::theme_change::subscribe(
+            [this](brls::ThemeVariant) {
+                const auto bar = brls::Application::getTheme()
+                    .getColor("foyer/bar_overlay");
+                if (topBar)    topBar->setBackgroundColor(bar);
+                if (bottomBar) bottomBar->setBackgroundColor(bar);
+                buildLogo();
+            });
     }
 
     buildLogo();

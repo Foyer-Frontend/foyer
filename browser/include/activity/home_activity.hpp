@@ -60,6 +60,8 @@ public:
     BRLS_BIND(brls::Box,   profiles,     "foyer/profiles");
     BRLS_BIND(brls::Image, backdrop,     "foyer/backdrop");
     BRLS_BIND(brls::Image, focusLogo,    "foyer/focus_logo");
+    BRLS_BIND(brls::Box,   topBar,       "foyer/top_bar");
+    BRLS_BIND(brls::Box,   bottomBar,    "foyer/bottom_bar");
 
 private:
     brls::RepeatingTask* clockTask = nullptr;
@@ -67,6 +69,13 @@ private:
     std::string          m_preselect_folder;
     bool                 m_defer_population = false;
     bool                 m_populated        = false;
+    // Last-focused system folder, stashed by onSystemFocused so a
+    // live theme flip can re-pick the dark/light logo variant
+    // without waiting for the user to refocus.
+    std::string          m_last_focused_folder;
+    // theme_change subscription id; refreshes top/bottom bar bg +
+    // focus logo when HOS theme variant flips.
+    int                  m_theme_sub = -1;
 
     void populateCarousel();
     void buildActionRow();

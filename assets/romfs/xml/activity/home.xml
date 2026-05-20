@@ -34,6 +34,7 @@
     <!-- Top bar — backdrop already provides visual separation, so
          no divider line. -->
     <brls:Box
+        id="foyer/top_bar"
         width="auto"
         height="80"
         axis="row"
@@ -148,6 +149,7 @@
 
     <!-- Bottom hint bar — brls Hints (controller button hints). -->
     <brls:Box
+        id="foyer/bottom_bar"
         width="auto"
         height="@style/brls/applet_frame/footer_height"
         axis="row"
