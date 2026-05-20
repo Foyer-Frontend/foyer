@@ -177,16 +177,17 @@ if (BUILD_BROWSER)
             -DIMAGE_CPP=${borealis_SOURCE_DIR}/library/lib/views/image.cpp
             -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patch_brls_image_tint.cmake)
 
-    # SwitchAudioPlayer patch DISABLED again. Sharing audren between
-    # brls's pulsar (browser UI sounds) and the libretro AudioSink
-    # is non-trivial — they collide on voice 0 + the memory pool,
-    # producing silence in both. Until we have a proper coordinator
-    # (single audrv instance with namespaced voice ids), keep the
-    # patch off; cores get audio, browser UI is silent.
-    # execute_process(
-    #     COMMAND ${CMAKE_COMMAND}
-    #         -DAUDIO_CPP=${borealis_SOURCE_DIR}/library/lib/platforms/switch/switch_audio.cpp
-    #         -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patch_brls_audio.cmake)
+    # SwitchAudioPlayer patch re-enabled (was disabled in the 0.6.x
+    # brls-player days because brls's pulsar shared audren with the
+    # libretro AudioSink, colliding on voice 0). Since 0.7.0 the
+    # players use Plutonium + SDL_mixer audio — completely separate
+    # from the browser's brls audio — so we can safely turn the
+    # browser's UI sounds back on. The browser process never coexists
+    # with a player process; chain-launch is exclusive.
+    execute_process(
+        COMMAND ${CMAKE_COMMAND}
+            -DAUDIO_CPP=${borealis_SOURCE_DIR}/library/lib/platforms/switch/switch_audio.cpp
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patch_brls_audio.cmake)
 
     # devkitPro's portlibs/switch/include is the canonical location for
     # switch-glm, switch-glfw, EGL, etc. The Switch.cmake toolchain
