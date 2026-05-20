@@ -2,6 +2,7 @@
 #include "libretro/frontend.hpp"
 #include "libretro/shader.hpp"
 #include "platform/log.hpp"
+#include "plutonium/session_tracker.hpp"
 
 #include <switch.h>
 #include <cstdio>
@@ -52,6 +53,11 @@ void MainApplication::OnLoad() {
             this->Close();
             return;
         }
+        // Bind the per-session writeback tracker to this rom and
+        // capture per-game baselines before any pause-menu pick can
+        // mutate the general config. finalize() fires from the Quit
+        // cell in pause_menu.cpp before envSetNextLoad.
+        SessionTracker::instance().start(this->emu_element->OriginalRomPath());
         this->pause = std::make_unique<PauseMenu>(
             this->emu_element->OriginalRomPath(),
             this->emu_element->SystemFolder(),
@@ -59,6 +65,7 @@ void MainApplication::OnLoad() {
         this->pause->SetOnClose([this]() {
             this->paused = false;
             this->emu_element->SetPaused(false);
+            SessionTracker::instance().set_paused(false);
             this->layout_dirty = true;
         });
         this->pause->SetOnQuit([this]() {
@@ -122,6 +129,7 @@ void MainApplication::OnLoad() {
             if (!this->pause->OnBack()) {
                 this->paused = false;
                 this->emu_element->SetPaused(false);
+                SessionTracker::instance().set_paused(false);
             }
             this->layout_dirty = true;
             return;
@@ -136,6 +144,7 @@ void MainApplication::OnLoad() {
 void MainApplication::TogglePause() {
     this->paused = !this->paused;
     this->emu_element->SetPaused(this->paused);
+    SessionTracker::instance().set_paused(this->paused);
     if (this->paused) {
         this->pause->SetMode(PauseMode::Pause);
     }

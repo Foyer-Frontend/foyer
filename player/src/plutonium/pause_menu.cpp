@@ -9,6 +9,7 @@
 #include "libretro/shader.hpp"
 #include "libretro/video_sdl.hpp"
 #include "platform/log.hpp"
+#include "plutonium/session_tracker.hpp"
 
 #include <switch.h>
 
@@ -189,6 +190,12 @@ void PauseMenu::PopulatePauseRoot(pu::ui::elm::Menu::Ref& menu) {
         }
     }
     add("Quit to foyer", [this]() {
+        // Persist the session BEFORE envSetNextLoad fires so
+        // per_game.jsonc is fully written by the time HOS
+        // chain-launches the browser back. finalize() is
+        // idempotent — the second Quit cell at the bottom of
+        // PopulatePauseRoot won't double-count if both fire.
+        SessionTracker::instance().finalize();
         foyer::libretro::Frontend::instance().flush_sram();
         if (!back_nro.empty()) {
             const std::string sd = "sdmc:" + back_nro;
@@ -495,6 +502,7 @@ pu::ui::elm::Menu::Ref PauseMenu::BuildPauseRoot() {
         ChangeMode(PauseMode::Cheats);
     });
     add("Quit to foyer", [this]() {
+        SessionTracker::instance().finalize();
         foyer::libretro::Frontend::instance().flush_sram();
         if (!back_nro.empty()) {
             const std::string sd = "sdmc:" + back_nro;

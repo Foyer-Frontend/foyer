@@ -10,6 +10,7 @@
 #include "library/config.hpp"
 #include "net/http.hpp"
 #include "platform/log.hpp"
+#include "plutonium/session_tracker.hpp"
 #include "util/archive.hpp"
 
 #include <SDL2/SDL_image.h>
@@ -192,6 +193,7 @@ void EmulatorElement::OnInput(const u64 /*keys_down*/,
 
 void EmulatorElement::OnRender(pu::ui::render::Renderer::Ref& drawer,
                                const pu::i32 /*x*/, const pu::i32 /*y*/) {
+    SessionTracker::instance().tick();
     if (!m_game_ok) return;
     foyer::libretro::VideoSinkSdl::instance().draw(
         pu::ui::render::ScreenWidth,

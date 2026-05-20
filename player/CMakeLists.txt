@@ -100,6 +100,7 @@ add_executable(${_player}
     src/plutonium/main_application.cpp
     src/plutonium/emulator_element.cpp
     src/plutonium/pause_menu.cpp
+    src/plutonium/session_tracker.cpp
 )
 target_include_directories(${_player} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include)
