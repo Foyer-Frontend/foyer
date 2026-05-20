@@ -156,6 +156,16 @@ if (BUILD_BROWSER)
             -DBOX_CPP=${borealis_SOURCE_DIR}/library/lib/core/box.cpp
             -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patch_brls_wraparound.cmake)
 
+    # SwitchInputManager::clearVibration is broken upstream — its call to
+    # sendRumbleInternal passes (160.0f, 320.0f, 0.0f, 0.0f) which the
+    # implementation interprets as amp_low=320 on both motors, so every
+    # Pro Controller buzzes from app launch until HOS HOME resume. Force
+    # zero amps. Idempotent + sentinel ("FOYER_RUMBLE_CLEAR").
+    execute_process(
+        COMMAND ${CMAKE_COMMAND}
+            -DINPUT_CPP=${borealis_SOURCE_DIR}/library/lib/platforms/switch/switch_input.cpp
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patch_brls_rumble_clear.cmake)
+
     # SwitchAudioPlayer patch DISABLED again. Sharing audren between
     # brls's pulsar (browser UI sounds) and the libretro AudioSink
     # is non-trivial — they collide on voice 0 + the memory pool,
