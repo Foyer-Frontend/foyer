@@ -9,7 +9,10 @@
 #include <borealis/views/applet_frame.hpp>
 #include <borealis/views/cells/cell_detail.hpp>
 #include <borealis/views/cells/cell_selector.hpp>
+#include <borealis/views/image.hpp>
 #include <borealis/views/scrolling_frame.hpp>
+
+#include <sys/stat.h>
 
 #include <string>
 #include <vector>
@@ -61,11 +64,18 @@ brls::View* PerSystemActivity::createContentView() {
         host->addView(cell);
     }
 
-    // Default bezel selector — lists "(none)" + every PNG currently
-    // installed at /foyer/content/bezels/ so the user can pick any
-    // bezel (regardless of which folder-key install_bezels wrote it
+    // Default bezel selector + live preview thumbnail below it.
+    // Lists "(none)" + every PNG currently installed at
+    // /foyer/content/bezels/ so the user can pick any bezel
+    // (regardless of which folder-key install_bezels wrote it
     // under) as this system's default. Resolution at launch is:
     //   per-game custom > per-system config > per-system file fallback
+    //
+    // The preview Image below the selector refreshes whenever the
+    // user makes a new pick — closest brls can get to a "what does
+    // this look like" affordance without a fully custom wheel
+    // picker. Stretched-fit to a 16:9 box; tiny height (150 px) so
+    // it doesn't dominate the per-system page.
     {
         auto names = ::foyer::library::installed_bezel_names();
         std::vector<std::string> labels;
@@ -81,19 +91,44 @@ brls::View* PerSystemActivity::createContentView() {
                 if (names[i] == current) { initial = (int)(i + 1); break; }
             }
         }
+
+        auto* preview = new brls::Image();
+        preview->setWidth(360.0f);
+        preview->setHeight(150.0f);
+        preview->setScalingType(brls::ImageScalingType::FIT);
+        preview->setMargins(8.0f, 32.0f, 8.0f, 32.0f);
+
+        auto load_preview = [preview](const std::string& bezel_name) {
+            if (bezel_name.empty()) {
+                preview->clear();
+                return;
+            }
+            const std::string path =
+                "/foyer/content/bezels/" + bezel_name + ".png";
+            struct stat st{};
+            if (::stat(path.c_str(), &st) == 0) {
+                preview->setImageFromFile(path);
+            } else {
+                preview->clear();
+            }
+        };
+        // Seed with the current selection.
+        load_preview(initial > 0 ? names[initial - 1] : std::string{});
+
         const std::string folder = m_folder;
         auto* cell = new brls::SelectorCell();
         cell->init("Default bezel", labels, initial,
                    [](int) {},
-                   [folder, names](int selected) {
-                       if (selected <= 0 || selected > (int)names.size()) {
-                           ::foyer::library::set_default_bezel_for(folder, {});
-                       } else {
-                           ::foyer::library::set_default_bezel_for(
-                               folder, names[selected - 1]);
+                   [folder, names, load_preview](int selected) {
+                       std::string pick;
+                       if (selected > 0 && selected <= (int)names.size()) {
+                           pick = names[selected - 1];
                        }
+                       ::foyer::library::set_default_bezel_for(folder, pick);
+                       load_preview(pick);
                    });
         host->addView(cell);
+        host->addView(preview);
     }
 
     // Default shader selector — same shape, lists "(none)" + every
