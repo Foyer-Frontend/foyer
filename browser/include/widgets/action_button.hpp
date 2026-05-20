@@ -19,6 +19,7 @@ public:
     ActionButton(const std::string& icon_res,
                  const std::string& label_text,
                  std::function<bool(brls::View*)> on_click);
+    ~ActionButton() override;
 
     void onChildFocusGained(brls::View* directChild,
                             brls::View* focusedView) override;
@@ -32,6 +33,11 @@ private:
     brls::Label* m_label       = nullptr;
 
     NVGcolor     m_idle_bg{};
+
+    // theme_change subscription id so a live HOS Light↔Dark flip
+    // re-tints every action button immediately, not just the one
+    // the user happens to focus next.
+    int          m_theme_sub   = -1;
 
     // Refresh chip bg + label text from the current theme. Called
     // on focus gain so live HOS theme flips re-skin the chip on

@@ -1,6 +1,12 @@
 #include "widgets/action_button.hpp"
 
+#include "theme_change.hpp"
+
 namespace foyer::browser {
+
+ActionButton::~ActionButton() {
+    theme_change::unsubscribe(m_theme_sub);
+}
 
 ActionButton::ActionButton(const std::string& icon_res,
                            const std::string& label_text,
@@ -77,6 +83,13 @@ ActionButton::ActionButton(const std::string& icon_res,
     this->addView(m_label_chip);
     apply_chip_theme();
     m_label_chip->setVisibility(brls::Visibility::INVISIBLE);
+
+    // Re-skin the whole button when the user flips HOS theme mid-
+    // session — without this, only the focused button updates (via
+    // onChildFocusGained's apply_chip_theme call); idle buttons
+    // keep their stale colours until the next focus event.
+    m_theme_sub = theme_change::subscribe(
+        [this](brls::ThemeVariant) { apply_chip_theme(); });
 }
 
 void ActionButton::apply_chip_theme() {
