@@ -106,7 +106,7 @@ void on_load_done(int result, const char* error_message,
         RC_CLIENT_ACHIEVEMENT_LIST_GROUPING_LOCK_STATE);
     if (list) {
         // Match Cheevos::list()'s filter — RA injects a 101000001
-        // "Warning: Unsupported Emulator" placeholder which we don't
+        // "Warning: Unsupported Emulator" sentinel which we don't
         // surface in the picker, so it shouldn't count toward the
         // "N/M" badge on the pause-root row either.
         constexpr uint32_t kRaUnsupportedEmulatorId = 101000001;

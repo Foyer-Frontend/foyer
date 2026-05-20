@@ -84,7 +84,7 @@ void write_stub_if_missing() {
         return;
     }
     out.write(kStub, (std::streamsize)std::strlen(kStub));
-    foyer::log::write("[accounts] wrote stub to %s\n", kPath);
+    foyer::log::write("[accounts] wrote default credentials template to %s\n", kPath);
 }
 
 void load_locked() {

@@ -7,7 +7,7 @@
 namespace foyer::library {
 
 // Browser-wide preferences read from /foyer/config/general.jsonc on first
-// access. A stub is created on missing-file so the user can edit via MTP.
+// access. A default file is created on missing-file so the user can edit via MTP.
 struct Config {
     enum class Scraper { Libretro, ScreenScraper, SteamGridDB };
 

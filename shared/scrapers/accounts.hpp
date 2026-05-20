@@ -63,8 +63,8 @@ struct Accounts {
 };
 
 // Reads /foyer/config/accounts.jsonc. Missing keys remain empty. If the file
-// doesn't exist this writes a stub the user can fill in, then returns an
-// all-empty Accounts.
+// doesn't exist this writes a default credentials template the user can fill
+// in, then returns an all-empty Accounts.
 const Accounts& accounts();
 
 // Force re-read (used after the user edits the file via MTP).

@@ -42,7 +42,7 @@
         paddingLeft="@style/brls/hints/footer_padding_sides"
         paddingRight="@style/brls/hints/footer_padding_sides">
 
-        <!-- Profile cluster placeholder (Phase F wires real avatars). -->
+        <!-- Profile cluster — anchor only; Phase F wires real avatars/nicknames into this slot. -->
         <brls:Box
             id="foyer/profiles"
             width="auto"

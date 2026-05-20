@@ -1,7 +1,7 @@
 /*
  * foyer 0.6.0 — borealis app shell.
  *
- * Phase A bootstrapped brls + a stub HomeActivity. Phase B wires service
+ * Phase A bootstrapped brls + a minimal HomeActivity. Phase B wires service
  * init back in (i18n, library config, self-update) so users can keep
  * upgrading from one alpha to the next. Settings / library scan / Switch
  * title browser come back in subsequent alphas.

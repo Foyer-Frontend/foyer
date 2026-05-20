@@ -573,7 +573,7 @@ enum class StringId : std::uint16_t {
     FavoritesRowLabel,                 // "Favorites" (kept for any legacy use)
 
     // Misc account/value labels
-    AccountUnset,                      // "unset" (placeholder for empty credentials)
+    AccountUnset,                      // "unset" (sentinel for empty credentials)
     UpdatesMetadataKindLabel,          // "metadata" (Scrape-all-systems row value)
 
     // GameDetail per-game picker rows + values

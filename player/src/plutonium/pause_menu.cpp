@@ -340,7 +340,7 @@ void PauseMenu::PopulateDisplayAspect(pu::ui::elm::Menu::Ref& menu) {
 }
 
 void PauseMenu::PopulateDisplayBezel(pu::ui::elm::Menu::Ref& menu) {
-    // Phase P4 stub: list any per-rom bundle bezel that we can find
+    // Phase P4 — list any per-rom bundle bezel that we can find
     // under /foyer/assets/system/<sys>/<stem>/, plus the per-system
     // fallback. Future work: also enumerate /foyer/content/bezels/
     // entries the user dropped in. For now we expose enough to flip

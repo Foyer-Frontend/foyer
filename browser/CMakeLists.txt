@@ -74,7 +74,7 @@ set_target_properties(foyer PROPERTIES
     C_STANDARD   23
     CXX_STANDARD 20)  # std::span via system_db; borealis itself is C++20
 
-# Embed any blobs from assets/embed/ into the binary (placeholder for now).
+# Embed any blobs from assets/embed/ into the binary (reserved hook; no embedded blobs ship today).
 target_compile_options(foyer PRIVATE
     --embed-dir=${FOYER_EMBED_DIR})
 
