@@ -97,13 +97,16 @@ brls::View* PerSystemActivity::createContentView() {
     }
 
     // Default shader selector — same shape, lists "(none)" + every
-    // shader preset directory at /foyer/content/shaders/.
+    // shader preset directory at /foyer/content/shaders/, with
+    // pretty labels (CRT Easymode instead of crt-easymode etc.).
     {
         auto names = ::foyer::library::installed_shader_names();
         std::vector<std::string> labels;
         labels.reserve(names.size() + 1);
         labels.emplace_back("(none)");
-        for (const auto& n : names) labels.emplace_back(n);
+        for (const auto& n : names) {
+            labels.emplace_back(::foyer::library::pretty_shader_name(n));
+        }
 
         const char* current =
             ::foyer::library::config().default_shader_for(m_folder);

@@ -1,4 +1,5 @@
 #include "shader.hpp"
+#include "library/shader_installer.hpp"
 #include "platform/log.hpp"
 
 #include <EGL/egl.h>
@@ -1036,22 +1037,41 @@ std::vector<ShaderPipeline::PresetInfo> ShaderPipeline::available_presets() {
     for (const auto& b : kBuiltIns) {
         out.push_back({b.name, b.label});
     }
+    // Walk /foyer/content/shaders/ once; include both legacy
+    // file-form presets (.glsl / .json at the dir root) and the
+    // directory-form presets install_shaders lays down
+    // (subdirectory containing preset.json + pass-*.glsl). Both get
+    // a pretty label via foyer::library::pretty_shader_name so
+    // "crt-easymode" surfaces as "CRT Easymode" instead of the raw
+    // kebab-case slug. Previously only the file-form presets were
+    // enumerated, so the pause-menu shader picker showed at most
+    // the built-ins + a handful of legacy .glsl files.
+    auto add_pretty = [&out](const std::string& stem) {
+        if (find_builtin(stem)) return;
+        for (auto& p : out) if (p.name == stem) return;  // de-dup
+        out.push_back({stem, foyer::library::pretty_shader_name(stem)});
+    };
     if (auto* d = ::opendir("/foyer/content/shaders")) {
         while (auto* e = ::readdir(d)) {
             const std::string n = e->d_name;
+            if (n.empty() || n[0] == '.') continue;
+
+            const std::string full =
+                std::string{"/foyer/content/shaders/"} + n;
+            struct stat st{};
+            if (::stat(full.c_str(), &st) != 0) continue;
+
+            if (S_ISDIR(st.st_mode)) {
+                add_pretty(n);
+                continue;
+            }
+
             if (n.size() < 6) continue;
-            std::string stem;
             const auto dot = n.find_last_of('.');
             if (dot == std::string::npos) continue;
             const auto ext = n.substr(dot);
             if (ext != ".glsl" && ext != ".json") continue;
-            stem = n.substr(0, dot);
-            if (find_builtin(stem)) continue;
-            // Avoid duplicates if both .glsl and .json exist.
-            bool dup = false;
-            for (auto& p : out) if (p.name == stem) { dup = true; break; }
-            if (dup) continue;
-            out.push_back({stem, stem});
+            add_pretty(n.substr(0, dot));
         }
         ::closedir(d);
     }

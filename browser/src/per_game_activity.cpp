@@ -2,6 +2,7 @@
 
 #include "library/config.hpp"
 #include "library/per_game.hpp"
+#include "library/shader_installer.hpp"
 #include "library/system_db.hpp"
 
 #include <borealis/views/applet_frame.hpp>
@@ -102,18 +103,22 @@ brls::View* PerGameActivity::createContentView() {
         std::error_code ec;
         for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
             // Match both the legacy file-based presets and the
-            // dir-based ones install_shaders lays down.
+            // dir-based ones install_shaders lays down. Pretty-label
+            // each one via library::pretty_shader_name so the
+            // picker reads "CRT Easymode" instead of "crt-easymode".
+            std::string stem;
             if (entry.is_regular_file()) {
                 const auto& p = entry.path();
                 const auto ext = p.extension().string();
                 if (ext != ".json" && ext != ".glsl") continue;
-                const auto stem = p.stem().string();
-                labels.emplace_back(stem);
-                codes.emplace_back(stem);
+                stem = p.stem().string();
             } else if (entry.is_directory()) {
-                labels.emplace_back(entry.path().filename().string());
-                codes.emplace_back(entry.path().filename().string());
+                stem = entry.path().filename().string();
+            } else {
+                continue;
             }
+            labels.emplace_back(::foyer::library::pretty_shader_name(stem));
+            codes.emplace_back(std::move(stem));
         }
 
         const auto& cfg = ::foyer::library::config();

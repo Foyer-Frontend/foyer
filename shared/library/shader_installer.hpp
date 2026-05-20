@@ -74,6 +74,13 @@ ShaderInstallTotals install_shaders(
 // alphabetically. Used by the per-system "Default shader" selector.
 std::vector<std::string> installed_shader_names();
 
+// Render a kebab/snake-case shader name as a human-readable label.
+// Splits on '-' / '_', title-cases each word, and uppercases common
+// acronyms (CRT, LCD, NTSC, …) so "crt-easymode" surfaces as "CRT
+// Easymode" and "aa-shader" as "AA Shader". No-op if the input is
+// already title-cased prose.
+std::string pretty_shader_name(std::string_view name);
+
 // Read the version sidecar foyer wrote at install time. Empty string
 // = preset never installed via this code path (or sidecar deleted).
 std::string installed_shader_version(std::string_view preset_name);

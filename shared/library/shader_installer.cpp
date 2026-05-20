@@ -11,6 +11,8 @@
 #include <cstring>
 #include <dirent.h>
 #include <fstream>
+#include <set>
+#include <string_view>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -214,6 +216,50 @@ ShaderManifest fetch_shader_manifest(const std::string& url) {
     }
     yyjson_doc_free(doc);
     return m;
+}
+
+std::string pretty_shader_name(std::string_view name) {
+    // Common 2-4 letter acronyms that show up in retroarch's
+    // glsl-shaders / slang-shaders catalogue. Members are lower-case
+    // for case-insensitive lookup; the function uppercases them
+    // back when assembling the output.
+    static const std::set<std::string> kAcronyms = {
+        "aa", "ai", "amd", "crt", "dmg", "fxaa", "gb", "gba", "gbc",
+        "hdr", "hq", "lcd", "ms", "msaa", "ntsc", "nes", "pal", "ps1",
+        "ps2", "psp", "rgb", "smaa", "snes", "tv", "vhs", "xbr"
+    };
+    auto lower = [](char c) -> char {
+        return (c >= 'A' && c <= 'Z') ? char(c + 32) : c;
+    };
+    auto upper = [](char c) -> char {
+        return (c >= 'a' && c <= 'z') ? char(c - 32) : c;
+    };
+
+    std::string result;
+    std::string word;
+    auto flush = [&]() {
+        if (word.empty()) return;
+        std::string lc = word;
+        for (auto& c : lc) c = lower(c);
+        if (kAcronyms.count(lc)) {
+            for (auto& c : word) c = upper(c);
+        } else {
+            word[0] = upper(word[0]);
+        }
+        if (!result.empty()) result += ' ';
+        result += word;
+        word.clear();
+    };
+    for (char c : name) {
+        if (c == '-' || c == '_' || c == ' ') {
+            flush();
+        } else {
+            word += c;
+        }
+    }
+    flush();
+    if (result.empty()) return std::string{name};
+    return result;
 }
 
 std::vector<std::string> installed_shader_names() {
