@@ -151,6 +151,17 @@ void HomeActivity::onContentAvailable() {
         clockTask->start();
         clockTask->run();
     }
+
+    // Deferred population: skip the heavy work when this activity
+    // was pushed as a fast-return understack (only visible after a
+    // B-back from Game). onResume picks it up later. Cuts ~half a
+    // second off the chain-back blank-screen window for a 20-system
+    // library by skipping ~20 splash JPEG decodes + ~6 ActionButton
+    // icon decodes + the libnx accountsService roster query.
+    if (m_defer_population) {
+        foyer::log::write("[home] deferred population — will run on first onResume\n");
+        return;
+    }
     populateCarousel();
     m_library_gen = library_state::generation();
     foyer::log::write("[home] populateCarousel done\n");
@@ -158,6 +169,7 @@ void HomeActivity::onContentAvailable() {
     foyer::log::write("[home] buildActionRow done\n");
     buildProfiles();
     foyer::log::write("[home] buildProfiles done\n");
+    m_populated = true;
 
     // Default focus to the first system tile, not the profile avatar.
     // Activity::getDefaultFocus() walks descendants front-to-back and
@@ -293,6 +305,39 @@ void HomeActivity::onContentAvailable() {
 
 void HomeActivity::onResume() {
     brls::Activity::onResume();
+
+    // Deferred fast-return path: this activity was pushed under
+    // GameActivity with population deferred to keep the chain-back
+    // blank-screen short. Now that we're actually visible, run the
+    // build steps we skipped in onContentAvailable.
+    if (m_defer_population && !m_populated) {
+        foyer::log::write("[home] onResume: deferred populate kicking in\n");
+        populateCarousel();
+        m_library_gen = library_state::generation();
+        buildActionRow();
+        buildProfiles();
+        m_populated = true;
+        // Restore focus on the preselected system tile (or first).
+        if (carousel && !carousel->getChildren().empty()) {
+            std::size_t target = 0;
+            if (!m_preselect_folder.empty()) {
+                std::size_t i = 0;
+                for (const auto& sys : library_state::systems()) {
+                    if (!sys.def) continue;
+                    if (sys.def->folder_name == m_preselect_folder) {
+                        target = i;
+                        break;
+                    }
+                    i++;
+                }
+            }
+            const auto& kids = carousel->getChildren();
+            if (target >= kids.size()) target = 0;
+            brls::Application::giveFocus(kids[target]);
+        }
+        return;
+    }
+
     // If the library was rescanned (Settings, sort cycle, etc.)
     // while Home was hidden behind another activity, the carousel
     // we built on first onContentAvailable is stale. Compare the

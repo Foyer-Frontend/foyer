@@ -41,6 +41,19 @@ public:
     void setPreselectSystem(std::string folder)
     { m_preselect_folder = std::move(folder); }
 
+    // Defer the heavy population work (system tiles + action row +
+    // profile cluster) to onResume rather than running it on the
+    // pushActivity path. Used by main.cpp's fast_returned branch:
+    // the activity is pushed under GameActivity, so the user never
+    // sees it until they B-back — running populateCarousel
+    // synchronously up-front just lengthens the blank-screen
+    // window after chain-launching back from a core. With this on,
+    // pushActivity returns in microseconds and the actual carousel
+    // build happens when the activity becomes the visible top of
+    // the stack.
+    void setDeferredPopulation(bool deferred)
+    { m_defer_population = deferred; }
+
     BRLS_BIND(brls::Label, clock,        "foyer/clock");
     BRLS_BIND(brls::Box,   carousel,     "foyer/carousel");
     BRLS_BIND(brls::Box,   actionRow,    "foyer/action_row");
@@ -52,6 +65,8 @@ private:
     brls::RepeatingTask* clockTask = nullptr;
     std::uint32_t        m_library_gen = 0;
     std::string          m_preselect_folder;
+    bool                 m_defer_population = false;
+    bool                 m_populated        = false;
 
     void populateCarousel();
     void buildActionRow();

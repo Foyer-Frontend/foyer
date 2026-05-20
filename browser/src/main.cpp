@@ -272,11 +272,23 @@ int main(int argc, char* argv[])
                         // the system tile (matches `folder`); System
                         // → Game B-back lands on the game tile
                         // (matches `path`).
+                        //
+                        // Deferred-population: Home and System are
+                        // pushed under GameActivity and only become
+                        // visible when the user B-backs. Skipping
+                        // their populateCarousel + cover preload at
+                        // push time cuts the chain-back blank-screen
+                        // window dramatically (no point decoding
+                        // dozens of JPEGs nobody's about to see).
+                        // onResume picks up the deferred work when
+                        // each activity actually surfaces.
                         auto* home = new ::foyer::browser::HomeActivity();
                         home->setPreselectSystem(folder);
+                        home->setDeferredPopulation(true);
                         brls::Application::pushActivity(home);
                         auto* sys = new ::foyer::browser::SystemActivity(folder, folder);
                         sys->setPreselectGame(path);
+                        sys->setDeferredPopulation(true);
                         brls::Application::pushActivity(sys);
                         brls::Application::pushActivity(
                             new ::foyer::browser::GameActivity(folder, path));

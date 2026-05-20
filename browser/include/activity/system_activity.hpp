@@ -60,6 +60,14 @@ public:
     void setPreselectGame(std::string game_path)
     { m_preselect_game = std::move(game_path); }
 
+    // Defer the heavy populate (game-tile creation + initial cover
+    // preload) to onResume so the chain-back-from-core push chain
+    // doesn't synchronously walk hundreds of tiles before the user
+    // ever sees GameActivity render. See HomeActivity::setDeferredPopulation
+    // for the same trick on the system carousel side.
+    void setDeferredPopulation(bool deferred)
+    { m_defer_population = deferred; }
+
 private:
     std::string m_folder;
     std::string m_display_name;
@@ -81,6 +89,13 @@ private:
     // chain-back-from-core path. Consumed once in onContentAvailable
     // to seed m_last_focus_idx + giveFocus to the matching tile.
     std::string m_preselect_game;
+
+    // Deferred-population state: m_defer_population is set via the
+    // setter before pushActivity; m_populated flips true once
+    // populateCarousel + initial preload have actually run (either
+    // synchronously in onContentAvailable, or lazily in onResume).
+    bool m_defer_population = false;
+    bool m_populated        = false;
 
     void buildLogo();
     void buildActionRow();

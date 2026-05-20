@@ -407,6 +407,35 @@ void SystemActivity::onResume() {
     // frame via brls::sync to let pop's focus-restore drain, then
     // hand focus back to the freshly-built first tile.
     if (!carousel) return;
+
+    // Deferred fast-return: populateCarousel was skipped in
+    // onContentAvailable to keep the chain-back blank-screen short.
+    // Now that we're actually visible, run it. Resolves
+    // m_preselect_game → m_last_focus_idx so the user lands on the
+    // game tile that was active before launching the core.
+    if (m_defer_population && !m_populated) {
+        foyer::log::write("[system] %s onResume: deferred populate kicking in\n",
+            m_folder.c_str());
+        populateCarousel();
+        const auto& kids = carousel->getChildren();
+        if (!kids.empty()) {
+            int target = 0;
+            if (!m_preselect_game.empty()) {
+                if (const auto* sys = library_state::find_system(m_folder)) {
+                    int i = 0;
+                    for (const auto& g : sys->games) {
+                        if (g.path == m_preselect_game) { target = i; break; }
+                        i++;
+                    }
+                }
+            }
+            if (target < 0 || target >= (int)kids.size()) target = 0;
+            m_last_focus_idx = target;
+            brls::Application::giveFocus(kids[target]);
+        }
+        return;
+    }
+
     if (actionRow) brls::Application::giveFocus(actionRow);
 
     auto* self = this;
@@ -446,6 +475,25 @@ void SystemActivity::onContentAvailable() {
 
     buildLogo();
     buildActionRow();
+
+    // Deferred fast-return path: skip the heavy populateCarousel +
+    // cover preload when this activity is being pushed under
+    // GameActivity. onResume runs them when the user actually
+    // B-backs to this view. Cuts hundreds of ms (for libraries with
+    // hundreds of games) off the chain-back blank-screen window.
+    if (m_defer_population) {
+        foyer::log::write("[system] %s deferred populate\n", m_folder.c_str());
+        // B button pops back to Home — register early so even the
+        // deferred-no-population state handles back nav.
+        this->getContentView()->registerAction(
+            "hints/back"_i18n, brls::BUTTON_B,
+            [](brls::View*) {
+                brls::Application::popActivity();
+                return true;
+            }, false, false, brls::SOUND_BACK);
+        return;
+    }
+
     populateCarousel();
 
     // Resume the status banner if install_queue is currently
@@ -755,6 +803,13 @@ void SystemActivity::populateCarousel() {
     // Warm the first batch so the user sees real covers as soon
     // as the activity paints. Subsequent batches stream in via
     // onTileFocused as focus approaches the loaded edge.
+    //
+    // Tail batch: also preload the LAST kInitialBatch tiles up
+    // front so wrap-around nav (L-shoulder from tile 0, or →
+    // pressed past the end) lands on a tile whose cover is already
+    // decoded instead of a blank frame. The middle range (between
+    // the head batch and the tail batch) still streams in lazily
+    // as focus crosses the loaded edge.
     constexpr int kInitialBatch = 10;
     const int n = (int)carousel->getChildren().size();
     for (int i = 0; i < std::min(n, kInitialBatch); i++) {
@@ -763,6 +818,18 @@ void SystemActivity::populateCarousel() {
         }
     }
     m_loaded_until = std::min(n, kInitialBatch);
+    // Tail-batch only kicks in when the library has more than
+    // 2*kInitialBatch tiles; smaller libraries are already fully
+    // covered by the head batch.
+    if (n > 2 * kInitialBatch) {
+        const int tail_start = n - kInitialBatch;
+        for (int i = tail_start; i < n; i++) {
+            if (auto* t = dynamic_cast<GameTile*>(carousel->getChildren()[i])) {
+                t->load_cover();
+            }
+        }
+    }
+    m_populated = true;
 }
 
 void SystemActivity::onTileFocused(int idx) {
