@@ -462,8 +462,30 @@ void SystemActivity::onContentAvailable() {
     // Default focus on the first cover tile (matches Home's
     // first-system-tile default focus). Falls back to action row
     // when the system has no scanned games.
+    //
+    // Chain-back-from-core path: main.cpp's fast_returned branch
+    // called setPreselectGame() with the rom path the user just
+    // played. Resolve it to a tile index by walking the scanned
+    // game list (same order populateCarousel iterates) and focus
+    // that tile instead of the first one. Also seed m_last_focus_idx
+    // so a subsequent onResume rebuild returns to it.
     if (carousel && !carousel->getChildren().empty()) {
-        brls::Application::giveFocus(carousel->getChildren()[0]);
+        int target = 0;
+        if (!m_preselect_game.empty()) {
+            if (const auto* sys = library_state::find_system(m_folder)) {
+                int i = 0;
+                for (const auto& g : sys->games) {
+                    if (g.path == m_preselect_game) { target = i; break; }
+                    i++;
+                }
+            }
+        }
+        const auto& kids = carousel->getChildren();
+        if (target < 0 || target >= (int)kids.size()) target = 0;
+        m_last_focus_idx = target;
+        brls::Application::giveFocus(kids[target]);
+        foyer::log::write("[system] gave focus to tile %d (preselect=%s)\n",
+            target, m_preselect_game.c_str());
     } else if (actionRow && !actionRow->getChildren().empty()) {
         brls::Application::giveFocus(actionRow->getChildren()[0]);
     }

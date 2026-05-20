@@ -49,6 +49,17 @@ public:
     // game covers.
     void onTileFocused(int idx);
 
+    // Preselect a game tile so initial focus lands on it instead
+    // of the first carousel child. Used by main.cpp's fast_returned
+    // branch after a chain-launch back from a core: last_session.txt
+    // tells us which game the user just played, so B-back from the
+    // restored GameActivity should land on its tile. Empty string =
+    // no preselect (default behaviour: first tile or m_last_focus_idx
+    // on reentry). MUST be called before pushActivity so the hint
+    // lands in time for onContentAvailable.
+    void setPreselectGame(std::string game_path)
+    { m_preselect_game = std::move(game_path); }
+
 private:
     std::string m_folder;
     std::string m_display_name;
@@ -65,6 +76,11 @@ private:
     // onResume's rebuild can return focus to the same tile the
     // user was on before pushing GameActivity / rescraping.
     int m_last_focus_idx = 0;
+
+    // Set via setPreselectGame() before pushActivity on the
+    // chain-back-from-core path. Consumed once in onContentAvailable
+    // to seed m_last_focus_idx + giveFocus to the matching tile.
+    std::string m_preselect_game;
 
     void buildLogo();
     void buildActionRow();

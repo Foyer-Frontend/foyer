@@ -265,10 +265,18 @@ int main(int argc, char* argv[])
                     } else {
                         foyer::library::load_switch_titles();
                         foyer::browser::library_state::rescan();
-                        brls::Application::pushActivity(
-                            new ::foyer::browser::HomeActivity());
-                        brls::Application::pushActivity(
-                            new ::foyer::browser::SystemActivity(folder, folder));
+                        // Position-restore: seed each activity with
+                        // the tile the user was on before launching
+                        // the core. Home → System B-back lands on
+                        // the system tile (matches `folder`); System
+                        // → Game B-back lands on the game tile
+                        // (matches `path`).
+                        auto* home = new ::foyer::browser::HomeActivity();
+                        home->setPreselectSystem(folder);
+                        brls::Application::pushActivity(home);
+                        auto* sys = new ::foyer::browser::SystemActivity(folder, folder);
+                        sys->setPreselectGame(path);
+                        brls::Application::pushActivity(sys);
                         brls::Application::pushActivity(
                             new ::foyer::browser::GameActivity(folder, path));
                         fast_returned = true;

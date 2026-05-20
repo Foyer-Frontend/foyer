@@ -163,9 +163,31 @@ void HomeActivity::onContentAvailable() {
     // Activity::getDefaultFocus() walks descendants front-to-back and
     // the profile cluster comes first in the XML, so giveFocus is the
     // direct way to override.
+    //
+    // Chain-back-from-core path: main.cpp's fast_returned branch
+    // called setPreselectSystem() with the folder the user was last
+    // in. Walk library_state::systems() to find its index (matches
+    // populateCarousel's build order), then focus that tile so
+    // B-back from the restored SystemActivity drops the user on
+    // exactly where they were before launching the core.
     if (carousel && !carousel->getChildren().empty()) {
-        brls::Application::giveFocus(carousel->getChildren()[0]);
-        foyer::log::write("[home] gave focus to first tile\n");
+        std::size_t target = 0;
+        if (!m_preselect_folder.empty()) {
+            std::size_t i = 0;
+            for (const auto& sys : library_state::systems()) {
+                if (!sys.def) continue;
+                if (sys.def->folder_name == m_preselect_folder) {
+                    target = i;
+                    break;
+                }
+                i++;
+            }
+        }
+        const auto& kids = carousel->getChildren();
+        if (target >= kids.size()) target = 0;
+        brls::Application::giveFocus(kids[target]);
+        foyer::log::write("[home] gave focus to tile %zu (preselect=%s)\n",
+            target, m_preselect_folder.c_str());
     }
 
     // B on Home prompts for quit. brls::Application::setGlobalQuit

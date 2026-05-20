@@ -3,6 +3,7 @@
 #include <borealis.hpp>
 
 #include <cstdint>
+#include <string>
 
 namespace foyer::browser {
 
@@ -29,6 +30,17 @@ public:
     void onSystemFocused(std::string_view folder,
                          std::string_view display_name);
 
+    // Preselect a system tile so initial focus lands on it instead
+    // of the first carousel child. Used by main.cpp's fast_returned
+    // branch after a chain-launch back from a core — last_session.txt
+    // tells us which system the user was in, so B-back from the
+    // restored SystemActivity should land on its tile. Empty string
+    // = no preselect (default-focus first tile, original behaviour).
+    // MUST be called before the activity is pushed so the hint
+    // lands in time for onContentAvailable.
+    void setPreselectSystem(std::string folder)
+    { m_preselect_folder = std::move(folder); }
+
     BRLS_BIND(brls::Label, clock,        "foyer/clock");
     BRLS_BIND(brls::Box,   carousel,     "foyer/carousel");
     BRLS_BIND(brls::Box,   actionRow,    "foyer/action_row");
@@ -39,6 +51,7 @@ public:
 private:
     brls::RepeatingTask* clockTask = nullptr;
     std::uint32_t        m_library_gen = 0;
+    std::string          m_preselect_folder;
 
     void populateCarousel();
     void buildActionRow();
