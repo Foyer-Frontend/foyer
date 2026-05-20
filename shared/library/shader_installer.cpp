@@ -6,6 +6,7 @@
 #include <archive.h>
 #include <archive_entry.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <dirent.h>
@@ -213,6 +214,25 @@ ShaderManifest fetch_shader_manifest(const std::string& url) {
     }
     yyjson_doc_free(doc);
     return m;
+}
+
+std::vector<std::string> installed_shader_names() {
+    std::vector<std::string> out;
+    DIR* d = ::opendir(kShadersDir);
+    if (!d) return out;
+    while (auto* e = ::readdir(d)) {
+        if (e->d_name[0] == '.') continue;
+        // Each preset is a directory (preset.json + pass-*.glsl + …).
+        // Skip stray files at the root (sidecars etc).
+        struct stat st{};
+        const std::string full = std::string{kShadersDir} + "/" + e->d_name;
+        if (::stat(full.c_str(), &st) != 0) continue;
+        if (!S_ISDIR(st.st_mode)) continue;
+        out.emplace_back(e->d_name);
+    }
+    ::closedir(d);
+    std::sort(out.begin(), out.end());
+    return out;
 }
 
 std::string installed_shader_version(std::string_view preset_name) {

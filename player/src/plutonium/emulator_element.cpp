@@ -8,6 +8,7 @@
 #include "libretro/shader.hpp"
 #include "libretro/video_sdl.hpp"
 #include "library/config.hpp"
+#include "library/per_game.hpp"
 #include "net/http.hpp"
 #include "platform/log.hpp"
 #include "plutonium/session_tracker.hpp"
@@ -131,9 +132,22 @@ bool EmulatorElement::BootGame(const std::string& rom_path,
             (unsigned)fe.sample_rate());
     }
 
-    // Apply the persisted shader preset from config so a choice
-    // made under brls/ImGui survives the shell switch.
-    const auto& s = foyer::library::config().shader_name;
+    // Resolve the shader preset to apply, in priority order:
+    //   1. per-game override (per_game_shader)
+    //   2. per-system default (config().default_shader_for)
+    //   3. general default (config().shader_name)
+    // Any empty/none falls through to the next layer.
+    std::string s = foyer::library::per_game_shader(m_original_rom_path);
+    if (s.empty()) {
+        if (const char* sys_default =
+                foyer::library::config().default_shader_for(m_system_folder);
+            sys_default && *sys_default) {
+            s = sys_default;
+        }
+    }
+    if (s.empty()) {
+        s = foyer::library::config().shader_name;
+    }
     if (!s.empty() && s != "none") {
         foyer::libretro::shader_pipeline().set_preset(s);
         foyer::log::write("[player-plutonium] queued shader preset=%s\n",

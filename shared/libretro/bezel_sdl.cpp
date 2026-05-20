@@ -57,6 +57,19 @@ std::string resolve_path() {
             g_folder.c_str(), g_stem.c_str());
         if (exists(buf)) return std::string{buf};
     }
+    // Per-system default-bezel override from config — lets the user
+    // pick any installed bezel PNG for this system from
+    // PerSystemActivity, decoupling the asset filename from the
+    // system folder key the bezel pack was installed under.
+    if (!g_folder.empty()) {
+        if (const char* name =
+                foyer::library::config().default_bezel_for(g_folder);
+            name && *name) {
+            std::snprintf(buf, sizeof(buf),
+                "/foyer/content/bezels/%s.png", name);
+            if (exists(buf)) return std::string{buf};
+        }
+    }
     if (!g_folder.empty()) {
         std::snprintf(buf, sizeof(buf),
             "/foyer/content/bezels/%s.png", g_folder.c_str());

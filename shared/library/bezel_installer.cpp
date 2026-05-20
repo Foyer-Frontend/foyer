@@ -5,8 +5,10 @@
 #include <archive.h>
 #include <archive_entry.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <dirent.h>
 #include <fstream>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -169,6 +171,26 @@ BezelManifest fetch_bezel_manifest(const std::string& url) {
     }
     yyjson_doc_free(doc);
     return m;
+}
+
+std::vector<std::string> installed_bezel_names() {
+    std::vector<std::string> out;
+    DIR* d = ::opendir(kBezelsDir);
+    if (!d) return out;
+    while (auto* e = ::readdir(d)) {
+        if (e->d_name[0] == '.') continue;  // skip ., .., hidden + sidecars
+        const std::string n = e->d_name;
+        // Only .png entries at the bezels/ root — these match what
+        // install_bezels lays down. Sub-directories (per-game custom
+        // bezels users dropped at /foyer/content/bezels/<sys>/) are
+        // skipped because they don't act as system-wide defaults.
+        if (n.size() <= 4) continue;
+        if (n.compare(n.size() - 4, 4, ".png") != 0) continue;
+        out.emplace_back(n.substr(0, n.size() - 4));
+    }
+    ::closedir(d);
+    std::sort(out.begin(), out.end());
+    return out;
 }
 
 std::string installed_bezel_version(std::string_view pack_name) {

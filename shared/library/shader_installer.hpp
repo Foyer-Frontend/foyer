@@ -69,6 +69,11 @@ ShaderInstallTotals install_shaders(
     bool force = false,
     foyer::net::CancelHook cancel = {});
 
+// Enumerate the shader preset directories currently sitting at
+// /foyer/content/shaders/. Returns the directory basenames, sorted
+// alphabetically. Used by the per-system "Default shader" selector.
+std::vector<std::string> installed_shader_names();
+
 // Read the version sidecar foyer wrote at install time. Empty string
 // = preset never installed via this code path (or sidecar deleted).
 std::string installed_shader_version(std::string_view preset_name);

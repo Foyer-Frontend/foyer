@@ -196,6 +196,14 @@ struct Config {
     struct PerSystemCore { std::string folder; std::string core; };
     std::vector<PerSystemCore> default_core_per_system;
 
+    // Per-system bezel + shader overrides. Same shape, value is the
+    // basename of the installed asset (matches install_bezels /
+    // install_shaders sidecar layout). Empty string in the lookup =
+    // "no per-system default for this system, fall back to general".
+    struct PerSystemAsset { std::string folder; std::string name; };
+    std::vector<PerSystemAsset> default_bezel_per_system;
+    std::vector<PerSystemAsset> default_shader_per_system;
+
     // External standalone-emulator launchers. Keyed by system folder
     // name; value is an SD path to the standalone nro that ships its
     // own UI (no libretro wrapper). When set AND the nro exists, foyer
@@ -218,6 +226,14 @@ struct Config {
     // Returns the user-set default core name for a system folder, or
     // nullptr if none is configured.
     const char* default_core_for(std::string_view folder) const;
+
+    // Same shape for the per-system bezel + shader overrides.
+    // Returns nullptr (no override) so callers can chain
+    //   per_game_<x>(rom) > default_<x>_for(folder) > general
+    // without ambiguity between "configured as empty string" and
+    // "not configured at all".
+    const char* default_bezel_for(std::string_view folder) const;
+    const char* default_shader_for(std::string_view folder) const;
 
     // Returns the configured external standalone path for a system
     // folder, or "" if none is set. Caller is expected to stat() the
@@ -256,6 +272,13 @@ void          set_system_sort_mode(Config::SystemSortMode mode);
 void          set_system_custom_order(std::vector<std::string> order);
 void          set_shader_name(std::string_view name);
 void          set_runahead_frames(int frames);
+
+// Per-system bezel + shader overrides. Empty value removes the
+// entry (caller wants to revert to general default).
+void          set_default_bezel_for(std::string_view folder,
+                                    std::string_view bezel_name);
+void          set_default_shader_for(std::string_view folder,
+                                     std::string_view shader_name);
 void          set_bool(std::string_view key, bool value);  // accepts the field names below
 
 } // namespace foyer::library

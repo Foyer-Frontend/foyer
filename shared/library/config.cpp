@@ -161,6 +161,24 @@ void write_locked() {
     }
     out << (g_config.default_core_per_system.empty() ? "},\n" : "\n    },\n");
 
+    out << "    \"default_bezel_per_system\": {";
+    first = true;
+    for (const auto& [folder, name] : g_config.default_bezel_per_system) {
+        if (!first) out << ",";
+        first = false;
+        out << "\n        \"" << folder << "\": \"" << name << "\"";
+    }
+    out << (g_config.default_bezel_per_system.empty() ? "},\n" : "\n    },\n");
+
+    out << "    \"default_shader_per_system\": {";
+    first = true;
+    for (const auto& [folder, name] : g_config.default_shader_per_system) {
+        if (!first) out << ",";
+        first = false;
+        out << "\n        \"" << folder << "\": \"" << name << "\"";
+    }
+    out << (g_config.default_shader_per_system.empty() ? "},\n" : "\n    },\n");
+
     out << "    \"external_cores\": {";
     first = true;
     for (const auto& [folder, nro] : g_config.external_cores) {
@@ -331,6 +349,26 @@ void load_locked() {
         yyjson_obj_foreach(obj, i, max, k, v) {
             if (yyjson_is_str(k) && yyjson_is_str(v)) {
                 g_config.default_core_per_system.push_back(
+                    { yyjson_get_str(k), yyjson_get_str(v) });
+            }
+        }
+    }
+    if (auto* obj = yyjson_obj_get(root, "default_bezel_per_system");
+        obj && yyjson_is_obj(obj)) {
+        std::size_t i, max; yyjson_val *k, *v;
+        yyjson_obj_foreach(obj, i, max, k, v) {
+            if (yyjson_is_str(k) && yyjson_is_str(v)) {
+                g_config.default_bezel_per_system.push_back(
+                    { yyjson_get_str(k), yyjson_get_str(v) });
+            }
+        }
+    }
+    if (auto* obj = yyjson_obj_get(root, "default_shader_per_system");
+        obj && yyjson_is_obj(obj)) {
+        std::size_t i, max; yyjson_val *k, *v;
+        yyjson_obj_foreach(obj, i, max, k, v) {
+            if (yyjson_is_str(k) && yyjson_is_str(v)) {
+                g_config.default_shader_per_system.push_back(
                     { yyjson_get_str(k), yyjson_get_str(v) });
             }
         }
@@ -520,6 +558,55 @@ const char* Config::default_core_for(std::string_view folder) const {
         if (e.folder == folder) return e.core.c_str();
     }
     return nullptr;
+}
+
+const char* Config::default_bezel_for(std::string_view folder) const {
+    for (const auto& e : default_bezel_per_system) {
+        if (e.folder == folder) return e.name.c_str();
+    }
+    return nullptr;
+}
+
+const char* Config::default_shader_for(std::string_view folder) const {
+    for (const auto& e : default_shader_per_system) {
+        if (e.folder == folder) return e.name.c_str();
+    }
+    return nullptr;
+}
+
+namespace {
+// Shared mutator: linear-find by folder, replace or remove based on
+// empty-name. Mirrors set_default_core_for's semantics.
+void set_per_system_asset(std::vector<Config::PerSystemAsset>& list,
+                          std::string_view folder,
+                          std::string_view name) {
+    for (auto& e : list) {
+        if (e.folder == folder) {
+            if (name.empty()) {
+                e = list.back();
+                list.pop_back();
+            } else {
+                e.name = std::string{name};
+            }
+            return;
+        }
+    }
+    if (!name.empty()) {
+        list.push_back({ std::string{folder}, std::string{name} });
+    }
+}
+}  // namespace
+
+void set_default_bezel_for(std::string_view folder, std::string_view bezel_name) {
+    std::scoped_lock lk{g_mutex};
+    set_per_system_asset(g_config.default_bezel_per_system, folder, bezel_name);
+    write_locked();
+}
+
+void set_default_shader_for(std::string_view folder, std::string_view shader_name) {
+    std::scoped_lock lk{g_mutex};
+    set_per_system_asset(g_config.default_shader_per_system, folder, shader_name);
+    write_locked();
 }
 
 std::string Config::external_core_for(std::string_view folder) const {

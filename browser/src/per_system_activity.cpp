@@ -1,7 +1,9 @@
 #include "activity/per_system_activity.hpp"
 
 #include "library_state.hpp"
+#include "library/bezel_installer.hpp"
 #include "library/config.hpp"
+#include "library/shader_installer.hpp"
 #include "library/system_db.hpp"
 
 #include <borealis/views/applet_frame.hpp>
@@ -55,6 +57,73 @@ brls::View* PerSystemActivity::createContentView() {
                        if (selected < 0 || selected >= (int)codes.size()) return;
                        ::foyer::library::set_default_core_for(
                            folder, codes[selected]);
+                   });
+        host->addView(cell);
+    }
+
+    // Default bezel selector — lists "(none)" + every PNG currently
+    // installed at /foyer/content/bezels/ so the user can pick any
+    // bezel (regardless of which folder-key install_bezels wrote it
+    // under) as this system's default. Resolution at launch is:
+    //   per-game custom > per-system config > per-system file fallback
+    {
+        auto names = ::foyer::library::installed_bezel_names();
+        std::vector<std::string> labels;
+        labels.reserve(names.size() + 1);
+        labels.emplace_back("(none)");
+        for (const auto& n : names) labels.emplace_back(n);
+
+        const char* current =
+            ::foyer::library::config().default_bezel_for(m_folder);
+        int initial = 0;
+        if (current && *current) {
+            for (std::size_t i = 0; i < names.size(); i++) {
+                if (names[i] == current) { initial = (int)(i + 1); break; }
+            }
+        }
+        const std::string folder = m_folder;
+        auto* cell = new brls::SelectorCell();
+        cell->init("Default bezel", labels, initial,
+                   [](int) {},
+                   [folder, names](int selected) {
+                       if (selected <= 0 || selected > (int)names.size()) {
+                           ::foyer::library::set_default_bezel_for(folder, {});
+                       } else {
+                           ::foyer::library::set_default_bezel_for(
+                               folder, names[selected - 1]);
+                       }
+                   });
+        host->addView(cell);
+    }
+
+    // Default shader selector — same shape, lists "(none)" + every
+    // shader preset directory at /foyer/content/shaders/.
+    {
+        auto names = ::foyer::library::installed_shader_names();
+        std::vector<std::string> labels;
+        labels.reserve(names.size() + 1);
+        labels.emplace_back("(none)");
+        for (const auto& n : names) labels.emplace_back(n);
+
+        const char* current =
+            ::foyer::library::config().default_shader_for(m_folder);
+        int initial = 0;
+        if (current && *current) {
+            for (std::size_t i = 0; i < names.size(); i++) {
+                if (names[i] == current) { initial = (int)(i + 1); break; }
+            }
+        }
+        const std::string folder = m_folder;
+        auto* cell = new brls::SelectorCell();
+        cell->init("Default shader", labels, initial,
+                   [](int) {},
+                   [folder, names](int selected) {
+                       if (selected <= 0 || selected > (int)names.size()) {
+                           ::foyer::library::set_default_shader_for(folder, {});
+                       } else {
+                           ::foyer::library::set_default_shader_for(
+                               folder, names[selected - 1]);
+                       }
                    });
         host->addView(cell);
     }

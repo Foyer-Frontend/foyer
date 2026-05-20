@@ -72,4 +72,11 @@ BezelInstallTotals install_bezels(
 
 std::string installed_bezel_version(std::string_view pack_name);
 
+// Enumerate the bezel PNGs currently sitting at /foyer/content/bezels/.
+// Returns the basename (without the .png extension), sorted alphabetically.
+// Used by the per-system "Default bezel" selector so the user can pick
+// any installed bezel for any system regardless of which folder key it
+// was installed under.
+std::vector<std::string> installed_bezel_names();
+
 } // namespace foyer::library
