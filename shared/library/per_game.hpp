@@ -71,6 +71,15 @@ void set_per_game_runahead(std::string_view rom_path, int frames);
 int  per_game_show_bezel(std::string_view rom_path);
 void set_per_game_show_bezel(std::string_view rom_path, int tri_state);
 
+// Per-game aspect-mode override. -1 means "no per-game pick yet"
+// (defaults to AspectMode::DisplayCore at boot). 0..6 maps to the
+// AspectMode enum values in libretro/aspect.hpp (kept as a plain
+// int here to avoid the libretro include in shared/library/).
+// Pause-menu Display→Aspect writes this so the choice survives a
+// clean exit and re-launch instead of resetting per session.
+int  per_game_aspect(std::string_view rom_path);
+void set_per_game_aspect(std::string_view rom_path, int aspect_mode);
+
 // Resolve which core to use for a rom: per-game override > general
 // default_core_per_system > system_db default. Always returns a non-null
 // CoreDef when the system has at least one configured core; nullptr only

@@ -127,6 +127,20 @@ bool EmulatorElement::BootGame(const std::string& rom_path,
     foyer::libretro::bezel_sdl_set_rom_id(m_system_folder, stem);
     foyer::libretro::bezel_sdl_set_rom_path(m_original_rom_path);
 
+    // Per-game aspect mode: pause-menu Display→Aspect writes
+    // set_per_game_aspect(rom, mode); apply that on boot so the
+    // pick survives a clean exit / re-launch. -1 = no per-game
+    // pick → fall through to AspectMode::DisplayCore (the default
+    // set in VideoSinkSdl's m_aspect_mode).
+    const int saved_aspect =
+        foyer::library::per_game_aspect(m_original_rom_path);
+    if (saved_aspect >= 0) {
+        foyer::libretro::VideoSinkSdl::instance().set_aspect(
+            static_cast<foyer::libretro::AspectMode>(saved_aspect));
+        foyer::log::write("[player-plutonium] queued aspect=%d\n",
+            saved_aspect);
+    }
+
     if (!foyer::libretro::AudioSinkSdl::instance().init((unsigned)fe.sample_rate())) {
         foyer::log::write(
             "[player-plutonium] audio init failed @ %u Hz — silent run\n",

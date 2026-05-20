@@ -358,6 +358,10 @@ void PauseMenu::PopulateDisplayAspect(pu::ui::elm::Menu::Ref& menu) {
         item->AddOnKey([this, my_row, m]() {
             last_selected_idx = my_row;
             foyer::libretro::VideoSinkSdl::instance().set_aspect(m);
+            // Persist per-game so the pick survives quit/re-launch.
+            // Sentinel match with libretro::AspectMode enum order.
+            foyer::library::set_per_game_aspect(
+                rom_path, static_cast<int>(m));
             ChangeMode(PauseMode::Display);
         });
         menu->AddItem(item);
@@ -626,6 +630,8 @@ pu::ui::elm::Menu::Ref PauseMenu::BuildDisplay() {
         item->SetColor(theme_item_text());
         item->AddOnKey([this, mode_to_set]() {
             foyer::libretro::VideoSinkSdl::instance().set_aspect(mode_to_set);
+            foyer::library::set_per_game_aspect(
+                rom_path, static_cast<int>(mode_to_set));
             ChangeMode(PauseMode::Pause);
         });
         menu->AddItem(item);

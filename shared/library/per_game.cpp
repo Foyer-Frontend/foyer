@@ -32,6 +32,11 @@ struct Entry {
     // Toggled by the pause menu's "Show bezels" item so changes
     // don't bleed across games on other cores.
     int           show_bezel  = -1;
+    // -1 = no per-game pick (defaults to AspectMode::DisplayCore
+    // at boot). 0..6 = the AspectMode enum values from
+    // libretro/aspect.hpp. Persisted from the pause menu's
+    // Display→Aspect picker.
+    int           aspect      = -1;
 };
 
 std::mutex                                 g_mutex;
@@ -41,7 +46,7 @@ std::atomic<bool>                          g_loaded{false};
 bool entry_is_default(const Entry& e) {
     return e.core.empty() && e.shader.empty() && !e.favorite
         && e.last_played == 0 && e.playtime == 0 && e.runahead < 0
-        && e.show_bezel < 0;
+        && e.show_bezel < 0 && e.aspect < 0;
 }
 
 std::string strip_comments(const std::string& in) {
@@ -118,6 +123,13 @@ void load_locked() {
                 if (n > 1)  n = 1;
                 e.show_bezel = n;
             }
+            if (auto* x = yyjson_obj_get(v, "aspect");
+                x && yyjson_is_int(x)) {
+                int n = (int)yyjson_get_int(x);
+                if (n < -1) n = -1;
+                if (n > 6)  n = 6;
+                e.aspect = n;
+            }
             if (!entry_is_default(e)) {
                 g_entries.emplace(yyjson_get_str(k), std::move(e));
             }
@@ -173,6 +185,11 @@ void save_locked() {
         if (e.show_bezel >= 0) {
             if (need_comma) out << ",";
             out << " \"show_bezel\": " << e.show_bezel;
+            need_comma = true;
+        }
+        if (e.aspect >= 0) {
+            if (need_comma) out << ",";
+            out << " \"aspect\": " << e.aspect;
             need_comma = true;
         }
         out << " }";
@@ -299,6 +316,19 @@ void set_per_game_show_bezel(std::string_view rom_path, int tri_state) {
     if (tri_state < -1) tri_state = -1;
     if (tri_state > 1)  tri_state = 1;
     mutate(rom_path, [&](Entry& e) { e.show_bezel = tri_state; });
+}
+
+int per_game_aspect(std::string_view rom_path) {
+    ensure_loaded();
+    std::scoped_lock lk{g_mutex};
+    auto* e = find_entry_locked(rom_path);
+    return e ? e->aspect : -1;
+}
+
+void set_per_game_aspect(std::string_view rom_path, int aspect_mode) {
+    if (aspect_mode < -1) aspect_mode = -1;
+    if (aspect_mode > 6)  aspect_mode = 6;
+    mutate(rom_path, [&](Entry& e) { e.aspect = aspect_mode; });
 }
 
 void apply_per_game_state(Game& g) {
