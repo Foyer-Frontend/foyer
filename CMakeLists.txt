@@ -166,6 +166,17 @@ if (BUILD_BROWSER)
             -DINPUT_CPP=${borealis_SOURCE_DIR}/library/lib/platforms/switch/switch_input.cpp
             -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patch_brls_rumble_clear.cmake)
 
+    # brls::Image has no setTintColor API — the icon PNGs on Home's
+    # action row can't follow the theme. Patch adds setTintColor()
+    # backed by nanovg's image-pattern innerColor multiplier so callers
+    # can recolour icons at draw time. Idempotent + sentinel
+    # ("FOYER_IMAGE_TINT").
+    execute_process(
+        COMMAND ${CMAKE_COMMAND}
+            -DIMAGE_HPP=${borealis_SOURCE_DIR}/library/include/borealis/views/image.hpp
+            -DIMAGE_CPP=${borealis_SOURCE_DIR}/library/lib/views/image.cpp
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patch_brls_image_tint.cmake)
+
     # SwitchAudioPlayer patch DISABLED again. Sharing audren between
     # brls's pulsar (browser UI sounds) and the libretro AudioSink
     # is non-trivial — they collide on voice 0 + the memory pool,

@@ -17,7 +17,13 @@ ActionButton::ActionButton(const std::string& icon_res,
     this->setAlignItems(brls::AlignItems::CENTER);
     this->setMargins(0.0f, 12.0f, 0.0f, 12.0f);
 
-    m_idle_bg = nvgRGB(45, 55, 75);
+    // Theme-aware circle bg + icon tint so the action row inverts
+    // cleanly between HOS Light and Dark. Idle bg follows brls's
+    // background colour (light in light, dark in dark); icon follows
+    // brls/text (dark in light, light in dark) via the foyer-patched
+    // Image::setTintColor — see cmake/patch_brls_image_tint.cmake.
+    // The cached m_idle_bg is set from the live theme inside
+    // apply_chip_theme() below.
 
     // Inner circle is the actual focusable + clickable surface.
     m_circle = new brls::Box();
@@ -26,7 +32,6 @@ ActionButton::ActionButton(const std::string& icon_res,
     m_circle->setFocusable(true);
     m_circle->setHighlightCornerRadius(kBtnSize * 0.5f);
     m_circle->setCornerRadius(kBtnSize * 0.5f);
-    m_circle->setBackgroundColor(m_idle_bg);
     // brls's default focus highlight fills the focused view with
     // theme["brls/highlight/background"] before drawing the border
     // stroke. That's what was tinting the button on focus despite
@@ -77,8 +82,28 @@ ActionButton::ActionButton(const std::string& icon_res,
 void ActionButton::apply_chip_theme() {
     if (!m_label_chip || !m_label) return;
     auto th = brls::Application::getTheme();
-    m_label_chip->setBackgroundColor(th.getColor("brls/background"));
-    m_label->setTextColor(th.getColor("brls/text"));
+    const NVGcolor bg   = th.getColor("brls/background");
+    const NVGcolor text = th.getColor("brls/text");
+    m_label_chip->setBackgroundColor(bg);
+    m_label->setTextColor(text);
+
+    // Apply the same theming to the circle bg + icon tint. brls's
+    // background is light in HOS Light and dark in HOS Dark; the
+    // contrasting text colour is exactly what we want for the icon.
+    // Cached as m_idle_bg so the focus-gain/lost handlers can flip
+    // back to this state on demand.
+    if (m_circle) {
+        m_idle_bg = bg;
+        m_circle->setBackgroundColor(m_idle_bg);
+        // brls's default focus highlight fills the focused view with
+        // theme["brls/highlight/background"] before drawing the
+        // border stroke. Hide that so the focus state is the
+        // animated stroke alone (preserves the themed bg).
+        m_circle->setHideHighlightBackground(true);
+    }
+    if (m_icon) {
+        m_icon->setTintColor(text);
+    }
 }
 
 void ActionButton::onChildFocusGained(brls::View* directChild,
