@@ -1,5 +1,6 @@
 #include "activity/per_game_activity.hpp"
 
+#include "library/config.hpp"
 #include "library/per_game.hpp"
 #include "library/system_db.hpp"
 
@@ -32,10 +33,16 @@ brls::View* PerGameActivity::createContentView() {
     const std::string rom = m_rom_path;
     const std::string sys = m_system_folder;
 
-    // Core override — None + every core the SystemDef recognises.
+    // Core picker — list every core the SystemDef recognises and tag
+    // the row matching the per-system / general default with
+    // "(default)". The cell shows the actual resolved core (not
+    // "System default") so the user always sees what's in effect.
+    // Picking any row writes that core as the per-game override; no
+    // separate "follow default" sentinel — picking the (default)
+    // row is the explicit way to mirror the default at this moment.
     {
-        std::vector<std::string> labels{"System default"};
-        std::vector<std::string> codes{""};
+        std::vector<std::string> labels;
+        std::vector<std::string> codes;
         if (const auto* def =
                 ::foyer::library::find_system_by_folder(m_system_folder)) {
             for (const auto& c : def->cores) {
@@ -43,10 +50,35 @@ brls::View* PerGameActivity::createContentView() {
                 codes.emplace_back(c.name);
             }
         }
-        const auto current = ::foyer::library::per_game_core_for(rom);
+        const auto& cfg = ::foyer::library::config();
+        std::string system_default_code;
+        if (const char* sd = cfg.default_core_for(m_system_folder);
+            sd && *sd) {
+            system_default_code = sd;
+        } else if (const auto* def =
+                ::foyer::library::find_system_by_folder(m_system_folder);
+            def && !def->cores.empty()) {
+            // SystemDef's first core is the implicit default when no
+            // per-system override exists (matches resolve_core).
+            system_default_code = def->cores.front().name;
+        }
+        // Tag the default row.
+        for (std::size_t i = 0; i < codes.size(); i++) {
+            if (codes[i] == system_default_code) {
+                labels[i] += " (default)";
+                break;
+            }
+        }
+        // Resolved current = per-game override if any, else the
+        // system default. The cell will display whichever row is at
+        // `initial` — so finding the index that matches the resolved
+        // value is enough to make the cell show the right text.
+        const auto per_game = ::foyer::library::per_game_core_for(rom);
+        const std::string resolved =
+            !per_game.empty() ? per_game : system_default_code;
         int initial = 0;
         for (std::size_t i = 0; i < codes.size(); i++) {
-            if (codes[i] == current) { initial = (int)i; break; }
+            if (codes[i] == resolved) { initial = (int)i; break; }
         }
         auto* cell = new brls::SelectorCell();
         cell->init("Core", labels, initial,
@@ -58,26 +90,55 @@ brls::View* PerGameActivity::createContentView() {
         host->addView(cell);
     }
 
-    // Shader override.
+    // Shader picker — same pattern. Lists "None" + every preset
+    // directory at /foyer/content/shaders/. The row matching the
+    // per-system → general resolution chain gets "(default)" — if
+    // general default is "none" the None row gets the tag, matching
+    // the user-visible spec ("None (default)").
     {
-        std::vector<std::string> labels{"System default", "None"};
-        std::vector<std::string> codes{"", "none"};
-        // Scan /foyer/content/shaders/ for *.json + *.glsl presets.
+        std::vector<std::string> labels{"None"};
+        std::vector<std::string> codes{"none"};
         const std::filesystem::path dir{"/foyer/content/shaders"};
         std::error_code ec;
         for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
-            if (!entry.is_regular_file()) continue;
-            const auto& p = entry.path();
-            const auto ext = p.extension().string();
-            if (ext != ".json" && ext != ".glsl") continue;
-            const auto stem = p.stem().string();
-            labels.emplace_back(stem);
-            codes.emplace_back(stem);
+            // Match both the legacy file-based presets and the
+            // dir-based ones install_shaders lays down.
+            if (entry.is_regular_file()) {
+                const auto& p = entry.path();
+                const auto ext = p.extension().string();
+                if (ext != ".json" && ext != ".glsl") continue;
+                const auto stem = p.stem().string();
+                labels.emplace_back(stem);
+                codes.emplace_back(stem);
+            } else if (entry.is_directory()) {
+                labels.emplace_back(entry.path().filename().string());
+                codes.emplace_back(entry.path().filename().string());
+            }
         }
-        const auto current = ::foyer::library::per_game_shader(rom);
+
+        const auto& cfg = ::foyer::library::config();
+        std::string system_default_code;
+        if (const char* sd = cfg.default_shader_for(m_system_folder);
+            sd && *sd) {
+            system_default_code = sd;
+        } else if (!cfg.shader_name.empty()) {
+            system_default_code = cfg.shader_name;
+        } else {
+            system_default_code = "none";
+        }
+        for (std::size_t i = 0; i < codes.size(); i++) {
+            if (codes[i] == system_default_code) {
+                labels[i] += " (default)";
+                break;
+            }
+        }
+
+        const auto per_game = ::foyer::library::per_game_shader(rom);
+        const std::string resolved =
+            !per_game.empty() ? per_game : system_default_code;
         int initial = 0;
         for (std::size_t i = 0; i < codes.size(); i++) {
-            if (codes[i] == current) { initial = (int)i; break; }
+            if (codes[i] == resolved) { initial = (int)i; break; }
         }
         auto* cell = new brls::SelectorCell();
         cell->init("Shader", labels, initial,
