@@ -46,6 +46,15 @@ struct CheatInstallProgress {
     int                  total = 0;
     std::string          name;
     CheatInstallAction   action = CheatInstallAction::Skipped;
+
+    // Sub-phase counters fired during the extract step of one pack
+    // so the worker status surfaces motion instead of stalling on
+    // "Starting cheat install…" while libarchive walks the zip.
+    // phase is empty for the before/after callbacks; non-empty for
+    // mid-extract updates ("extracting").
+    std::string          phase;
+    int                  phase_index = 0;
+    int                  phase_total = 0;
 };
 
 struct CheatInstallTotals {

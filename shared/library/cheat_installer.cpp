@@ -59,7 +59,33 @@ void rm_rf(const std::string& path) {
     }
 }
 
-bool extract_zip(const std::string& zip_path, const std::string& out_root) {
+// Single header-only pass to count entries before extraction. libarchive's
+// streaming API forces sequential, so we re-open the file rather than
+// trying to rewind. The zip is on local disk (just freshly downloaded)
+// so the second open hits OS cache — overhead is negligible vs. the
+// extract itself, and the count gives the worker a real denominator
+// for the progress bar.
+int count_zip_entries(const std::string& zip_path) {
+    auto* a = archive_read_new();
+    archive_read_support_format_zip(a);
+    archive_read_support_filter_all(a);
+    if (archive_read_open_filename(a, zip_path.c_str(), 64 * 1024) != ARCHIVE_OK) {
+        archive_read_free(a);
+        return 0;
+    }
+    int n = 0;
+    archive_entry* e;
+    while (archive_read_next_header(a, &e) == ARCHIVE_OK) {
+        ++n;
+        archive_read_data_skip(a);
+    }
+    archive_read_close(a);
+    archive_read_free(a);
+    return n;
+}
+
+bool extract_zip(const std::string& zip_path, const std::string& out_root,
+                 std::function<void(int, int, const char*)> on_entry = {}) {
     auto* a = archive_read_new();
     archive_read_support_format_zip(a);
     archive_read_support_filter_all(a);
@@ -70,12 +96,18 @@ bool extract_zip(const std::string& zip_path, const std::string& out_root) {
         return false;
     }
 
+    const int total = on_entry ? count_zip_entries(zip_path) : 0;
+
     bool ok = true;
     archive_entry* entry;
+    int idx = 0;
     while (archive_read_next_header(a, &entry) == ARCHIVE_OK) {
         const char* name = archive_entry_pathname(entry);
         if (!name || !*name) { archive_read_data_skip(a); continue; }
         if (std::strstr(name, "..")) { archive_read_data_skip(a); continue; }
+
+        ++idx;
+        if (on_entry) on_entry(idx, total, name);
 
         std::string out_path = out_root + "/" + name;
         if (S_ISDIR(archive_entry_mode(entry)) ||
@@ -240,7 +272,21 @@ CheatInstallTotals install_cheats(
         if (was_present) rm_rf(dir);
         mkdir_p(dir);
 
-        const bool xt_ok = extract_zip(zip_path, kCheatsDir);
+        // Mid-extract progress: every Nth file, re-emit the
+        // CheatInstallProgress with phase populated so the worker
+        // status shows motion instead of stalling at "Starting cheat
+        // install…". One toast per 8 files keeps notify spam down on
+        // large packs.
+        auto extract_progress = [&](int e_idx, int e_total, const char* /*name*/) {
+            if (!progress) return;
+            if (e_idx != 1 && e_idx != e_total && (e_idx & 7) != 0) return;
+            CheatInstallProgress mid = prog;
+            mid.phase       = "extracting";
+            mid.phase_index = e_idx;
+            mid.phase_total = e_total;
+            progress(mid);
+        };
+        const bool xt_ok = extract_zip(zip_path, kCheatsDir, extract_progress);
         ::unlink(zip_path.c_str());
 
         if (!xt_ok) {

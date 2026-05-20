@@ -42,6 +42,13 @@ struct BezelInstallProgress {
     int                  total = 0;
     std::string          name;
     BezelInstallAction   action = BezelInstallAction::Skipped;
+
+    // Sub-phase counters fired during the extract step of one pack
+    // so the worker status surfaces motion instead of stalling on
+    // "Starting bezel install…" while libarchive walks the zip.
+    std::string          phase;
+    int                  phase_index = 0;
+    int                  phase_total = 0;
 };
 
 struct BezelInstallTotals {

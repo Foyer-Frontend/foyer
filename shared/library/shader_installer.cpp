@@ -75,7 +75,27 @@ void rm_rf(const std::string& path) {
     }
 }
 
-bool extract_zip(const std::string& zip_path, const std::string& out_dir) {
+int count_zip_entries(const std::string& zip_path) {
+    auto* a = archive_read_new();
+    archive_read_support_format_zip(a);
+    archive_read_support_filter_all(a);
+    if (archive_read_open_filename(a, zip_path.c_str(), 64 * 1024) != ARCHIVE_OK) {
+        archive_read_free(a);
+        return 0;
+    }
+    int n = 0;
+    archive_entry* e;
+    while (archive_read_next_header(a, &e) == ARCHIVE_OK) {
+        ++n;
+        archive_read_data_skip(a);
+    }
+    archive_read_close(a);
+    archive_read_free(a);
+    return n;
+}
+
+bool extract_zip(const std::string& zip_path, const std::string& out_dir,
+                 std::function<void(int, int, const char*)> on_entry = {}) {
     auto* a = archive_read_new();
     archive_read_support_format_zip(a);
     archive_read_support_filter_all(a);
@@ -86,14 +106,20 @@ bool extract_zip(const std::string& zip_path, const std::string& out_dir) {
         return false;
     }
 
+    const int total = on_entry ? count_zip_entries(zip_path) : 0;
+
     bool ok = true;
     archive_entry* entry;
+    int idx = 0;
     while (archive_read_next_header(a, &entry) == ARCHIVE_OK) {
         const char* name = archive_entry_pathname(entry);
         if (!name || !*name) { archive_read_data_skip(a); continue; }
         // Reject "../" traversal — paranoia even though our zips are
         // produced by our own CI.
         if (std::strstr(name, "..")) { archive_read_data_skip(a); continue; }
+
+        ++idx;
+        if (on_entry) on_entry(idx, total, name);
 
         std::string out_path = out_dir + "/" + name;
         if (S_ISDIR(archive_entry_mode(entry)) ||
@@ -256,7 +282,16 @@ ShaderInstallTotals install_shaders(
         if (was_present) rm_rf(dir);
         mkdir_p(dir);
 
-        const bool xt_ok = extract_zip(zip_path, dir);
+        auto extract_progress = [&](int e_idx, int e_total, const char* /*name*/) {
+            if (!progress) return;
+            if (e_idx != 1 && e_idx != e_total && (e_idx & 7) != 0) return;
+            ShaderInstallProgress mid = prog;
+            mid.phase       = "extracting";
+            mid.phase_index = e_idx;
+            mid.phase_total = e_total;
+            progress(mid);
+        };
+        const bool xt_ok = extract_zip(zip_path, dir, extract_progress);
         ::unlink(zip_path.c_str());
 
         if (!xt_ok) {

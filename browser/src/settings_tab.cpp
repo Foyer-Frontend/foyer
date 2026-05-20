@@ -875,10 +875,18 @@ void FoyerBezelsTab::populate_content() {
                     w.set_status("Starting bezel install…");
                     ::foyer::library::install_bezels(filt,
                         [&w](const ::foyer::library::BezelInstallProgress& p) {
-                            char buf[160];
-                            std::snprintf(buf, sizeof(buf),
-                                "[%d/%d] %s",
-                                p.index, p.total, p.name.c_str());
+                            char buf[200];
+                            if (!p.phase.empty()) {
+                                std::snprintf(buf, sizeof(buf),
+                                    "[%d/%d] %s — %s %d/%d",
+                                    p.index, p.total, p.name.c_str(),
+                                    p.phase.c_str(),
+                                    p.phase_index, p.phase_total);
+                            } else {
+                                std::snprintf(buf, sizeof(buf),
+                                    "[%d/%d] %s",
+                                    p.index, p.total, p.name.c_str());
+                            }
                             w.set_status(buf);
                         },
                         {}, false, [&w]{ return w.cancelled(); });
@@ -1012,10 +1020,18 @@ void FoyerShadersTab::populate_content() {
                     w.set_status("Starting shader install…");
                     ::foyer::library::install_shaders(filt,
                         [&w](const ::foyer::library::ShaderInstallProgress& p) {
-                            char buf[160];
-                            std::snprintf(buf, sizeof(buf),
-                                "[%d/%d] %s",
-                                p.index, p.total, p.name.c_str());
+                            char buf[200];
+                            if (!p.phase.empty()) {
+                                std::snprintf(buf, sizeof(buf),
+                                    "[%d/%d] %s — %s %d/%d",
+                                    p.index, p.total, p.name.c_str(),
+                                    p.phase.c_str(),
+                                    p.phase_index, p.phase_total);
+                            } else {
+                                std::snprintf(buf, sizeof(buf),
+                                    "[%d/%d] %s",
+                                    p.index, p.total, p.name.c_str());
+                            }
                             w.set_status(buf);
                         },
                         false, [&w]{ return w.cancelled(); });
@@ -1093,10 +1109,18 @@ void FoyerCheatsTab::populate_content() {
                     w.set_status("Starting cheat install…");
                     ::foyer::library::install_cheats(filt,
                         [&w](const ::foyer::library::CheatInstallProgress& p) {
-                            char buf[160];
-                            std::snprintf(buf, sizeof(buf),
-                                "[%d/%d] %s",
-                                p.index, p.total, p.name.c_str());
+                            char buf[200];
+                            if (!p.phase.empty()) {
+                                std::snprintf(buf, sizeof(buf),
+                                    "[%d/%d] %s — %s %d/%d",
+                                    p.index, p.total, p.name.c_str(),
+                                    p.phase.c_str(),
+                                    p.phase_index, p.phase_total);
+                            } else {
+                                std::snprintf(buf, sizeof(buf),
+                                    "[%d/%d] %s",
+                                    p.index, p.total, p.name.c_str());
+                            }
                             w.set_status(buf);
                         },
                         {}, false, [&w]{ return w.cancelled(); });
