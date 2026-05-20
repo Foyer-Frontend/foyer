@@ -1,5 +1,6 @@
 #include "plutonium/pause_menu.hpp"
 #include "library/config.hpp"
+#include "library/per_game.hpp"
 #include "libretro/bezel_sdl.hpp"
 #include "libretro/cheats.hpp"
 #include "libretro/cheevos.hpp"
@@ -245,7 +246,14 @@ void PauseMenu::PopulateShaders(pu::ui::elm::Menu::Ref& menu) {
         item->AddOnKey([this, my_row, name]() {
             last_selected_idx = my_row;
             foyer::libretro::shader_pipeline().set_preset(name);
-            foyer::library::set_shader_name(name);
+            // Persist as per-game override instead of writing the
+            // global Config::shader_name. The user reported that
+            // changing shader on gambatte would bleed into every
+            // game on every other core; per-game scoping keeps the
+            // change to THIS rom only. Resolution chain at next
+            // boot (emulator_element.cpp): per_game > per_system >
+            // general.
+            foyer::library::set_per_game_shader(rom_path, name);
             // Live preview against the frozen pause frame so the
             // user sees the new shader applied without resuming.
             foyer::libretro::VideoSinkSdl::instance().reprocess_shader();
@@ -564,7 +572,14 @@ pu::ui::elm::Menu::Ref PauseMenu::BuildShaders() {
         item->SetColor(theme_item_text());
         item->AddOnKey([this, name]() {
             foyer::libretro::shader_pipeline().set_preset(name);
-            foyer::library::set_shader_name(name);
+            // Persist as per-game override instead of writing the
+            // global Config::shader_name. The user reported that
+            // changing shader on gambatte would bleed into every
+            // game on every other core; per-game scoping keeps the
+            // change to THIS rom only. Resolution chain at next
+            // boot (emulator_element.cpp): per_game > per_system >
+            // general.
+            foyer::library::set_per_game_shader(rom_path, name);
             ChangeMode(PauseMode::Pause);
         });
         m->AddItem(item);

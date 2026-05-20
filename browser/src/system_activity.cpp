@@ -807,7 +807,18 @@ void SystemActivity::populateCarousel() {
     // decoded instead of a blank frame. The middle range (between
     // the head batch and the tail batch) still streams in lazily
     // as focus crosses the loaded edge.
-    constexpr int kInitialBatch = 10;
+    //
+    // Batch size tuned for entry-stall vs visual completeness.
+    // brls::Image::setImageFromFile decodes the JPEG synchronously
+    // on the UI thread; each cover is ~25-40 ms on Switch hardware.
+    // 4 tiles fit in the carousel viewport at standard 1280-wide
+    // resolution, so warming 4 head + 4 tail is enough to hide
+    // every visible tile and the wrap-around target. Larger
+    // up-front batches (10/10 from db5ddd0) added noticeable entry
+    // stall on small libraries with no perceptual win — the
+    // sliding-window preload in onTileFocused already covers the
+    // rest as the user moves focus.
+    constexpr int kInitialBatch = 4;
     const int n = (int)carousel->getChildren().size();
     for (int i = 0; i < std::min(n, kInitialBatch); i++) {
         if (auto* t = dynamic_cast<GameTile*>(carousel->getChildren()[i])) {
