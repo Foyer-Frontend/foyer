@@ -481,20 +481,17 @@ void SystemActivity::onContentAvailable() {
     // GameActivity. onResume runs them when the user actually
     // B-backs to this view. Cuts hundreds of ms (for libraries with
     // hundreds of games) off the chain-back blank-screen window.
-    if (m_defer_population) {
+    //
+    // IMPORTANT: only the populate runs late; the registerAction
+    // block at the bottom of this function runs unconditionally so
+    // L/R page-jump, B-back, Minus sort, etc. are bound regardless.
+    // Previously the early-return here silently broke L/R on
+    // chain-back (regression in db5ddd0).
+    if (!m_defer_population) {
+        populateCarousel();
+    } else {
         foyer::log::write("[system] %s deferred populate\n", m_folder.c_str());
-        // B button pops back to Home — register early so even the
-        // deferred-no-population state handles back nav.
-        this->getContentView()->registerAction(
-            "hints/back"_i18n, brls::BUTTON_B,
-            [](brls::View*) {
-                brls::Application::popActivity();
-                return true;
-            }, false, false, brls::SOUND_BACK);
-        return;
     }
-
-    populateCarousel();
 
     // Resume the status banner if install_queue is currently
     // running a scrape (the user popped back to Home + re-entered

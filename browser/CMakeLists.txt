@@ -43,6 +43,7 @@ add_executable(foyer
     src/per_game_activity.cpp
     src/per_system_activity.cpp
     src/download_queue_activity.cpp
+    src/downloads_activity.cpp
     src/log_viewer_activity.cpp
     src/mtp.cpp
 

@@ -152,54 +152,52 @@ void HomeActivity::onContentAvailable() {
         clockTask->run();
     }
 
-    // Deferred population: skip the heavy work when this activity
-    // was pushed as a fast-return understack (only visible after a
-    // B-back from Game). onResume picks it up later. Cuts ~half a
-    // second off the chain-back blank-screen window for a 20-system
-    // library by skipping ~20 splash JPEG decodes + ~6 ActionButton
-    // icon decodes + the libnx accountsService roster query.
-    if (m_defer_population) {
-        foyer::log::write("[home] deferred population — will run on first onResume\n");
-        return;
-    }
-    populateCarousel();
-    m_library_gen = library_state::generation();
-    foyer::log::write("[home] populateCarousel done\n");
-    buildActionRow();
-    foyer::log::write("[home] buildActionRow done\n");
-    buildProfiles();
-    foyer::log::write("[home] buildProfiles done\n");
-    m_populated = true;
-
-    // Default focus to the first system tile, not the profile avatar.
-    // Activity::getDefaultFocus() walks descendants front-to-back and
-    // the profile cluster comes first in the XML, so giveFocus is the
-    // direct way to override.
+    // Deferred population: skip the heavy populate/build/focus
+    // work when this activity was pushed as a fast-return
+    // understack (only visible after a B-back from Game). onResume
+    // picks it up later. Cuts ~half a second off the chain-back
+    // blank-screen window for a 20-system library by skipping ~20
+    // splash JPEG decodes + ~6 ActionButton icon decodes + the
+    // libnx accountsService roster query.
     //
-    // Chain-back-from-core path: main.cpp's fast_returned branch
-    // called setPreselectSystem() with the folder the user was last
-    // in. Walk library_state::systems() to find its index (matches
-    // populateCarousel's build order), then focus that tile so
-    // B-back from the restored SystemActivity drops the user on
-    // exactly where they were before launching the core.
-    if (carousel && !carousel->getChildren().empty()) {
-        std::size_t target = 0;
-        if (!m_preselect_folder.empty()) {
-            std::size_t i = 0;
-            for (const auto& sys : library_state::systems()) {
-                if (!sys.def) continue;
-                if (sys.def->folder_name == m_preselect_folder) {
-                    target = i;
-                    break;
+    // IMPORTANT: only the populate/build/focus work is deferred;
+    // the registerAction block below runs unconditionally so L/R
+    // page-jump, B-quit, Sort cycle and friends are bound from the
+    // moment the activity exists. Previously this whole function
+    // early-returned and L/R navigation silently broke on
+    // chain-back (regression in db5ddd0).
+    if (!m_defer_population) {
+        populateCarousel();
+        m_library_gen = library_state::generation();
+        foyer::log::write("[home] populateCarousel done\n");
+        buildActionRow();
+        foyer::log::write("[home] buildActionRow done\n");
+        buildProfiles();
+        foyer::log::write("[home] buildProfiles done\n");
+        m_populated = true;
+
+        // Default focus on the preselect tile (or first).
+        if (carousel && !carousel->getChildren().empty()) {
+            std::size_t target = 0;
+            if (!m_preselect_folder.empty()) {
+                std::size_t i = 0;
+                for (const auto& sys : library_state::systems()) {
+                    if (!sys.def) continue;
+                    if (sys.def->folder_name == m_preselect_folder) {
+                        target = i;
+                        break;
+                    }
+                    i++;
                 }
-                i++;
             }
+            const auto& kids = carousel->getChildren();
+            if (target >= kids.size()) target = 0;
+            brls::Application::giveFocus(kids[target]);
+            foyer::log::write("[home] gave focus to tile %zu (preselect=%s)\n",
+                target, m_preselect_folder.c_str());
         }
-        const auto& kids = carousel->getChildren();
-        if (target >= kids.size()) target = 0;
-        brls::Application::giveFocus(kids[target]);
-        foyer::log::write("[home] gave focus to tile %zu (preselect=%s)\n",
-            target, m_preselect_folder.c_str());
+    } else {
+        foyer::log::write("[home] deferred population — will run on first onResume\n");
     }
 
     // B on Home prompts for quit. brls::Application::setGlobalQuit

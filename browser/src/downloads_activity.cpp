@@ -1,4 +1,4 @@
-#include "activity/settings_activity.hpp"
+#include "activity/downloads_activity.hpp"
 
 #include "activity/download_queue_activity.hpp"
 
@@ -31,7 +31,7 @@ private:
 
 }  // namespace
 
-SettingsActivity::~SettingsActivity() {
+DownloadsActivity::~DownloadsActivity() {
     if (m_clock_task) {
         m_clock_task->stop();
         delete m_clock_task;
@@ -39,16 +39,13 @@ SettingsActivity::~SettingsActivity() {
     }
 }
 
-void SettingsActivity::onContentAvailable() {
+void DownloadsActivity::onContentAvailable() {
     if (!m_clock_task) {
         m_clock_task = new ClockTask(this->clock);
         m_clock_task->start();
         m_clock_task->run();
     }
 
-    // brls pushed activities don't auto-pop on B — AppletFrame's
-    // built-in B action only dismisses inner content views. Wire
-    // B to pop the whole activity so the user lands back on Home.
     if (auto* content = this->getContentView()) {
         content->registerAction("hints/back"_i18n, brls::BUTTON_B,
             [](brls::View*) {
@@ -56,15 +53,18 @@ void SettingsActivity::onContentAvailable() {
                 return true;
             }, false, false, brls::SOUND_BACK);
 
-        // Y → download queue used to live on Settings globally,
-        // but is now scoped to DownloadsActivity so the hint only
-        // surfaces where the queue is contextually relevant.
+        // Y opens the download queue overlay — same binding shape
+        // SettingsActivity used, but scoped to this Downloads-only
+        // surface so it's contextually clear what the queue is
+        // showing (downloads in flight, not Settings activity).
+        content->registerAction("Download queue", brls::BUTTON_Y,
+            [](brls::View*) {
+                brls::Application::pushActivity(
+                    new DownloadQueueActivity(),
+                    brls::TransitionAnimation::NONE);
+                return true;
+            }, false, false, brls::SOUND_CLICK);
 
-        // brls's AppletFrame footer (BottomBar) ships its own
-        // time / battery / wifi cluster. Settings already shows
-        // those in the custom top status row, so flip the
-        // footer duplicates GONE — hint pills stay since they
-        // live in a separate Box.
         for (const char* id : {"brls/hints/time",
                                "brls/battery",
                                "brls/wireless"}) {

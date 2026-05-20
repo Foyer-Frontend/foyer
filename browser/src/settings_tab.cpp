@@ -1,5 +1,6 @@
 #include "tab/settings_tab.hpp"
 
+#include "activity/downloads_activity.hpp"
 #include "activity/log_viewer_activity.hpp"
 #include "activity/settings_activity.hpp"
 #include "activity/wizard_activity.hpp"
@@ -1220,28 +1221,47 @@ brls::View* FoyerCheatsTab::create() { return new FoyerCheatsTab(); }
 // ============ FoyerDownloadsTab ==========================================
 
 FoyerDownloadsTab::FoyerDownloadsTab() {
-    // Outer Box is a row: nothing to add directly here — the nested
-    // TabFrame brings its own sidebar+content layout.
-    this->setAxis(brls::Axis::ROW);
+    // Landing page only — explanatory text + a single "Open" cell
+    // that pushes DownloadsActivity. The earlier nested-TabFrame
+    // shape left two sidebars side-by-side, which the user
+    // explicitly flagged as bad UX. The new flow:
+    //   Settings → Downloads tab (this page)        → see overview
+    //   A on the Open cell                          → push DownloadsActivity
+    //   DownloadsActivity has its own full-width    → no double sidebar
+    //     TabFrame with just the four sub-tabs +    → Y = queue
+    //     a Y-button hint for the download queue
+    //   B on DownloadsActivity                      → back to Settings
+    this->setAxis(brls::Axis::COLUMN);
     this->setAlignItems(brls::AlignItems::STRETCH);
-    this->setGrow(1.0f);
 
-    // Nested TabFrame — its sidebar lives inside the outer Settings
-    // TabFrame's content area, so the screen ends up with two
-    // sidebars (Settings categories on the left, Downloads
-    // sub-categories one column over). Acceptable cost for keeping
-    // the top-level sidebar uncluttered.
-    auto* sub = new brls::TabFrame();
-    sub->setGrow(1.0f);
-    sub->addTab("Cores",
-        [] { return FoyerCoresTab::create(); });
-    sub->addTab("Bezels",
-        [] { return FoyerBezelsTab::create(); });
-    sub->addTab("Shaders",
-        [] { return FoyerShadersTab::create(); });
-    sub->addTab("Cheats",
-        [] { return FoyerCheatsTab::create(); });
-    this->addView(sub);
+    auto* host = tab_root_box();
+
+    host->addView([]() {
+        auto* h = new brls::Header();
+        h->setTitle("Downloads");
+        return h;
+    }());
+
+    auto* description = new brls::Label();
+    description->setText(
+        "Download and update cores, bezel packs, shader presets and "
+        "cheat packs for foyer. Press A on Open to enter the "
+        "downloads view; the Y button there opens the download queue "
+        "so you can watch installs in flight.");
+    description->setFontSize(20.0f);
+    description->setMargins(8.0f, 16.0f, 24.0f, 16.0f);
+    host->addView(description);
+
+    auto* open_cell = new brls::DetailCell();
+    open_cell->title->setText("Open downloads");
+    open_cell->detail->setText("Cores · Bezels · Shaders · Cheats");
+    open_cell->registerClickAction([](brls::View*) {
+        brls::Application::pushActivity(new DownloadsActivity());
+        return true;
+    });
+    host->addView(open_cell);
+
+    wrap_with_scroll(host, this);
 }
 brls::View* FoyerDownloadsTab::create() { return new FoyerDownloadsTab(); }
 
