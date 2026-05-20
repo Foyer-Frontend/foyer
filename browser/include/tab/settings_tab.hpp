@@ -167,6 +167,16 @@ protected:
     void populate_content() override;
 };
 
+// Aggregator tab that groups Cores / Bezels / Shaders / Cheats under
+// a single sidebar entry ("Downloads"). The body is a nested brls
+// TabFrame with its own narrower sidebar containing those four sub-
+// categories, so the top-level Settings sidebar stays uncluttered.
+class FoyerDownloadsTab : public brls::Box {
+public:
+    FoyerDownloadsTab();
+    static brls::View* create();
+};
+
 class FoyerUpdatesTab : public brls::Box {
 public:
     FoyerUpdatesTab();

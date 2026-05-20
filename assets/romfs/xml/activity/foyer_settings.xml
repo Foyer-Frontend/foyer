@@ -83,24 +83,12 @@
                 <FoyerLibraryTab />
             </brls:Tab>
 
-            <brls:Tab label="Cores">
-                <FoyerCoresTab />
+            <brls:Tab label="Downloads">
+                <FoyerDownloadsTab />
             </brls:Tab>
 
             <brls:Tab label="Emulators">
                 <FoyerEmulatorsTab />
-            </brls:Tab>
-
-            <brls:Tab label="Bezels">
-                <FoyerBezelsTab />
-            </brls:Tab>
-
-            <brls:Tab label="Shaders">
-                <FoyerShadersTab />
-            </brls:Tab>
-
-            <brls:Tab label="Cheats">
-                <FoyerCheatsTab />
             </brls:Tab>
 
             <brls:Tab label="Updates">

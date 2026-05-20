@@ -1217,6 +1217,34 @@ void FoyerCheatsTab::populate_content() {
 }
 brls::View* FoyerCheatsTab::create() { return new FoyerCheatsTab(); }
 
+// ============ FoyerDownloadsTab ==========================================
+
+FoyerDownloadsTab::FoyerDownloadsTab() {
+    // Outer Box is a row: nothing to add directly here — the nested
+    // TabFrame brings its own sidebar+content layout.
+    this->setAxis(brls::Axis::ROW);
+    this->setAlignItems(brls::AlignItems::STRETCH);
+    this->setGrow(1.0f);
+
+    // Nested TabFrame — its sidebar lives inside the outer Settings
+    // TabFrame's content area, so the screen ends up with two
+    // sidebars (Settings categories on the left, Downloads
+    // sub-categories one column over). Acceptable cost for keeping
+    // the top-level sidebar uncluttered.
+    auto* sub = new brls::TabFrame();
+    sub->setGrow(1.0f);
+    sub->addTab("Cores",
+        [] { return FoyerCoresTab::create(); });
+    sub->addTab("Bezels",
+        [] { return FoyerBezelsTab::create(); });
+    sub->addTab("Shaders",
+        [] { return FoyerShadersTab::create(); });
+    sub->addTab("Cheats",
+        [] { return FoyerCheatsTab::create(); });
+    this->addView(sub);
+}
+brls::View* FoyerDownloadsTab::create() { return new FoyerDownloadsTab(); }
+
 // ============ FoyerUpdatesTab ============================================
 
 FoyerUpdatesTab::FoyerUpdatesTab() {
