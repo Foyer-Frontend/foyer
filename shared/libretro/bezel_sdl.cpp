@@ -1,5 +1,6 @@
 #include "bezel_sdl.hpp"
 #include "library/config.hpp"
+#include "library/per_game.hpp"
 #include "platform/log.hpp"
 
 #include <SDL2/SDL_image.h>
@@ -13,6 +14,7 @@ namespace {
 
 std::string   g_folder;
 std::string   g_stem;
+std::string   g_rom_path;
 SDL_Renderer* g_renderer = nullptr;
 SDL_Texture*  g_tex      = nullptr;
 bool          g_resolved = false;
@@ -24,10 +26,20 @@ bool exists(const std::string& path) {
 }
 
 std::string resolve_path() {
-    const bool enabled = foyer::library::config().show_bezels;
+    // Per-game bezel-visibility override beats Config::show_bezels.
+    // -1 = inherit; 0 = off; 1 = on. Pause-menu toggle writes
+    // per_game_show_bezel so changes don't bleed into other roms.
+    const int per_game = !g_rom_path.empty()
+        ? foyer::library::per_game_show_bezel(g_rom_path) : -1;
+    bool enabled;
+    if (per_game >= 0) {
+        enabled = (per_game != 0);
+    } else {
+        enabled = foyer::library::config().show_bezels;
+    }
     foyer::log::write(
-        "[bezel_sdl] resolve folder=%s stem=%s show_bezels=%d\n",
-        g_folder.c_str(), g_stem.c_str(), (int)enabled);
+        "[bezel_sdl] resolve folder=%s stem=%s show_bezels=%d (per_game=%d)\n",
+        g_folder.c_str(), g_stem.c_str(), (int)enabled, per_game);
     if (!enabled) return {};
     char buf[512];
 
@@ -111,6 +123,11 @@ void bezel_sdl_set_rom_id(const std::string& system_folder,
         system_folder.c_str(), rom_stem.c_str());
     g_folder = system_folder;
     g_stem   = rom_stem;
+    bezel_sdl_invalidate();
+}
+
+void bezel_sdl_set_rom_path(const std::string& rom_path) {
+    g_rom_path = rom_path;
     bezel_sdl_invalidate();
 }
 

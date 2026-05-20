@@ -13,6 +13,11 @@ namespace foyer::libretro {
 void bezel_sdl_set_rom_id(const std::string& system_folder,
                           const std::string& rom_stem);
 
+// Full rom path — used to look up per-game bezel overrides
+// (per_game_show_bezel + future per_game_bezel). Called by the
+// player alongside set_rom_id.
+void bezel_sdl_set_rom_path(const std::string& rom_path);
+
 bool bezel_sdl_init(SDL_Renderer* renderer);
 
 void bezel_sdl_draw(int screen_w, int screen_h);

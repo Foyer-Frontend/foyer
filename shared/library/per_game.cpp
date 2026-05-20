@@ -28,6 +28,10 @@ struct Entry {
     // explicit per-rom overrides — saved when the user touches the
     // value via the GameDetail or pause-overlay knob.
     int           runahead    = -1;
+    // -1 = inherit Config::show_bezels (default), 0 = off, 1 = on.
+    // Toggled by the pause menu's "Show bezels" item so changes
+    // don't bleed across games on other cores.
+    int           show_bezel  = -1;
 };
 
 std::mutex                                 g_mutex;
@@ -36,7 +40,8 @@ std::atomic<bool>                          g_loaded{false};
 
 bool entry_is_default(const Entry& e) {
     return e.core.empty() && e.shader.empty() && !e.favorite
-        && e.last_played == 0 && e.playtime == 0 && e.runahead < 0;
+        && e.last_played == 0 && e.playtime == 0 && e.runahead < 0
+        && e.show_bezel < 0;
 }
 
 std::string strip_comments(const std::string& in) {
@@ -106,6 +111,13 @@ void load_locked() {
                 if (n > 4) n = 4;
                 e.runahead = n;
             }
+            if (auto* x = yyjson_obj_get(v, "show_bezel");
+                x && yyjson_is_int(x)) {
+                int n = (int)yyjson_get_int(x);
+                if (n < -1) n = -1;
+                if (n > 1)  n = 1;
+                e.show_bezel = n;
+            }
             if (!entry_is_default(e)) {
                 g_entries.emplace(yyjson_get_str(k), std::move(e));
             }
@@ -156,6 +168,11 @@ void save_locked() {
         if (e.runahead >= 0) {
             if (need_comma) out << ",";
             out << " \"runahead\": " << e.runahead;
+            need_comma = true;
+        }
+        if (e.show_bezel >= 0) {
+            if (need_comma) out << ",";
+            out << " \"show_bezel\": " << e.show_bezel;
             need_comma = true;
         }
         out << " }";
@@ -269,6 +286,19 @@ void set_per_game_runahead(std::string_view rom_path, int frames) {
     if (frames < -1) frames = -1;
     if (frames > 4)  frames = 4;
     mutate(rom_path, [&](Entry& e) { e.runahead = frames; });
+}
+
+int per_game_show_bezel(std::string_view rom_path) {
+    ensure_loaded();
+    std::scoped_lock lk{g_mutex};
+    auto* e = find_entry_locked(rom_path);
+    return e ? e->show_bezel : -1;
+}
+
+void set_per_game_show_bezel(std::string_view rom_path, int tri_state) {
+    if (tri_state < -1) tri_state = -1;
+    if (tri_state > 1)  tri_state = 1;
+    mutate(rom_path, [&](Entry& e) { e.show_bezel = tri_state; });
 }
 
 void apply_per_game_state(Game& g) {

@@ -63,6 +63,14 @@ void        set_per_game_shader(std::string_view rom_path, std::string_view shad
 int  per_game_runahead(std::string_view rom_path);
 void set_per_game_runahead(std::string_view rom_path, int frames);
 
+// Per-game bezel visibility override. -1 means "fall back to
+// Config::show_bezels". 0 = off, 1 = on. Lets the pause-menu
+// "Show bezels" toggle scope its effect to the current rom
+// instead of writing the global default — change on gambatte
+// doesn't bleed into swanstation's games.
+int  per_game_show_bezel(std::string_view rom_path);
+void set_per_game_show_bezel(std::string_view rom_path, int tri_state);
+
 // Resolve which core to use for a rom: per-game override > general
 // default_core_per_system > system_db default. Always returns a non-null
 // CoreDef when the system has at least one configured core; nullptr only

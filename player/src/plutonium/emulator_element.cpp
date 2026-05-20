@@ -125,6 +125,7 @@ bool EmulatorElement::BootGame(const std::string& rom_path,
     if (const auto dot = stem.find_last_of('.'); dot != std::string::npos)
         stem = stem.substr(0, dot);
     foyer::libretro::bezel_sdl_set_rom_id(m_system_folder, stem);
+    foyer::libretro::bezel_sdl_set_rom_path(m_original_rom_path);
 
     if (!foyer::libretro::AudioSinkSdl::instance().init((unsigned)fe.sample_rate())) {
         foyer::log::write(

@@ -303,7 +303,13 @@ void PauseMenu::PopulateDisplay(pu::ui::elm::Menu::Ref& menu) {
         menu->AddItem(item);
     }
     {
-        const bool on = foyer::library::config().show_bezels;
+        // Resolve current bezel visibility: per-game override beats
+        // Config::show_bezels. -1 (unset) falls back to the global.
+        const int per_game =
+            foyer::library::per_game_show_bezel(rom_path);
+        const bool on = per_game >= 0
+            ? (per_game != 0)
+            : foyer::library::config().show_bezels;
         char buf[64];
         std::snprintf(buf, sizeof(buf), "Bezel   %s",
             on ? "(ON)" : "(OFF)");
@@ -311,7 +317,11 @@ void PauseMenu::PopulateDisplay(pu::ui::elm::Menu::Ref& menu) {
         item->SetColor(theme_item_text());
         item->AddOnKey([this, on]() {
             last_selected_idx = 1;
-            foyer::library::set_bool("show_bezels", !on);
+            // Pause-menu toggle writes the per-game override so the
+            // change is scoped to THIS rom — won't bleed across
+            // cores / games like the old set_bool("show_bezels")
+            // global did.
+            foyer::library::set_per_game_show_bezel(rom_path, on ? 0 : 1);
             foyer::libretro::bezel_sdl_invalidate();
             if (on_mode_changed) on_mode_changed();
         });
