@@ -76,6 +76,40 @@ protected:
     // willAppear + the per-tab RepeatingTask.
     void refresh_labels();
 
+    // Manifest-refresh scaffolding (per-tab "Check for updates"). The
+    // bug: after a chain-launch back from a core, the boot-time
+    // manifest prefetch is skipped (main.cpp fast_returned branch),
+    // so manifest_cache::cores() / bezels() / shaders() / cheats()
+    // are empty when the user opens Settings → Cores. The tab
+    // showed "Manifest unavailable" with no way to refetch other
+    // than relaunching the app.
+    //
+    // Each subclass calls setup_refresh_header() once in its ctor
+    // with the visible label ("Cores"/"Bezels"/…) and the prefetch
+    // function to call when the user taps Refresh. The helper
+    // creates the host Box, the persistent "Refresh manifest" cell,
+    // and m_content (where manifest-dependent cells live). Then the
+    // subclass overrides populate_content() to build cells into
+    // m_content, and the Refresh cell re-runs that override after
+    // the prefetch completes.
+    void setup_refresh_header(const std::string& label,
+                              std::function<void()> prefetch);
+
+    // Subclass override — (re)build the manifest-dependent cells
+    // inside m_content. MUST start with reset_content() so a refresh
+    // doesn't stack duplicate cells.
+    virtual void populate_content() = 0;
+
+    // Clear m_content's children + drop refreshers tied to the old
+    // cell instances. Called from each populate_content() override.
+    void reset_content();
+
+    // Host Box for the manifest-dependent cells, set up by
+    // setup_refresh_header(). Children are cleared + rebuilt on
+    // every Refresh tap; the wrapping ScrollView + the persistent
+    // Refresh cell live in the parent and are not touched.
+    brls::Box* m_content = nullptr;
+
 private:
     int                                m_sub = -1;
     std::vector<std::function<void()>> m_refreshers;
@@ -84,12 +118,20 @@ private:
     // user is still looking at the tab (the previous
     // willAppear-only refresh required leaving + re-entering).
     brls::RepeatingTask*               m_poll = nullptr;
+    // De-bounce flag for the Refresh-manifest cell — flips true
+    // on click, back to false in the brls::sync callback after
+    // the prefetch finishes. Touched only from the UI thread
+    // (click handler + sync callback), so no atomic needed.
+    bool                               m_refreshing = false;
 };
 
 class FoyerCoresTab : public InstallRefreshTab {
 public:
     FoyerCoresTab();
     static brls::View* create();
+
+protected:
+    void populate_content() override;
 };
 
 class FoyerEmulatorsTab : public brls::Box {
@@ -102,18 +144,27 @@ class FoyerBezelsTab : public InstallRefreshTab {
 public:
     FoyerBezelsTab();
     static brls::View* create();
+
+protected:
+    void populate_content() override;
 };
 
 class FoyerShadersTab : public InstallRefreshTab {
 public:
     FoyerShadersTab();
     static brls::View* create();
+
+protected:
+    void populate_content() override;
 };
 
 class FoyerCheatsTab : public InstallRefreshTab {
 public:
     FoyerCheatsTab();
     static brls::View* create();
+
+protected:
+    void populate_content() override;
 };
 
 class FoyerUpdatesTab : public brls::Box {

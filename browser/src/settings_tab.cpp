@@ -15,6 +15,7 @@
 #include "library/worker.hpp"
 #include "install_queue.hpp"
 #include "manifest_cache.hpp"
+#include "platform/log.hpp"
 #include "scrapers/accounts.hpp"
 #include "update_check.hpp"
 #include "widgets/masked_input_cell.hpp"
@@ -224,6 +225,65 @@ void apply_language(int idx) {
 }
 
 }  // namespace
+
+void InstallRefreshTab::reset_content() {
+    if (!m_content) return;
+    // Drop refresher closures that point at the cells we're about to
+    // free, then free the cells themselves. The poll loop reads
+    // m_refreshers under the UI thread; we're on the UI thread here,
+    // so the clear is race-free.
+    m_refreshers.clear();
+    m_content->clearViews();
+}
+
+void InstallRefreshTab::setup_refresh_header(const std::string& label,
+                                             std::function<void()> prefetch) {
+    auto* host = tab_root_box();
+
+    // Persistent "Check for updates" cell. Lives outside m_content so
+    // the cell instance (and its captured this/refresh pointer) stays
+    // stable across populate_content() rebuilds. Also doubles as the
+    // manifest entry point on chain-back-from-core paths: main.cpp's
+    // fast_returned branch skips the boot prefetch, so this cell is
+    // the user's only way to populate the tab without restarting
+    // foyer through the splash.
+    auto* refresh = new brls::DetailCell();
+    refresh->title->setText(std::string("Check for updates · ") + label);
+    refresh->detail->setText("Tap to fetch the latest manifest");
+
+    refresh->registerClickAction(
+        [this, prefetch = std::move(prefetch), refresh]
+        (brls::View*) {
+            if (m_refreshing) return true;
+            m_refreshing = true;
+            refresh->detail->setText("Fetching manifest…");
+            brls::async([this, prefetch, refresh]() {
+                try {
+                    prefetch();
+                } catch (...) {
+                    foyer::log::write(
+                        "[settings] manifest prefetch threw\n");
+                }
+                brls::sync([this, refresh]() {
+                    auto* self = this;
+                    if (!::foyer::browser::is_tab_alive(self)) return;
+                    self->m_refreshing = false;
+                    refresh->detail->setText(
+                        "Tap to fetch the latest manifest");
+                    self->populate_content();
+                });
+            });
+            return true;
+        });
+    host->addView(refresh);
+
+    m_content = new brls::Box();
+    m_content->setAxis(brls::Axis::COLUMN);
+    m_content->setAlignItems(brls::AlignItems::STRETCH);
+    host->addView(m_content);
+
+    wrap_with_scroll(host, this);
+}
 
 // ============ FoyerGeneralTab ============================================
 
@@ -546,8 +606,15 @@ brls::View* FoyerLibraryTab::create() { return new FoyerLibraryTab(); }
 FoyerCoresTab::FoyerCoresTab() {
     this->setAxis(brls::Axis::COLUMN);
     this->setAlignItems(brls::AlignItems::STRETCH);
+    setup_refresh_header("Cores",
+        []() { ::foyer::browser::manifest_cache::prefetch_cores(); });
+    populate_content();
+    start_listening();
+}
 
-    auto* host = tab_root_box();
+void FoyerCoresTab::populate_content() {
+    reset_content();
+    auto* host = m_content;
 
     host->addView([]() { auto* h = new brls::Header(); h->setTitle("Cores"); return h; }());
 
@@ -555,7 +622,7 @@ FoyerCoresTab::FoyerCoresTab() {
     if (mf.cores.empty()) {
         auto* hint = new brls::DetailCell();
         hint->title->setText("Manifest unavailable");
-        hint->detail->setText("No network / not fetched");
+        hint->detail->setText("Tap \"Check for updates\" above to fetch");
         host->addView(hint);
     } else {
         // All core / bezel / shader / cheat installs share one
@@ -618,9 +685,13 @@ FoyerCoresTab::FoyerCoresTab() {
             -> std::pair<std::string, bool> {
             const std::string have =
                 ::foyer::library::installed_core_version(e.nro);
-            if (have.empty()) return {"Tap to install", false};
-            if (have == e.version) return {"Tap to re-install", true};
-            return {"Tap to update (v" + e.version + ")", false};
+            if (have.empty())
+                return {"Not installed · Tap to install v" + e.version, false};
+            if (have == e.version)
+                return {"Installed v" + have
+                        + " (latest) · Tap to re-install", true};
+            return {"Installed v" + have
+                    + " · Tap to update to v" + e.version, false};
         };
 
         // Walk every SystemDef and emit a Header + a cell for each
@@ -716,9 +787,6 @@ FoyerCoresTab::FoyerCoresTab() {
             }
         }
     }
-
-    start_listening();
-    wrap_with_scroll(host, this);
 }
 brls::View* FoyerCoresTab::create() { return new FoyerCoresTab(); }
 
@@ -780,15 +848,22 @@ brls::View* FoyerEmulatorsTab::create() { return new FoyerEmulatorsTab(); }
 FoyerBezelsTab::FoyerBezelsTab() {
     this->setAxis(brls::Axis::COLUMN);
     this->setAlignItems(brls::AlignItems::STRETCH);
+    setup_refresh_header("Bezels",
+        []() { ::foyer::browser::manifest_cache::prefetch_bezels(); });
+    populate_content();
+    start_listening();
+}
 
-    auto* host = tab_root_box();
+void FoyerBezelsTab::populate_content() {
+    reset_content();
+    auto* host = m_content;
     host->addView([]() { auto* h = new brls::Header(); h->setTitle("Bezels"); return h; }());
 
     const auto& mf = manifest_cache::bezels();
     if (mf.packs.empty()) {
         auto* hint = new brls::DetailCell();
         hint->title->setText("Manifest unavailable");
-        hint->detail->setText("No network / not fetched");
+        hint->detail->setText("Tap \"Check for updates\" above to fetch");
         host->addView(hint);
     } else {
         auto kick = [](::foyer::library::BezelManifest filt,
@@ -902,8 +977,6 @@ FoyerBezelsTab::FoyerBezelsTab() {
             }
         }
     }
-    start_listening();
-    wrap_with_scroll(host, this);
 }
 brls::View* FoyerBezelsTab::create() { return new FoyerBezelsTab(); }
 
@@ -912,15 +985,22 @@ brls::View* FoyerBezelsTab::create() { return new FoyerBezelsTab(); }
 FoyerShadersTab::FoyerShadersTab() {
     this->setAxis(brls::Axis::COLUMN);
     this->setAlignItems(brls::AlignItems::STRETCH);
+    setup_refresh_header("Shaders",
+        []() { ::foyer::browser::manifest_cache::prefetch_shaders(); });
+    populate_content();
+    start_listening();
+}
 
-    auto* host = tab_root_box();
+void FoyerShadersTab::populate_content() {
+    reset_content();
+    auto* host = m_content;
     host->addView([]() { auto* h = new brls::Header(); h->setTitle("Shaders"); return h; }());
 
     const auto& mf = manifest_cache::shaders();
     if (mf.presets.empty()) {
         auto* hint = new brls::DetailCell();
         hint->title->setText("Manifest unavailable");
-        hint->detail->setText("No network / not fetched");
+        hint->detail->setText("Tap \"Check for updates\" above to fetch");
         host->addView(hint);
     } else {
         auto kick = [](::foyer::library::ShaderManifest filt,
@@ -978,8 +1058,6 @@ FoyerShadersTab::FoyerShadersTab() {
             host->addView(cell);
         }
     }
-    start_listening();
-    wrap_with_scroll(host, this);
 }
 brls::View* FoyerShadersTab::create() { return new FoyerShadersTab(); }
 
@@ -988,15 +1066,22 @@ brls::View* FoyerShadersTab::create() { return new FoyerShadersTab(); }
 FoyerCheatsTab::FoyerCheatsTab() {
     this->setAxis(brls::Axis::COLUMN);
     this->setAlignItems(brls::AlignItems::STRETCH);
+    setup_refresh_header("Cheats",
+        []() { ::foyer::browser::manifest_cache::prefetch_cheats(); });
+    populate_content();
+    start_listening();
+}
 
-    auto* host = tab_root_box();
+void FoyerCheatsTab::populate_content() {
+    reset_content();
+    auto* host = m_content;
     host->addView([]() { auto* h = new brls::Header(); h->setTitle("Cheats"); return h; }());
 
     const auto& mf = manifest_cache::cheats();
     if (mf.packs.empty()) {
         auto* hint = new brls::DetailCell();
         hint->title->setText("Manifest unavailable");
-        hint->detail->setText("No network / not fetched");
+        hint->detail->setText("Tap \"Check for updates\" above to fetch");
         host->addView(hint);
     } else {
         auto kick = [](::foyer::library::CheatManifest filt,
@@ -1105,8 +1190,6 @@ FoyerCheatsTab::FoyerCheatsTab() {
             }
         }
     }
-    start_listening();
-    wrap_with_scroll(host, this);
 }
 brls::View* FoyerCheatsTab::create() { return new FoyerCheatsTab(); }
 
