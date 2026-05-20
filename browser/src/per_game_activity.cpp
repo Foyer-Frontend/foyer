@@ -183,7 +183,7 @@ brls::View* PerGameActivity::createContentView() {
     scroll->setContentView(host);
 
     auto* frame = new brls::AppletFrame(scroll);
-    frame->setTitle("Per-game settings");
+    frame->setTitle("Game settings");
     if (auto* footer = frame->getFooter()) {
         for (const char* id : {"brls/hints/time", "brls/battery", "brls/wireless"}) {
             if (auto* v = footer->getView(id)) {

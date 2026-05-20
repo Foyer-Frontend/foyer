@@ -456,23 +456,28 @@ FoyerAccountsTab::FoyerAccountsTab() {
     host->addView([]() { auto* h = new brls::Header(); h->setTitle("Scraper source"); return h; }());
 
     auto* source = new brls::SelectorCell();
+    // SteamGridDB hidden from the picker until its scraper path is
+    // polished (auth flow, asset-kind filtering, fanart fallback —
+    // separate change). The stored Config::SteamGridDB value still
+    // works for users who picked it on a previous build; we just
+    // don't surface it as a new option. Libretro + ScreenScraper
+    // are the supported choices for now.
     std::vector<std::string> source_labels = {
-        "libretro-thumbnails", "ScreenScraper", "SteamGridDB",
+        "libretro-thumbnails", "ScreenScraper",
     };
     using S = ::foyer::library::Config::Scraper;
     int initial = 0;
     switch (::foyer::library::config().preferred_scraper) {
         case S::Libretro:      initial = 0; break;
         case S::ScreenScraper: initial = 1; break;
-        case S::SteamGridDB:   initial = 2; break;
+        case S::SteamGridDB:   initial = 1; break;  // collapse onto SS for the picker view
     }
     source->init("Scraper source", source_labels, initial,
                  [](int) {},
                  [](int selected) {
                      using SS = ::foyer::library::Config::Scraper;
-                     SS pick = SS::Libretro;
-                     if      (selected == 1) pick = SS::ScreenScraper;
-                     else if (selected == 2) pick = SS::SteamGridDB;
+                     const SS pick = (selected == 1)
+                         ? SS::ScreenScraper : SS::Libretro;
                      ::foyer::library::set_preferred_scraper(pick);
                  });
     host->addView(source);
@@ -493,14 +498,9 @@ FoyerAccountsTab::FoyerAccountsTab() {
         }, "Tap to set", "Account password", 64);
     host->addView(ss_pass);
 
-    host->addView([]() { auto* h = new brls::Header(); h->setTitle("SteamGridDB"); return h; }());
-
-    auto* sgdb = new MaskedInputCell();
-    sgdb->init("API key", acc.steamgriddb.api_key,
-        [](std::string v) {
-            ::foyer::scrapers::set_account_field("steamgriddb.api_key", v);
-        }, "Tap to set", "steamgriddb.com", 64);
-    host->addView(sgdb);
+    // SteamGridDB section hidden alongside the scraper-picker entry
+    // (above) until the scraper integration is polished. The
+    // existing stored key (if any) is preserved in accounts.jsonc.
 
     host->addView([]() { auto* h = new brls::Header(); h->setTitle("RetroAchievements"); return h; }());
 
@@ -512,9 +512,7 @@ FoyerAccountsTab::FoyerAccountsTab() {
     host->addView(ra_user);
 
     // Web password for the user's RA account. rcheevos exchanges it
-    // for a session token on first login. The Token field below is
-    // the legacy fallback for users who already have a Connect API
-    // Token; it stays available but isn't the primary entry.
+    // for a session token on first login.
     auto* ra_pass = new MaskedInputCell();
     ra_pass->init("Password", acc.retroachievements.password,
         [](std::string v) {
@@ -522,20 +520,14 @@ FoyerAccountsTab::FoyerAccountsTab() {
         }, "Tap to set", "RA web password", 64);
     host->addView(ra_pass);
 
-    auto* ra_token = new MaskedInputCell();
-    ra_token->init("Token (advanced)", acc.retroachievements.token,
-        [](std::string v) {
-            ::foyer::scrapers::set_account_field("retroachievements.token", v);
-        }, "Optional", "Connect API Token", 64);
-    host->addView(ra_token);
-
-    // Web API Key — REST stats only. Used by the browser to pre-fill
-    // achievement progress on game detail views before the user has
-    // booted the rom. Distinct from the Password / Token fields
-    // above (which are for the rcheevos client login). RA settings
-    // page → Keys section → "Web API Key".
+    // Web API Key — optional, REST stats only. Used by the browser
+    // to pre-fill achievement progress on game detail views before
+    // the user has booted the rom. The user's Connect API Token is
+    // no longer surfaced as a separate field — rcheevos derives it
+    // from username + password on first login. RA settings page →
+    // Keys section → "Web API Key".
     auto* ra_webapi = new MaskedInputCell();
-    ra_webapi->init("Web API Key", acc.retroachievements.web_api_key,
+    ra_webapi->init("Web API Key (optional)", acc.retroachievements.web_api_key,
         [](std::string v) {
             ::foyer::scrapers::set_account_field("retroachievements.web_api_key", v);
         }, "Tap to set", "REST stats only", 64);
