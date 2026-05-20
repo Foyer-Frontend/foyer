@@ -34,6 +34,21 @@ struct SwitchTitle {
 std::size_t load_switch_titles(
     std::function<void(int idx, int total)> progress = {});
 
+// Cache-first variant — reads the on-disk cache only, no live-diff,
+// no nsGetApplicationControlData IPC. Populates the title list
+// instantly so the splash + Home carousel render with whatever the
+// previous boot saw. Pair with refresh_switch_titles_async() to
+// pick up newly-installed titles in the background.
+std::size_t load_switch_titles_cached();
+
+// Run the live-diff (nsListApplicationRecord + per-new-id
+// nsGetApplicationControlData) on a detached worker thread. Calls
+// `on_changed` on the brls UI thread iff the title list materially
+// changed (new IDs added, stale ones dropped) so the carousel can
+// rescan + repaint. Skips the callback when nothing changed —
+// callers shouldn't trigger an unnecessary rescan.
+void refresh_switch_titles_async(std::function<void()> on_changed = {});
+
 const std::vector<SwitchTitle>& switch_titles();
 
 // Look up a title by application_id. Returns nullptr when not

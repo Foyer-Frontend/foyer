@@ -3,9 +3,12 @@
 #include "platform/log.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdio>
 #include <cstring>
+#include <mutex>
 #include <sys/stat.h>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -324,6 +327,50 @@ bool icon_exists(std::uint64_t app_id) {
 
 }  // namespace
 
+namespace {
+
+// Common bottom-half: convert CachedEntry vector into the g_titles
+// SwitchTitle vector + alphabetical sort. Called by both the
+// cache-first path and the full live-diff path.
+void publish_titles_from(std::vector<CachedEntry>& entries) {
+    g_titles.clear();
+    g_titles.reserve(entries.size());
+    for (auto& e : entries) {
+        SwitchTitle t{};
+        t.application_id = e.application_id;
+        t.name           = std::move(e.name);
+        t.author         = std::move(e.author);
+        t.icon_path      = icon_exists(e.application_id)
+            ? icon_path_for(e.application_id) : std::string{};
+        g_titles.push_back(std::move(t));
+    }
+
+    std::sort(g_titles.begin(), g_titles.end(),
+        [](const SwitchTitle& a, const SwitchTitle& b) {
+            const auto& an = a.name;
+            const auto& bn = b.name;
+            for (std::size_t i = 0; i < an.size() && i < bn.size(); i++) {
+                const char ca = (an[i] >= 'A' && an[i] <= 'Z')
+                    ? char(an[i] + 32) : an[i];
+                const char cb = (bn[i] >= 'A' && bn[i] <= 'Z')
+                    ? char(bn[i] + 32) : bn[i];
+                if (ca != cb) return ca < cb;
+            }
+            return an.size() < bn.size();
+        });
+}
+
+// Mutex guarding g_titles (and the in-flight refresh state) so the
+// background refresh worker doesn't race with the splash/main-thread
+// reader.
+std::mutex& titles_mutex() {
+    static std::mutex m;
+    return m;
+}
+std::atomic<bool> g_refresh_in_flight{false};
+
+}  // namespace
+
 std::size_t load_switch_titles(
     std::function<void(int idx, int total)> progress) {
     ensure_dirs();
@@ -357,35 +404,92 @@ std::size_t load_switch_titles(
     if (next.size() != cached.size()) dirty = true;
     if (dirty) write_cache(next);
 
-    g_titles.clear();
-    g_titles.reserve(next.size());
-    for (auto& e : next) {
-        SwitchTitle t{};
-        t.application_id = e.application_id;
-        t.name           = std::move(e.name);
-        t.author         = std::move(e.author);
-        t.icon_path      = icon_exists(e.application_id)
-            ? icon_path_for(e.application_id) : std::string{};
-        g_titles.push_back(std::move(t));
+    {
+        std::scoped_lock lk{titles_mutex()};
+        publish_titles_from(next);
     }
-
-    std::sort(g_titles.begin(), g_titles.end(),
-        [](const SwitchTitle& a, const SwitchTitle& b) {
-            const auto& an = a.name;
-            const auto& bn = b.name;
-            for (std::size_t i = 0; i < an.size() && i < bn.size(); i++) {
-                const char ca = (an[i] >= 'A' && an[i] <= 'Z')
-                    ? char(an[i] + 32) : an[i];
-                const char cb = (bn[i] >= 'A' && bn[i] <= 'Z')
-                    ? char(bn[i] + 32) : bn[i];
-                if (ca != cb) return ca < cb;
-            }
-            return an.size() < bn.size();
-        });
 
     foyer::log::write("[switch_titles] loaded %zu installed titles\n",
         g_titles.size());
     return g_titles.size();
+}
+
+std::size_t load_switch_titles_cached() {
+    ensure_dirs();
+
+    std::vector<CachedEntry> cached;
+    read_cache(cached);
+
+    std::scoped_lock lk{titles_mutex()};
+    publish_titles_from(cached);
+    foyer::log::write(
+        "[switch_titles] cache-first: %zu titles from disk cache\n",
+        g_titles.size());
+    return g_titles.size();
+}
+
+void refresh_switch_titles_async(std::function<void()> on_changed) {
+    // De-dup: if a refresh is already in flight, skip — the worker
+    // that's running will pick up the same OS state we'd see if we
+    // started a second copy. The on_changed callback is dropped
+    // (caller will fire on the previous worker's completion).
+    bool expected = false;
+    if (!g_refresh_in_flight.compare_exchange_strong(expected, true)) {
+        foyer::log::write(
+            "[switch_titles] refresh skipped — one already running\n");
+        return;
+    }
+
+    std::thread([cb = std::move(on_changed)]() mutable {
+        ensure_dirs();
+
+        // Snapshot the current cache before the live diff so we can
+        // detect "did anything actually change" without holding the
+        // titles_mutex for the entire IPC walk.
+        std::vector<CachedEntry> cached;
+        read_cache(cached);
+        std::unordered_map<std::uint64_t, std::size_t> by_id;
+        for (std::size_t i = 0; i < cached.size(); i++)
+            by_id[cached[i].application_id] = i;
+
+        const auto live = live_app_ids();
+        std::vector<CachedEntry> next;
+        next.reserve(live.size());
+        bool dirty = false;
+        for (std::uint64_t id : live) {
+            auto it = by_id.find(id);
+            if (it != by_id.end() && icon_exists(id)) {
+                next.push_back(std::move(cached[it->second]));
+                continue;
+            }
+            CachedEntry e;
+            if (!fetch_nacp(id, e)) continue;
+            next.push_back(std::move(e));
+            dirty = true;
+        }
+        if (next.size() != cached.size()) dirty = true;
+
+        if (dirty) {
+            write_cache(next);
+            {
+                std::scoped_lock lk{titles_mutex()};
+                publish_titles_from(next);
+            }
+            foyer::log::write(
+                "[switch_titles] async refresh: %zu titles (cache "
+                "rewritten)\n", next.size());
+            // Callback fires on the worker thread — caller is
+            // responsible for marshalling to the UI thread
+            // (typically via brls::sync) before touching brls views
+            // or library_state. shared/ avoids the brls dep on
+            // purpose.
+            if (cb) cb();
+        } else {
+            foyer::log::write(
+                "[switch_titles] async refresh: no changes\n");
+        }
+        g_refresh_in_flight.store(false);
+    }).detach();
 }
 
 const std::vector<SwitchTitle>& switch_titles() { return g_titles; }

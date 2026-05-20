@@ -95,22 +95,29 @@ void SplashActivity::onContentAvailable() {
         self->m_progress_total.store(kStepTotal, std::memory_order_release);
         self->m_progress_done.store(kStepSwitchTitles, std::memory_order_release);
 
-        // Step 0 — Switch title enumeration. On first boot after the
-        // v0.6.71 NS init fix, this runs ~200
-        // nsGetApplicationControlData IPCs which can take 5–10 s; the
-        // m_sub_* counters give the bar per-title motion so the user
-        // doesn't stare at the slot's "step_lo" line.
-        w.set_status("Reading installed Switch titles…");
-        foyer::library::load_switch_titles(
-            [self, &w](int idx, int total) {
-                if (total <= 0) return;
-                self->m_sub_total.store(total, std::memory_order_release);
-                self->m_sub_done.store(idx, std::memory_order_release);
-                char buf[64];
-                std::snprintf(buf, sizeof(buf),
-                    "Reading Switch titles %d / %d…", idx, total);
-                w.set_status(buf);
+        // Step 0 — Switch title enumeration. Cache-first: read
+        // whatever the previous boot wrote and publish it
+        // immediately (single fread, no IPC, sub-100 ms even with
+        // 200 titles). The live diff via
+        // nsGetApplicationControlData runs on a detached worker
+        // kicked below; if it picks up new IDs it bumps
+        // library_state's generation so HomeActivity::onResume
+        // rebuilds the __switch tile.
+        w.set_status("Loading Switch titles…");
+        foyer::library::load_switch_titles_cached();
+        // Kick the live-diff refresh on a detached worker. The
+        // callback fires on the worker thread; marshal to brls UI
+        // thread to bump library_state's generation. Home picks up
+        // the rebuild on its next onResume tick (no popup, no
+        // jank).
+        foyer::library::refresh_switch_titles_async([]() {
+            brls::sync([]() {
+                foyer::log::write(
+                    "[splash] switch_titles refresh produced changes "
+                    "— bumping library_state generation\n");
+                ::foyer::browser::library_state::rescan();
             });
+        });
         self->m_sub_total.store(0, std::memory_order_release);
         self->m_sub_done.store(0, std::memory_order_release);
         self->m_progress_done.store(kStepLibrary, std::memory_order_release);

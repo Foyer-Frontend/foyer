@@ -264,7 +264,23 @@ int main(int argc, char* argv[])
                         // Leave fast_returned=false so the main
                         // else-branch below runs the full splash.
                     } else {
-                        foyer::library::load_switch_titles();
+                        // Cache-first: instant read of the persisted
+                        // title cache so the chain-back path doesn't
+                        // re-pay the IPC walk. The live diff runs on
+                        // a detached worker and bumps library_state's
+                        // generation if anything actually changed —
+                        // HomeActivity::onResume picks up the rebuild
+                        // when the user B-backs from Game.
+                        foyer::library::load_switch_titles_cached();
+                        foyer::library::refresh_switch_titles_async([]() {
+                            brls::sync([]() {
+                                foyer::log::write(
+                                    "[boot] return-from-core: "
+                                    "switch_titles refresh produced "
+                                    "changes — rescanning\n");
+                                ::foyer::browser::library_state::rescan();
+                            });
+                        });
                         foyer::browser::library_state::rescan();
                         // Position-restore: seed each activity with
                         // the tile the user was on before launching
