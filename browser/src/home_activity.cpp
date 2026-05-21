@@ -19,6 +19,7 @@
 
 #include <chrono>
 #include <ctime>
+#include <fstream>
 #include <iomanip>
 #include <sstream>
 #include <string>
@@ -71,7 +72,20 @@ public:
             ::foyer::library::asset_system_splash(art_dir_for(folder));
         foyer::log::write("[home] tile %.*s splash=%s\n",
             (int)folder.size(), folder.data(), path.c_str());
-        img->setImageFromFile(path);
+        // Async — system splash JPEGs decode ~30 ms each; with 20+
+        // systems that's hundreds of ms of UI-thread block on
+        // every Home enter. Worker handles file I/O; brls::sync
+        // trampolines the decode back.
+        img->setImageAsync(
+            [path](std::function<void(const std::string&, size_t)> cb) {
+                std::ifstream f(path, std::ios::binary | std::ios::ate);
+                if (!f) { cb(std::string{}, 0); return; }
+                const auto size = (std::size_t)f.tellg();
+                f.seekg(0);
+                std::string buf(size, '\0');
+                f.read(buf.data(), (std::streamsize)size);
+                cb(buf, size);
+            });
 
         // Translucent count banner overlaid along the bottom edge.
         m_banner = new brls::Box();
@@ -398,8 +412,18 @@ void HomeActivity::onSystemFocused(std::string_view folder,
 {
     m_last_focused_folder = std::string{folder};
     if (backdrop) {
-        backdrop->setImageFromFile(
-            ::foyer::library::asset_system_background(art_dir_for(folder)));
+        const std::string bg =
+            ::foyer::library::asset_system_background(art_dir_for(folder));
+        backdrop->setImageAsync(
+            [bg](std::function<void(const std::string&, size_t)> cb) {
+                std::ifstream f(bg, std::ios::binary | std::ios::ate);
+                if (!f) { cb(std::string{}, 0); return; }
+                const auto size = (std::size_t)f.tellg();
+                f.seekg(0);
+                std::string buf(size, '\0');
+                f.read(buf.data(), (std::streamsize)size);
+                cb(buf, size);
+            });
     }
     // Focused-system logo next to the avatar — replaces the
     // centered "blue label" affordance from v0.6.98. Theme-aware
@@ -407,8 +431,18 @@ void HomeActivity::onSystemFocused(std::string_view folder,
     if (focusLogo) {
         const bool dark =
             brls::Application::getThemeVariant() == brls::ThemeVariant::DARK;
-        focusLogo->setImageFromFile(
-            ::foyer::library::asset_system_logo(art_dir_for(folder), dark));
+        const std::string logo =
+            ::foyer::library::asset_system_logo(art_dir_for(folder), dark);
+        focusLogo->setImageAsync(
+            [logo](std::function<void(const std::string&, size_t)> cb) {
+                std::ifstream f(logo, std::ios::binary | std::ios::ate);
+                if (!f) { cb(std::string{}, 0); return; }
+                const auto size = (std::size_t)f.tellg();
+                f.seekg(0);
+                std::string buf(size, '\0');
+                f.read(buf.data(), (std::streamsize)size);
+                cb(buf, size);
+            });
     }
 }
 
