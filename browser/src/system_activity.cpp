@@ -5,6 +5,7 @@
 #include "launch.hpp"
 
 #include <sys/stat.h>
+#include <time.h>
 #include "activity/per_game_activity.hpp"
 #include "activity/per_system_activity.hpp"
 #include "library_state.hpp"
@@ -505,7 +506,22 @@ void SystemActivity::onContentAvailable() {
     // Previously the early-return here silently broke L/R on
     // chain-back (regression in db5ddd0).
     if (!m_defer_population) {
+        // Time the carousel build so future "feels slow" reports
+        // can be diagnosed against a real number instead of
+        // perception. clock_gettime(MONOTONIC) on Switch is a
+        // single counter read — overhead negligible.
+        struct timespec t0{}, t1{};
+        ::clock_gettime(CLOCK_MONOTONIC, &t0);
         populateCarousel();
+        ::clock_gettime(CLOCK_MONOTONIC, &t1);
+        const auto elapsed_ms =
+            (t1.tv_sec - t0.tv_sec) * 1000.0
+            + (t1.tv_nsec - t0.tv_nsec) / 1.0e6;
+        foyer::log::write(
+            "[system] populateCarousel %s: %d tiles in %.1f ms\n",
+            m_folder.c_str(),
+            carousel ? (int)carousel->getChildren().size() : 0,
+            elapsed_ms);
     } else {
         foyer::log::write("[system] %s deferred populate\n", m_folder.c_str());
     }
@@ -658,6 +674,13 @@ void SystemActivity::onContentAvailable() {
 
 void SystemActivity::buildLogo() {
     if (!logoHolder) return;
+    // Clear any existing children first — buildLogo can run more
+    // than once on the same activity instance (the theme_change
+    // hook calls it on every HOS Light↔Dark flip so a refresh
+    // re-picks any theme-aware art). Without the clear, each
+    // flip appended a fresh Image + Label to logoHolder and the
+    // tree slowly grew.
+    logoHolder->clearViews();
     // Top-bar logo on SystemActivity reflects the focused GAME.
     // Two children: an Image (wheel art) and a Label (text
     // fallback). Image is height-only constrained (width=auto)
