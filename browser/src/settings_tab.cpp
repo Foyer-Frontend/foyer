@@ -1212,32 +1212,28 @@ brls::View* FoyerCheatsTab::create() { return new FoyerCheatsTab(); }
 // ============ FoyerDownloadsTab ==========================================
 
 FoyerDownloadsTab::FoyerDownloadsTab() {
-    // The tab itself stays near-empty. The actual UX lives in the
-    // sidebar swap: SettingsActivity hides the main TabFrame and
-    // shows downloads_frame (the four-category sub-sidebar) when
-    // willAppear fires. The "Loading downloads…" label only shows
-    // during the brief frame between focus and the swap landing.
+    // Hint panel only — the actual swap is fired by an A press on
+    // the Downloads sidebar entry, intercepted in
+    // SettingsActivity::onContentAvailable. The body just tells
+    // the user what'll happen.
     this->setAxis(brls::Axis::COLUMN);
     this->setAlignItems(brls::AlignItems::STRETCH);
 
     auto* host = tab_root_box();
 
-    auto* hint = new brls::Label();
-    hint->setText("Loading downloads…");
-    hint->setFontSize(20.0f);
-    hint->setMargins(8.0f, 16.0f, 24.0f, 16.0f);
-    host->addView(hint);
+    auto* header = new brls::Header();
+    header->setTitle("Downloads");
+    host->addView(header);
+
+    auto* desc = new brls::Label();
+    desc->setText(
+        "Press A to open the downloads view — install or update "
+        "cores, bezel packs, shader presets and cheat packs.");
+    desc->setFontSize(20.0f);
+    desc->setMargins(12.0f, 16.0f, 24.0f, 16.0f);
+    host->addView(desc);
 
     wrap_with_scroll(host, this);
-}
-
-void FoyerDownloadsTab::willAppear(bool resetState) {
-    brls::Box::willAppear(resetState);
-    // Sidebar swap to the downloads sub-mode. SettingsActivity owns
-    // the state machine; the just-exited-cooldown is handled
-    // there to prevent re-entry when exit_downloads_mode focuses
-    // this same Downloads sidebar entry on B-back.
-    SettingsActivity::enter_downloads_mode();
 }
 
 brls::View* FoyerDownloadsTab::create() { return new FoyerDownloadsTab(); }
