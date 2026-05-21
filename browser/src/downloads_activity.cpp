@@ -37,23 +37,7 @@ DownloadsActivity::~DownloadsActivity() {
         delete m_clock_task;
         m_clock_task = nullptr;
     }
-    // Flip the gate so the FoyerDownloadsTab::willAppear that fires
-    // right after the SettingsActivity resumes underneath doesn't
-    // immediately re-push us. The user lands cleanly back on
-    // Settings's Downloads tab and can navigate elsewhere.
-    downloads_gate::mark_just_popped();
 }
-
-namespace downloads_gate {
-namespace { bool g_just_popped = false; }
-
-bool consume_just_popped() {
-    if (!g_just_popped) return false;
-    g_just_popped = false;
-    return true;
-}
-void mark_just_popped() { g_just_popped = true; }
-}  // namespace downloads_gate
 
 void DownloadsActivity::onContentAvailable() {
     if (!m_clock_task) {

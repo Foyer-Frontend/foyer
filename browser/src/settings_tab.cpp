@@ -1213,39 +1213,26 @@ brls::View* FoyerCheatsTab::create() { return new FoyerCheatsTab(); }
 // ============ FoyerDownloadsTab ==========================================
 
 FoyerDownloadsTab::FoyerDownloadsTab() {
-    // The tab itself is intentionally near-empty: it exists to give
-    // the user a sidebar entry that auto-pushes DownloadsActivity
-    // on first focus. willAppear() does the push; downloads_gate
-    // gates the re-push after B-back so the user can actually
-    // return to Settings.
-    //
-    // The hint label only matters during the brief frame between
-    // the tab becoming active and the activity being pushed.
+    // Single click-to-enter cell. The earlier willAppear auto-push
+    // surprised users (focusing the sidebar entry instantly threw
+    // them into a different activity); switching back to an explicit
+    // A-press keeps tab focus and activity entry as separate inputs.
+    // No header, no paragraph — just the affordance.
     this->setAxis(brls::Axis::COLUMN);
     this->setAlignItems(brls::AlignItems::STRETCH);
 
     auto* host = tab_root_box();
 
-    auto* description = new brls::Label();
-    description->setText("Opening downloads…");
-    description->setFontSize(20.0f);
-    description->setMargins(8.0f, 16.0f, 24.0f, 16.0f);
-    host->addView(description);
+    auto* open_cell = new brls::DetailCell();
+    open_cell->title->setText("Open downloads");
+    open_cell->detail->setText("Cores · Bezels · Shaders · Cheats");
+    open_cell->registerClickAction([](brls::View*) {
+        brls::Application::pushActivity(new DownloadsActivity());
+        return true;
+    });
+    host->addView(open_cell);
 
     wrap_with_scroll(host, this);
-}
-
-void FoyerDownloadsTab::willAppear(bool resetState) {
-    brls::Box::willAppear(resetState);
-    // Suppress re-push when the user just B-backed from
-    // DownloadsActivity into Settings: ~DownloadsActivity set the
-    // flag, we consume it here, and the user stays on Settings'
-    // Downloads tab. Subsequent focus events (after they navigate
-    // to another tab and come back) will push as expected.
-    if (downloads_gate::consume_just_popped()) {
-        return;
-    }
-    brls::Application::pushActivity(new DownloadsActivity());
 }
 brls::View* FoyerDownloadsTab::create() { return new FoyerDownloadsTab(); }
 

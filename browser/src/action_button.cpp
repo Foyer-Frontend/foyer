@@ -95,18 +95,23 @@ ActionButton::ActionButton(const std::string& icon_res,
 void ActionButton::apply_chip_theme() {
     if (!m_label_chip || !m_label) return;
     auto th = brls::Application::getTheme();
-    const NVGcolor bg   = th.getColor("brls/background");
+    // Match the top/bottom bar translucent overlay look instead of
+    // the opaque brls/background. Both bars use
+    // @theme/foyer/bar_overlay (a tinted alpha < 1 overlay over the
+    // system backdrop); using the same colour here ties the action
+    // row visually to the chrome rows so it reads as part of the
+    // same surface rather than a floating slab.
+    const NVGcolor bar  = th.getColor("foyer/bar_overlay");
     const NVGcolor text = th.getColor("brls/text");
-    m_label_chip->setBackgroundColor(bg);
+    m_label_chip->setBackgroundColor(bar);
     m_label->setTextColor(text);
 
-    // Apply the same theming to the circle bg + icon tint. brls's
-    // background is light in HOS Light and dark in HOS Dark; the
-    // contrasting text colour is exactly what we want for the icon.
-    // Cached as m_idle_bg so the focus-gain/lost handlers can flip
-    // back to this state on demand.
+    // Circle bg + icon tint inherit the same translucent overlay.
+    // The icon stays in the text colour so it contrasts against the
+    // backdrop showing through. m_idle_bg cached for the focus
+    // restore path.
     if (m_circle) {
-        m_idle_bg = bg;
+        m_idle_bg = bar;
         m_circle->setBackgroundColor(m_idle_bg);
         // brls's default focus highlight fills the focused view with
         // theme["brls/highlight/background"] before drawing the

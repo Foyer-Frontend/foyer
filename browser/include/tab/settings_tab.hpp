@@ -167,20 +167,15 @@ protected:
     void populate_content() override;
 };
 
-// Aggregator tab — Settings sidebar's "Downloads" entry. Focusing
-// the tab auto-pushes the standalone DownloadsActivity instead of
-// rendering an inline body, so the user gets the full-screen
-// downloads view without a "tap to open" intermediate page. The
-// downloads_gate flag in DownloadsActivity suppresses the push
-// when the user has just B-backed out, so they can stay on
-// Settings if they want to navigate elsewhere.
+// Aggregator tab — Settings sidebar's "Downloads" entry. The tab
+// body holds a single click-to-enter cell that pushes
+// DownloadsActivity. Earlier iterations auto-pushed on willAppear,
+// which surprised users by treating sidebar focus as activation;
+// the explicit A-press keeps the two inputs separate.
 class FoyerDownloadsTab : public brls::Box {
 public:
     FoyerDownloadsTab();
     static brls::View* create();
-
-protected:
-    void willAppear(bool resetState) override;
 };
 
 class FoyerUpdatesTab : public brls::Box {

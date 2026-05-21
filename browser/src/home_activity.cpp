@@ -203,14 +203,18 @@ void HomeActivity::onContentAvailable() {
     // moment the activity exists. Previously this whole function
     // early-returned and L/R navigation silently broke on
     // chain-back (regression in db5ddd0).
+    // Profile cluster intentionally hidden per user request — keeps
+    // the top bar clean for the focused-system logo + clock. The
+    // XML element + bind stay so buildProfiles() can be re-enabled
+    // later without an XML edit; we just don't populate or show it.
+    if (profiles) profiles->setVisibility(brls::Visibility::GONE);
+
     if (!m_defer_population) {
         populateCarousel();
         m_library_gen = library_state::generation();
         foyer::log::write("[home] populateCarousel done\n");
         buildActionRow();
         foyer::log::write("[home] buildActionRow done\n");
-        buildProfiles();
-        foyer::log::write("[home] buildProfiles done\n");
         m_populated = true;
 
         // Default focus on the preselect tile (or first).
@@ -347,10 +351,10 @@ void HomeActivity::onResume() {
     // build steps we skipped in onContentAvailable.
     if (m_defer_population && !m_populated) {
         foyer::log::write("[home] onResume: deferred populate kicking in\n");
+        if (profiles) profiles->setVisibility(brls::Visibility::GONE);
         populateCarousel();
         m_library_gen = library_state::generation();
         buildActionRow();
-        buildProfiles();
         m_populated = true;
         // Restore focus on the preselected system tile (or first).
         if (carousel && !carousel->getChildren().empty()) {
