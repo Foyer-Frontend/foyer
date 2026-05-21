@@ -167,14 +167,20 @@ protected:
     void populate_content() override;
 };
 
-// Aggregator tab that groups Cores / Bezels / Shaders / Cheats under
-// a single sidebar entry ("Downloads"). The body is a nested brls
-// TabFrame with its own narrower sidebar containing those four sub-
-// categories, so the top-level Settings sidebar stays uncluttered.
+// Aggregator tab — Settings sidebar's "Downloads" entry. Focusing
+// the tab auto-pushes the standalone DownloadsActivity instead of
+// rendering an inline body, so the user gets the full-screen
+// downloads view without a "tap to open" intermediate page. The
+// downloads_gate flag in DownloadsActivity suppresses the push
+// when the user has just B-backed out, so they can stay on
+// Settings if they want to navigate elsewhere.
 class FoyerDownloadsTab : public brls::Box {
 public:
     FoyerDownloadsTab();
     static brls::View* create();
+
+protected:
+    void willAppear(bool resetState) override;
 };
 
 class FoyerUpdatesTab : public brls::Box {

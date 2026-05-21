@@ -1213,47 +1213,39 @@ brls::View* FoyerCheatsTab::create() { return new FoyerCheatsTab(); }
 // ============ FoyerDownloadsTab ==========================================
 
 FoyerDownloadsTab::FoyerDownloadsTab() {
-    // Landing page only — explanatory text + a single "Open" cell
-    // that pushes DownloadsActivity. The earlier nested-TabFrame
-    // shape left two sidebars side-by-side, which the user
-    // explicitly flagged as bad UX. The new flow:
-    //   Settings → Downloads tab (this page)        → see overview
-    //   A on the Open cell                          → push DownloadsActivity
-    //   DownloadsActivity has its own full-width    → no double sidebar
-    //     TabFrame with just the four sub-tabs +    → Y = queue
-    //     a Y-button hint for the download queue
-    //   B on DownloadsActivity                      → back to Settings
+    // The tab itself is intentionally near-empty: it exists to give
+    // the user a sidebar entry that auto-pushes DownloadsActivity
+    // on first focus. willAppear() does the push; downloads_gate
+    // gates the re-push after B-back so the user can actually
+    // return to Settings.
+    //
+    // The hint label only matters during the brief frame between
+    // the tab becoming active and the activity being pushed.
     this->setAxis(brls::Axis::COLUMN);
     this->setAlignItems(brls::AlignItems::STRETCH);
 
     auto* host = tab_root_box();
 
-    host->addView([]() {
-        auto* h = new brls::Header();
-        h->setTitle("Downloads");
-        return h;
-    }());
-
     auto* description = new brls::Label();
-    description->setText(
-        "Download and update cores, bezel packs, shader presets and "
-        "cheat packs for foyer. Press A on Open to enter the "
-        "downloads view; the Y button there opens the download queue "
-        "so you can watch installs in flight.");
+    description->setText("Opening downloads…");
     description->setFontSize(20.0f);
     description->setMargins(8.0f, 16.0f, 24.0f, 16.0f);
     host->addView(description);
 
-    auto* open_cell = new brls::DetailCell();
-    open_cell->title->setText("Open downloads");
-    open_cell->detail->setText("Cores · Bezels · Shaders · Cheats");
-    open_cell->registerClickAction([](brls::View*) {
-        brls::Application::pushActivity(new DownloadsActivity());
-        return true;
-    });
-    host->addView(open_cell);
-
     wrap_with_scroll(host, this);
+}
+
+void FoyerDownloadsTab::willAppear(bool resetState) {
+    brls::Box::willAppear(resetState);
+    // Suppress re-push when the user just B-backed from
+    // DownloadsActivity into Settings: ~DownloadsActivity set the
+    // flag, we consume it here, and the user stays on Settings'
+    // Downloads tab. Subsequent focus events (after they navigate
+    // to another tab and come back) will push as expected.
+    if (downloads_gate::consume_just_popped()) {
+        return;
+    }
+    brls::Application::pushActivity(new DownloadsActivity());
 }
 brls::View* FoyerDownloadsTab::create() { return new FoyerDownloadsTab(); }
 
