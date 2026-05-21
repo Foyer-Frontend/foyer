@@ -167,15 +167,19 @@ protected:
     void populate_content() override;
 };
 
-// Aggregator tab — Settings sidebar's "Downloads" entry. The tab
-// body holds a single click-to-enter cell that pushes
-// DownloadsActivity. Earlier iterations auto-pushed on willAppear,
-// which surprised users by treating sidebar focus as activation;
-// the explicit A-press keeps the two inputs separate.
+// Aggregator tab — Settings sidebar's "Downloads" entry. Focusing
+// the entry calls SettingsActivity::enter_downloads_mode() in
+// willAppear, which hides the main TabFrame and shows the
+// downloads_frame TabFrame (Cores / Bezels / Shaders / Cheats only).
+// B from the downloads frame swaps back. No separate activity push;
+// the swap is sidebar-only.
 class FoyerDownloadsTab : public brls::Box {
 public:
     FoyerDownloadsTab();
     static brls::View* create();
+
+protected:
+    void willAppear(bool resetState) override;
 };
 
 class FoyerUpdatesTab : public brls::Box {

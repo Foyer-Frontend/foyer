@@ -1,6 +1,5 @@
 #include "tab/settings_tab.hpp"
 
-#include "activity/downloads_activity.hpp"
 #include "activity/log_viewer_activity.hpp"
 #include "activity/settings_activity.hpp"
 #include "activity/wizard_activity.hpp"
@@ -1213,27 +1212,34 @@ brls::View* FoyerCheatsTab::create() { return new FoyerCheatsTab(); }
 // ============ FoyerDownloadsTab ==========================================
 
 FoyerDownloadsTab::FoyerDownloadsTab() {
-    // Single click-to-enter cell. The earlier willAppear auto-push
-    // surprised users (focusing the sidebar entry instantly threw
-    // them into a different activity); switching back to an explicit
-    // A-press keeps tab focus and activity entry as separate inputs.
-    // No header, no paragraph — just the affordance.
+    // The tab itself stays near-empty. The actual UX lives in the
+    // sidebar swap: SettingsActivity hides the main TabFrame and
+    // shows downloads_frame (the four-category sub-sidebar) when
+    // willAppear fires. The "Loading downloads…" label only shows
+    // during the brief frame between focus and the swap landing.
     this->setAxis(brls::Axis::COLUMN);
     this->setAlignItems(brls::AlignItems::STRETCH);
 
     auto* host = tab_root_box();
 
-    auto* open_cell = new brls::DetailCell();
-    open_cell->title->setText("Open downloads");
-    open_cell->detail->setText("Cores · Bezels · Shaders · Cheats");
-    open_cell->registerClickAction([](brls::View*) {
-        brls::Application::pushActivity(new DownloadsActivity());
-        return true;
-    });
-    host->addView(open_cell);
+    auto* hint = new brls::Label();
+    hint->setText("Loading downloads…");
+    hint->setFontSize(20.0f);
+    hint->setMargins(8.0f, 16.0f, 24.0f, 16.0f);
+    host->addView(hint);
 
     wrap_with_scroll(host, this);
 }
+
+void FoyerDownloadsTab::willAppear(bool resetState) {
+    brls::Box::willAppear(resetState);
+    // Sidebar swap to the downloads sub-mode. SettingsActivity owns
+    // the state machine; the just-exited-cooldown is handled
+    // there to prevent re-entry when exit_downloads_mode focuses
+    // this same Downloads sidebar entry on B-back.
+    SettingsActivity::enter_downloads_mode();
+}
+
 brls::View* FoyerDownloadsTab::create() { return new FoyerDownloadsTab(); }
 
 // ============ FoyerUpdatesTab ============================================
