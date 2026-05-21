@@ -73,6 +73,16 @@ public:
     // registered exactly once in onContentAvailable so a refresh
     // doesn't stack duplicate UP/DOWN bindings.
     void refresh_from_disk();
+
+    // Set true by the rescrape worker's completion lambda on
+    // success — fresh assets landed under
+    // /foyer/assets/system/<sys>/<stem>/, so SystemActivity's
+    // tiles need a rebuild on B-back to pick up the new covers.
+    // SystemActivity::onResume calls consume_rescrape_dirty()
+    // which returns the flag + clears it, so the rebuild only
+    // happens on the FIRST resume after a rescrape and not on
+    // every routine B-back from game-details.
+    static bool consume_rescrape_dirty();
 };
 
 }  // namespace foyer::browser

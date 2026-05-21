@@ -51,6 +51,14 @@ namespace {
 GameActivity* g_live_activity = nullptr;
 std::string   g_live_game_path;
 
+// Set true by the rescrape worker's completion lambda on success
+// so SystemActivity::onResume knows to clear+rebuild its
+// carousel one time to pick up the fresh box art. Plain bool —
+// the rescrape callback runs on the brls UI thread (wrapped in
+// brls::sync), same thread that reads + clears it in
+// SystemActivity::onResume, so no atomics needed.
+bool g_rescrape_dirty = false;
+
 // Clock task — same shape as Home/System.
 class ClockTask : public brls::RepeatingTask {
 public:
@@ -348,9 +356,16 @@ void GameActivity::onContentAvailable() {
                         const std::string stem_done = stem_copy;
                         const std::string path_done = path_copy;
                         brls::sync([stem_done, path_done, ok]() {
-                            if (ok && g_live_activity
-                                && g_live_game_path == path_done) {
-                                g_live_activity->refresh_from_disk();
+                            if (ok) {
+                                // Mark the carousel under us as
+                                // dirty so SystemActivity::onResume
+                                // rebuilds on B-back to pick up the
+                                // freshly-downloaded box art.
+                                g_rescrape_dirty = true;
+                                if (g_live_activity
+                                    && g_live_game_path == path_done) {
+                                    g_live_activity->refresh_from_disk();
+                                }
                             }
                         });
                     });
@@ -620,6 +635,12 @@ void GameActivity::refresh_from_disk() {
     }
 
     rebuildGalleryContent();
+}
+
+bool GameActivity::consume_rescrape_dirty() {
+    if (!g_rescrape_dirty) return false;
+    g_rescrape_dirty = false;
+    return true;
 }
 
 }  // namespace foyer::browser

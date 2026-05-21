@@ -17,6 +17,8 @@
 #include "scrapers/cache.hpp"
 #include "platform/log.hpp"
 #include "theme_change.hpp"
+
+#include <unordered_map>
 #include "widgets/action_button.hpp"
 
 #include <algorithm>
@@ -34,6 +36,16 @@ using namespace brls::literals;
 namespace foyer::browser {
 
 namespace {
+
+// Session-scoped focus memory: folder → last focused tile index.
+// Lives for the lifetime of the foyer process and dies when the
+// app quits (no on-disk persistence — cold-boot starts fresh,
+// matching the user's stated expectation). Read by SystemActivity
+// when it's about to be pushed (via the recall_session_focus
+// helper used by main.cpp's chain-back path) and by the activity
+// itself in onContentAvailable; written by onTileFocused so the
+// most-recently-focused tile sticks.
+std::unordered_map<std::string, int> g_session_focus;
 
 // Map a SystemDef folder name to the on-disk art directory name
 // under themes/foyer/systems/. Real systems use their folder
@@ -419,19 +431,26 @@ void SystemActivity::onResume() {
     if (m_defer_population && !m_populated) {
         foyer::log::write("[system] %s onResume: deferred populate kicking in\n",
             m_folder.c_str());
+        // Resolve preselect → m_last_focus_idx BEFORE populate so
+        // populateCarousel's focus-region preload warms covers
+        // around the mid-list target (instead of only [0..4)
+        // when the focus lands on, say, tile 153).
+        if (!m_preselect_game.empty()) {
+            if (const auto* sys = library_state::find_system(m_folder)) {
+                int i = 0;
+                for (const auto& g : sys->games) {
+                    if (g.path == m_preselect_game) {
+                        m_last_focus_idx = i;
+                        break;
+                    }
+                    i++;
+                }
+            }
+        }
         populateCarousel();
         const auto& kids = carousel->getChildren();
         if (!kids.empty()) {
-            int target = 0;
-            if (!m_preselect_game.empty()) {
-                if (const auto* sys = library_state::find_system(m_folder)) {
-                    int i = 0;
-                    for (const auto& g : sys->games) {
-                        if (g.path == m_preselect_game) { target = i; break; }
-                        i++;
-                    }
-                }
-            }
+            int target = m_last_focus_idx;
             if (target < 0 || target >= (int)kids.size()) target = 0;
             m_last_focus_idx = target;
             brls::Application::giveFocus(kids[target]);
@@ -439,6 +458,42 @@ void SystemActivity::onResume() {
         return;
     }
 
+    // Fast path: no rescrape happened while we were under
+    // GameActivity, so the tiles already in the carousel are
+    // up-to-date. Skip the clear+populate rebuild and just
+    // restore focus to the previously-focused tile + warm covers
+    // around it so the user sees full artwork the instant they
+    // land. Saves the entire populateCarousel cost on every
+    // routine game-detail-back.
+    if (!GameActivity::consume_rescrape_dirty()) {
+        const auto& kids = carousel->getChildren();
+        if (!kids.empty()) {
+            const int n = (int)kids.size();
+            int idx = m_last_focus_idx;
+            if (idx < 0) idx = 0;
+            if (idx >= n) idx = n - 1;
+            // Cover-warm a window around the restored focus so any
+            // tiles that ended up unloaded (e.g. the user was mid-
+            // list when they entered details) get their covers
+            // before the user navigates.
+            constexpr int kFocusRadius = 4;
+            const int lo = std::max(0, idx - kFocusRadius);
+            const int hi = std::min(n - 1, idx + kFocusRadius);
+            for (int i = lo; i <= hi; i++) {
+                if (auto* t = dynamic_cast<GameTile*>(kids[i])) {
+                    t->load_cover();
+                }
+            }
+            brls::Application::giveFocus(kids[idx]);
+        }
+        return;
+    }
+
+    // Slow path: a rescrape from GameActivity wrote fresh assets,
+    // so the tiles need a full rebuild to pick up the new box art.
+    // Tear-down + rebuild deferred a frame via brls::sync — moving
+    // focus to actionRow first so pop's focus-restore can't dangle
+    // a freed View when clearViews fires.
     if (actionRow) brls::Application::giveFocus(actionRow);
 
     auto* self = this;
@@ -448,10 +503,6 @@ void SystemActivity::onResume() {
         self->populateCarousel();
         const auto& kids = self->carousel->getChildren();
         if (!kids.empty()) {
-            // Restore focus to the tile the user was on before
-            // pushing GameActivity (tracked via onTileFocused).
-            // Clamp in case the rescan dropped tiles that pushed
-            // the count below the cached index.
             const int n = (int)kids.size();
             int idx = self->m_last_focus_idx;
             if (idx < 0) idx = 0;
@@ -463,6 +514,18 @@ void SystemActivity::onResume() {
 
 void SystemActivity::onContentAvailable() {
     foyer::log::write("[system] content available %s\n", m_folder.c_str());
+
+    // Session-scoped focus recall: if the user already visited
+    // this system this process-lifetime, jump back to whichever
+    // tile they last focused. Seed m_last_focus_idx BEFORE
+    // populateCarousel runs so the focus-region preload warms
+    // the right window — landing the user mid-list with every
+    // visible cover already decoded, not a cold blank around the
+    // restored tile. Wins until the user quits.
+    if (auto it = g_session_focus.find(m_folder);
+        it != g_session_focus.end()) {
+        m_last_focus_idx = it->second;
+    }
 
     // Backdrop — same per-system art as Home shows on tile focus.
     if (backdrop) {
@@ -541,14 +604,15 @@ void SystemActivity::onContentAvailable() {
     // first-system-tile default focus). Falls back to action row
     // when the system has no scanned games.
     //
-    // Chain-back-from-core path: main.cpp's fast_returned branch
-    // called setPreselectGame() with the rom path the user just
-    // played. Resolve it to a tile index by walking the scanned
-    // game list (same order populateCarousel iterates) and focus
-    // that tile instead of the first one. Also seed m_last_focus_idx
-    // so a subsequent onResume rebuild returns to it.
+    // Precedence — highest wins:
+    //   1. chain-back-from-core preselect (main.cpp's fast_returned
+    //      branch calls setPreselectGame(path))
+    //   2. session-scoped focus recall (m_last_focus_idx seeded
+    //      at the top of onContentAvailable from g_session_focus)
+    //   3. tile 0 (fresh entry, never visited before this session)
     if (carousel && !carousel->getChildren().empty()) {
-        int target = 0;
+        // Seed from the session recall — kicks in when 1 doesn't.
+        int target = m_last_focus_idx > 0 ? m_last_focus_idx : 0;
         if (!m_preselect_game.empty()) {
             if (const auto* sys = library_state::find_system(m_folder)) {
                 int i = 0;
@@ -877,12 +941,38 @@ void SystemActivity::populateCarousel() {
             }
         }
     }
+    // Focus-region preload: if m_last_focus_idx sits outside the
+    // head batch, also warm the surrounding tiles so a rebuild
+    // triggered by rescrape-back (or chain-back-from-core with a
+    // mid-list preselect) lands the user on a viewport where
+    // every visible tile already has its cover decoded. Without
+    // this, only the focused tile's cover loaded via
+    // onFocusGained — neighbours stayed empty until the user
+    // moved focus.
+    if (m_last_focus_idx > 0 && m_last_focus_idx < n) {
+        constexpr int kFocusRadius = 4;
+        const int lo = std::max(0, m_last_focus_idx - kFocusRadius);
+        const int hi = std::min(n - 1, m_last_focus_idx + kFocusRadius);
+        for (int i = lo; i <= hi; i++) {
+            if (auto* t = dynamic_cast<GameTile*>(carousel->getChildren()[i])) {
+                t->load_cover();
+            }
+        }
+        // Bump m_loaded_until so the sliding-window preload picks
+        // up from past the focus region instead of redoing it.
+        m_loaded_until = std::max(m_loaded_until, hi + 1);
+    }
     m_populated = true;
 }
 
 void SystemActivity::onTileFocused(int idx) {
     if (!carousel) return;
     m_last_focus_idx = idx;
+    // Persist for the rest of the process lifetime so re-entering
+    // the same system restores focus to where the user left it.
+    // Cold boot wipes the map (process-global), matching the
+    // user's mental model.
+    g_session_focus[m_folder] = idx;
     constexpr int kThreshold = 5;   // start preloading 5 tiles ahead of edge
     constexpr int kBatch     = 10;
     const int n = (int)carousel->getChildren().size();
