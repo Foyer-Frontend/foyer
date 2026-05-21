@@ -95,29 +95,33 @@ void SplashActivity::onContentAvailable() {
         self->m_progress_total.store(kStepTotal, std::memory_order_release);
         self->m_progress_done.store(kStepSwitchTitles, std::memory_order_release);
 
-        // Step 0 — Switch title enumeration. Cache-first: read
-        // whatever the previous boot wrote and publish it
-        // immediately (single fread, no IPC, sub-100 ms even with
-        // 200 titles). The live diff via
-        // nsGetApplicationControlData runs on a detached worker
-        // kicked below; if it picks up new IDs it bumps
-        // library_state's generation so HomeActivity::onResume
-        // rebuilds the __switch tile.
-        w.set_status("Loading Switch titles…");
-        foyer::library::load_switch_titles_cached();
-        // Kick the live-diff refresh on a detached worker. The
-        // callback fires on the worker thread; marshal to brls UI
-        // thread to bump library_state's generation. Home picks up
-        // the rebuild on its next onResume tick (no popup, no
-        // jank).
-        foyer::library::refresh_switch_titles_async([]() {
-            brls::sync([]() {
-                foyer::log::write(
-                    "[splash] switch_titles refresh produced changes "
-                    "— bumping library_state generation\n");
-                ::foyer::browser::library_state::rescan();
+        // Step 0 — Switch title enumeration.
+        //
+        // 0.7.18 attempted a cache-first + detached-async-refresh
+        // shape via e93288d, but the std::thread that ran the
+        // live diff (nsListApplicationRecord +
+        // nsGetApplicationControlData per new id) crashed
+        // immediately after live_app_ids returned on real
+        // hardware — User Break panic from libnx, all three
+        // launch attempts hit the same spot. libnx's threading +
+        // service-binding doesn't tolerate the IPC chain from a
+        // detached pthread in this configuration. Reverted to the
+        // original blocking load until a safer async shape lands
+        // (brls::async-backed worker or a service-relay through
+        // the main thread). The blocking call is fast when the
+        // cache is warm — per-id is a cache lookup + stat,
+        // microseconds — so the splash bar barely ticks.
+        w.set_status("Reading installed Switch titles…");
+        foyer::library::load_switch_titles(
+            [self, &w](int idx, int total) {
+                if (total <= 0) return;
+                self->m_sub_total.store(total, std::memory_order_release);
+                self->m_sub_done.store(idx, std::memory_order_release);
+                char buf[64];
+                std::snprintf(buf, sizeof(buf),
+                    "Reading Switch titles %d / %d…", idx, total);
+                w.set_status(buf);
             });
-        });
         self->m_sub_total.store(0, std::memory_order_release);
         self->m_sub_done.store(0, std::memory_order_release);
         self->m_progress_done.store(kStepLibrary, std::memory_order_release);

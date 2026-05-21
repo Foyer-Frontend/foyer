@@ -428,11 +428,26 @@ std::size_t load_switch_titles_cached() {
     return g_titles.size();
 }
 
-void refresh_switch_titles_async(std::function<void()> on_changed) {
-    // De-dup: if a refresh is already in flight, skip — the worker
-    // that's running will pick up the same OS state we'd see if we
-    // started a second copy. The on_changed callback is dropped
-    // (caller will fire on the previous worker's completion).
+void refresh_switch_titles_async(std::function<void()> /*on_changed*/) {
+    // DISABLED in v0.7.20. The std::thread implementation here
+    // crashed with a libnx User Break panic on real Switch
+    // hardware immediately after the worker thread's
+    // live_app_ids() returned (3 launch attempts, all identical).
+    // libnx's threading + service binding doesn't tolerate the
+    // ns IPC chain from a detached pthread. Until a safer shape
+    // lands (brls::async with a tracked worker, or a main-thread
+    // relay), no-op so callers don't re-trigger the crash. Splash
+    // + main fast-return path call the blocking
+    // load_switch_titles() instead — cache hits make it fast.
+    (void)g_refresh_in_flight;  // suppress unused-variable warning
+    foyer::log::write(
+        "[switch_titles] refresh_async DISABLED — see v0.7.20 fix\n");
+}
+
+#if 0  // pre-v0.7.20 implementation — KEEP for reference / future port
+       // to a safer threading model. The body is preserved verbatim
+       // so the diff vs the working impl stays inspectable.
+static void refresh_switch_titles_async_unsafe(std::function<void()> on_changed) {
     bool expected = false;
     if (!g_refresh_in_flight.compare_exchange_strong(expected, true)) {
         foyer::log::write(
@@ -442,10 +457,6 @@ void refresh_switch_titles_async(std::function<void()> on_changed) {
 
     std::thread([cb = std::move(on_changed)]() mutable {
         ensure_dirs();
-
-        // Snapshot the current cache before the live diff so we can
-        // detect "did anything actually change" without holding the
-        // titles_mutex for the entire IPC walk.
         std::vector<CachedEntry> cached;
         read_cache(cached);
         std::unordered_map<std::uint64_t, std::size_t> by_id;
@@ -478,11 +489,6 @@ void refresh_switch_titles_async(std::function<void()> on_changed) {
             foyer::log::write(
                 "[switch_titles] async refresh: %zu titles (cache "
                 "rewritten)\n", next.size());
-            // Callback fires on the worker thread — caller is
-            // responsible for marshalling to the UI thread
-            // (typically via brls::sync) before touching brls views
-            // or library_state. shared/ avoids the brls dep on
-            // purpose.
             if (cb) cb();
         } else {
             foyer::log::write(
@@ -491,6 +497,7 @@ void refresh_switch_titles_async(std::function<void()> on_changed) {
         g_refresh_in_flight.store(false);
     }).detach();
 }
+#endif  // pre-v0.7.20 unsafe async impl
 
 const std::vector<SwitchTitle>& switch_titles() { return g_titles; }
 
