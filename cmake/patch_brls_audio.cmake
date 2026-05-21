@@ -22,7 +22,20 @@ endif()
 
 file(READ "${AUDIO_CPP}" _content)
 
-if(_content MATCHES "FOYER_AUDIO_PATCH")
+# Two independent sentinels — the ctor and play() patches must be
+# guardable separately so a botched play()-needle (v0.7.18 had one)
+# can be re-applied without un-patching the ctor. Each replacement
+# carries its own marker; the outer skip only fires when BOTH have
+# landed.
+set(_has_ctor 0)
+set(_has_play 0)
+if(_content MATCHES "FOYER_AUDIO_PATCH_CTOR")
+    set(_has_ctor 1)
+endif()
+if(_content MATCHES "FOYER_AUDIO_PATCH_PLAY")
+    set(_has_play 1)
+endif()
+if(_has_ctor AND _has_play)
     return()
 endif()
 
@@ -71,8 +84,8 @@ set(_ctor_needle "//    PLSR_RC rc = plsrPlayerInit();
 //    // Good to go~
 //    this->init = true;")
 
-set(_ctor_replacement "    // FOYER_AUDIO_PATCH — XITRIX commented these out; restore so
-    // brls's UI sounds (focus / click / back) play through libpulsar
+set(_ctor_replacement "    // FOYER_AUDIO_PATCH_CTOR — XITRIX commented these out; restore
+    // so brls's UI sounds (focus / click / back) play through libpulsar
     // reading qlaunch's BFSAR. Failures fall through silently.
     PLSR_RC rc = plsrPlayerInit();
     if (PLSR_RC_FAILED(rc))
@@ -108,13 +121,14 @@ set(_ctor_replacement "    // FOYER_AUDIO_PATCH — XITRIX commented these out; 
 
     this->init = true;")
 
-string(FIND "${_content}" "${_ctor_needle}" _idx)
-if(_idx EQUAL -1)
-    message(WARNING "patch_brls_audio: ctor needle not found — brls source may have changed; audio left disabled")
-    return()
+if(NOT _has_ctor)
+    string(FIND "${_content}" "${_ctor_needle}" _idx)
+    if(_idx EQUAL -1)
+        message(WARNING "patch_brls_audio: ctor needle not found — brls source may have changed; ctor patch skipped")
+    else()
+        string(REPLACE "${_ctor_needle}" "${_ctor_replacement}" _content "${_content}")
+    endif()
 endif()
-
-string(REPLACE "${_ctor_needle}" "${_ctor_replacement}" _content "${_content}")
 
 # play() body — same trick.
 set(_play_needle "//    // Load the sound if needed
@@ -132,12 +146,14 @@ set(_play_needle "//    // Load the sound if needed
 //        Logger::error(\"Unable to play sound {}: {:#x}\", sound, rc);
 //        return false;
 //    }
-//
-//    return true;
-    return false;
+
+    return true;
 }")
 
-set(_play_replacement "    if (this->sounds[sound] == PLSR_PLAYER_INVALID_SOUND)
+set(_play_replacement "    // FOYER_AUDIO_PATCH_PLAY — restore the actual playback path;
+    // XITRIX had this commented out so brls::play() short-circuited
+    // and the UI was silent even after the ctor init succeeded.
+    if (this->sounds[sound] == PLSR_PLAYER_INVALID_SOUND)
     {
         if (!this->load(sound))
             return false;
@@ -157,9 +173,13 @@ set(_play_replacement "    if (this->sounds[sound] == PLSR_PLAYER_INVALID_SOUND)
     return true;
 }")
 
-string(FIND "${_content}" "${_play_needle}" _play_idx)
-if(NOT _play_idx EQUAL -1)
-    string(REPLACE "${_play_needle}" "${_play_replacement}" _content "${_content}")
+if(NOT _has_play)
+    string(FIND "${_content}" "${_play_needle}" _play_idx)
+    if(_play_idx EQUAL -1)
+        message(WARNING "patch_brls_audio: play() needle not found — brls source may have changed; play() patch skipped (UI will be silent)")
+    else()
+        string(REPLACE "${_play_needle}" "${_play_replacement}" _content "${_content}")
+    endif()
 endif()
 
 file(WRITE "${AUDIO_CPP}" "${_content}")
