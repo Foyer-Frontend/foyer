@@ -1,5 +1,6 @@
 #include "activity/per_system_activity.hpp"
 
+#include "activity/bezel_picker_activity.hpp"
 #include "library_state.hpp"
 #include "library/bezel_installer.hpp"
 #include "library/config.hpp"
@@ -64,71 +65,54 @@ brls::View* PerSystemActivity::createContentView() {
         host->addView(cell);
     }
 
-    // Default bezel selector + live preview thumbnail below it.
-    // Lists "(none)" + every PNG currently installed at
-    // /foyer/content/bezels/ so the user can pick any bezel
-    // (regardless of which folder-key install_bezels wrote it
-    // under) as this system's default. Resolution at launch is:
-    //   per-game custom > per-system config > per-system file fallback
-    //
-    // The preview Image below the selector refreshes whenever the
-    // user makes a new pick — closest brls can get to a "what does
-    // this look like" affordance without a fully custom wheel
-    // picker. Stretched-fit to a 16:9 box; tiny height (150 px) so
-    // it doesn't dominate the per-system page.
+    // Default bezel — DetailCell that opens BezelPickerActivity.
+    // The earlier inline SelectorCell + below-preview shape was
+    // flagged as awkward in testing: the wheel-picker dialog has
+    // no room for an image, so users couldn't see what they were
+    // picking until they closed the dialog. The new picker is a
+    // full-screen activity with a large preview front and centre
+    // + ←/→ to cycle + A to confirm.
     {
-        auto names = ::foyer::library::installed_bezel_names();
-        std::vector<std::string> labels;
-        labels.reserve(names.size() + 1);
-        labels.emplace_back("(none)");
-        for (const auto& n : names) labels.emplace_back(n);
+        auto* cell = new brls::DetailCell();
+        cell->title->setText("Default bezel");
 
-        const char* current =
-            ::foyer::library::config().default_bezel_for(m_folder);
-        int initial = 0;
-        if (current && *current) {
-            for (std::size_t i = 0; i < names.size(); i++) {
-                if (names[i] == current) { initial = (int)(i + 1); break; }
-            }
-        }
-
-        auto* preview = new brls::Image();
-        preview->setWidth(360.0f);
-        preview->setHeight(150.0f);
-        preview->setScalingType(brls::ImageScalingType::FIT);
-        preview->setMargins(8.0f, 32.0f, 8.0f, 32.0f);
-
-        auto load_preview = [preview](const std::string& bezel_name) {
-            if (bezel_name.empty()) {
-                preview->clear();
-                return;
-            }
-            const std::string path =
-                "/foyer/content/bezels/" + bezel_name + ".png";
-            struct stat st{};
-            if (::stat(path.c_str(), &st) == 0) {
-                preview->setImageFromFile(path);
-            } else {
-                preview->clear();
-            }
+        auto resolved_label = [this]() -> std::string {
+            const char* current =
+                ::foyer::library::config().default_bezel_for(m_folder);
+            return (current && *current) ? std::string{current} : "(none)";
         };
-        // Seed with the current selection.
-        load_preview(initial > 0 ? names[initial - 1] : std::string{});
+        cell->detail->setText(resolved_label());
 
         const std::string folder = m_folder;
-        auto* cell = new brls::SelectorCell();
-        cell->init("Default bezel", labels, initial,
-                   [](int) {},
-                   [folder, names, load_preview](int selected) {
-                       std::string pick;
-                       if (selected > 0 && selected <= (int)names.size()) {
-                           pick = names[selected - 1];
-                       }
-                       ::foyer::library::set_default_bezel_for(folder, pick);
-                       load_preview(pick);
-                   });
+        cell->registerClickAction([this, cell, folder, resolved_label](brls::View*) {
+            // Build the picker's name list: "(none)" sentinel +
+            // every installed bezel basename.
+            auto names = ::foyer::library::installed_bezel_names();
+            std::vector<std::string> with_none;
+            with_none.reserve(names.size() + 1);
+            with_none.emplace_back("");  // sentinel
+            for (auto& n : names) with_none.emplace_back(std::move(n));
+
+            const char* current =
+                ::foyer::library::config().default_bezel_for(folder);
+            std::string initial = (current && *current)
+                ? std::string{current} : std::string{};
+
+            auto* picker = new BezelPickerActivity(
+                std::move(with_none), std::move(initial),
+                [folder, cell, resolved_label](const std::string& pick) {
+                    ::foyer::library::set_default_bezel_for(folder, pick);
+                    // Refresh the cell's detail line so the user
+                    // sees the new pick when they land back on
+                    // the per-system page.
+                    cell->detail->setText(
+                        pick.empty() ? "(none)" : pick);
+                    (void)resolved_label;
+                });
+            brls::Application::pushActivity(picker);
+            return true;
+        });
         host->addView(cell);
-        host->addView(preview);
     }
 
     // Default shader selector — same shape, lists "(none)" + every
