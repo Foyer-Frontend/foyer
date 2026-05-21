@@ -79,6 +79,12 @@ private:
 
     // Pre-allocated CPU readback buffer (RGBA8888 / 4 bytes per pixel).
     std::vector<std::uint8_t> m_readback;
+
+    // One-shot diagnostic: log on the first end_frame() whether the
+    // readback was all-zero (indicates Mesa/FBO bug or core not
+    // actually drawing) vs. non-zero (pipeline is fine). Flipped
+    // true after the first sample so the log doesn't spam.
+    bool m_readback_diagnosed = false;
 };
 
 } // namespace foyer::libretro

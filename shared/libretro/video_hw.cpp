@@ -8,7 +8,9 @@
 #include <EGL/eglext.h>
 #include <GLES3/gl3.h>
 
+#include <algorithm>
 #include <cstring>
+#include <vector>
 
 namespace foyer::libretro {
 namespace {
@@ -94,7 +96,55 @@ bool HwContext::ensure_context(unsigned width, unsigned height) {
                 egl_err_str(eglGetError()));
             return false;
         }
-        foyer::log::write("[hw_render] EGL %d.%d on Switch\n", major, minor);
+        foyer::log::write("[hw_render] EGL %d.%d on Switch (vendor=%s, "
+            "version=%s, client_apis=%s)\n", major, minor,
+            eglQueryString((EGLDisplay)m_egl_display, EGL_VENDOR)
+                ?: "?",
+            eglQueryString((EGLDisplay)m_egl_display, EGL_VERSION)
+                ?: "?",
+            eglQueryString((EGLDisplay)m_egl_display, EGL_CLIENT_APIS)
+                ?: "?");
+        // Dump the full config catalogue so we can see on hardware
+        // exactly what attrs Mesa-on-Switch exposes — the probe
+        // chain below relaxes attrs until something matches, and
+        // when ALL probes fail we want to know which configs
+        // existed (and why none satisfied our needs).
+        EGLint config_count = 0;
+        eglGetConfigs((EGLDisplay)m_egl_display, nullptr, 0, &config_count);
+        foyer::log::write("[hw_render] available egl configs: %d\n",
+            (int)config_count);
+        if (config_count > 0) {
+            std::vector<EGLConfig> all((std::size_t)config_count);
+            eglGetConfigs((EGLDisplay)m_egl_display, all.data(),
+                config_count, &config_count);
+            // Cap the dump at the first 12 to keep the log readable
+            // — more than enough to characterise Mesa's surface
+            // catalogue on Switch.
+            const int dump_n = std::min(config_count, 12);
+            for (int i = 0; i < dump_n; i++) {
+                EGLint r = 0, g = 0, b = 0, a = 0;
+                EGLint d = 0, s = 0, rt = 0, st = 0;
+                eglGetConfigAttrib((EGLDisplay)m_egl_display, all[i], EGL_RED_SIZE,        &r);
+                eglGetConfigAttrib((EGLDisplay)m_egl_display, all[i], EGL_GREEN_SIZE,      &g);
+                eglGetConfigAttrib((EGLDisplay)m_egl_display, all[i], EGL_BLUE_SIZE,       &b);
+                eglGetConfigAttrib((EGLDisplay)m_egl_display, all[i], EGL_ALPHA_SIZE,      &a);
+                eglGetConfigAttrib((EGLDisplay)m_egl_display, all[i], EGL_DEPTH_SIZE,      &d);
+                eglGetConfigAttrib((EGLDisplay)m_egl_display, all[i], EGL_STENCIL_SIZE,    &s);
+                eglGetConfigAttrib((EGLDisplay)m_egl_display, all[i], EGL_RENDERABLE_TYPE, &rt);
+                eglGetConfigAttrib((EGLDisplay)m_egl_display, all[i], EGL_SURFACE_TYPE,    &st);
+                foyer::log::write(
+                    "[hw_render]   config #%d: rgba=%d%d%d%d depth=%d stencil=%d "
+                    "renderable=0x%x surface_bits=0x%x%s\n",
+                    i, r, g, b, a, d, s, (unsigned)rt, (unsigned)st,
+                    (rt & EGL_OPENGL_ES3_BIT) ? " (gles3)"
+                  : (rt & EGL_OPENGL_ES2_BIT) ? " (gles2)" : "");
+            }
+            if (config_count > dump_n) {
+                foyer::log::write(
+                    "[hw_render]   …and %d more configs (truncated)\n",
+                    config_count - dump_n);
+            }
+        }
 
         if (!eglBindAPI(EGL_OPENGL_ES_API)) {
             foyer::log::write("[hw_render] eglBindAPI(GLES) failed: %s\n",
@@ -240,6 +290,22 @@ bool HwContext::ensure_context(unsigned width, unsigned height) {
             return false;
         }
 
+        // Confirm what driver actually answered — "Software Rasterizer"
+        // vs "NV12B" (nouveau on Tegra X1) means the difference
+        // between "playable HW core" and "blank screen / drop frames".
+        // Also dump GL_VERSION + GLSL version so we can spot capability
+        // mismatches with what the core requested.
+        const char* gl_vendor   = (const char*)glGetString(GL_VENDOR);
+        const char* gl_renderer = (const char*)glGetString(GL_RENDERER);
+        const char* gl_version  = (const char*)glGetString(GL_VERSION);
+        const char* glsl_ver    = (const char*)glGetString(GL_SHADING_LANGUAGE_VERSION);
+        foyer::log::write("[hw_render] GL vendor=%s renderer=%s version=%s "
+            "glsl=%s\n",
+            gl_vendor   ? gl_vendor   : "?",
+            gl_renderer ? gl_renderer : "?",
+            gl_version  ? gl_version  : "?",
+            glsl_ver    ? glsl_ver    : "?");
+
         glGenFramebuffers (1, &m_fbo);
         glGenTextures     (1, &m_color_tex);
         glGenRenderbuffers(1, &m_depth_stencil);
@@ -301,6 +367,26 @@ void HwContext::end_frame() {
     // shows up in profiles.
     glReadPixels(0, 0, (GLsizei)m_width, (GLsizei)m_height,
                  GL_RGBA, GL_UNSIGNED_BYTE, m_readback.data());
+    // One-time diagnostic: sample the readback for non-zero content.
+    // If glReadPixels keeps returning all-zero buffers despite the
+    // core claiming it rendered, the FBO color attachment isn't
+    // actually receiving draw calls — that points at a Mesa nouveau
+    // FBO bug or a context-binding mismatch, not foyer's pipeline.
+    if (!m_readback_diagnosed) {
+        bool any_nonzero = false;
+        const std::size_t sample_count = std::min<std::size_t>(
+            m_readback.size(), 4096);
+        for (std::size_t i = 0; i < sample_count; i++) {
+            if (m_readback[i] != 0) { any_nonzero = true; break; }
+        }
+        foyer::log::write(
+            "[hw_render] first readback %ux%u: %s (gl_error=0x%04x)\n",
+            m_width, m_height,
+            any_nonzero ? "non-zero (frame contents OK)"
+                        : "ALL-ZERO (FBO not painted, likely Mesa/context bug)",
+            (unsigned)glGetError());
+        m_readback_diagnosed = true;
+    }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     const std::size_t row_bytes = (std::size_t)m_width * 4;
