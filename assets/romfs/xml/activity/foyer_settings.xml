@@ -67,11 +67,7 @@
             </brls:Box>
         </brls:Box>
 
-        <!-- Main settings TabFrame — visible by default. Focusing
-             the "Downloads" sidebar entry hides this frame and
-             shows the downloads_frame below; B pops back. -->
         <brls:TabFrame
-            id="foyer/settings_main"
             grow="1.0"
             title="@i18n/foyer/settings/title">
 
@@ -87,37 +83,9 @@
                 <FoyerLibraryTab />
             </brls:Tab>
 
-            <brls:Tab label="Downloads">
-                <FoyerDownloadsTab />
-            </brls:Tab>
-
             <brls:Tab label="Emulators">
                 <FoyerEmulatorsTab />
             </brls:Tab>
-
-            <brls:Tab label="Updates">
-                <FoyerUpdatesTab />
-            </brls:Tab>
-
-            <brls:Separator />
-
-            <brls:Tab label="About">
-                <FoyerAboutTab />
-            </brls:Tab>
-
-        </brls:TabFrame>
-
-        <!-- Downloads sub-mode TabFrame. Hidden by default; shown
-             when the user focuses the "Downloads" entry in the
-             main frame. The sidebar here is purely the four
-             manifest categories — no top-level Settings entries
-             visible until B is pressed. SettingsActivity owns the
-             swap state (see m_downloads_mode). -->
-        <brls:TabFrame
-            id="foyer/settings_downloads"
-            visibility="gone"
-            grow="1.0"
-            title="Downloads">
 
             <brls:Tab label="Cores">
                 <FoyerCoresTab />
@@ -133,6 +101,16 @@
 
             <brls:Tab label="Cheats">
                 <FoyerCheatsTab />
+            </brls:Tab>
+
+            <brls:Tab label="Updates">
+                <FoyerUpdatesTab />
+            </brls:Tab>
+
+            <brls:Separator />
+
+            <brls:Tab label="About">
+                <FoyerAboutTab />
             </brls:Tab>
 
         </brls:TabFrame>

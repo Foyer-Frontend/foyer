@@ -167,21 +167,6 @@ protected:
     void populate_content() override;
 };
 
-// Aggregator tab — Settings sidebar's "Downloads" entry. Focusing
-// the entry shows this hint panel on the right; pressing A on the
-// sidebar entry (intercepted in SettingsActivity::onContentAvailable)
-// hides the main TabFrame and shows the downloads_frame TabFrame
-// (Cores / Bezels / Shaders / Cheats). Sidebar-only swap; B from
-// downloads mode returns to the main sidebar. Critically the swap
-// is NOT triggered by focus — passing Downloads on the way to
-// Emulators / Updates / About leaves you exactly where you were
-// going.
-class FoyerDownloadsTab : public brls::Box {
-public:
-    FoyerDownloadsTab();
-    static brls::View* create();
-};
-
 class FoyerUpdatesTab : public brls::Box {
 public:
     FoyerUpdatesTab();

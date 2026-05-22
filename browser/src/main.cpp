@@ -178,7 +178,6 @@ int main(int argc, char* argv[])
     brls::Application::registerXMLView("FoyerBezelsTab",   FoyerBezelsTab::create);
     brls::Application::registerXMLView("FoyerShadersTab",  FoyerShadersTab::create);
     brls::Application::registerXMLView("FoyerCheatsTab",   FoyerCheatsTab::create);
-    brls::Application::registerXMLView("FoyerDownloadsTab", FoyerDownloadsTab::create);
     brls::Application::registerXMLView("FoyerUpdatesTab",  FoyerUpdatesTab::create);
     brls::Application::registerXMLView("FoyerAboutTab",    FoyerAboutTab::create);
 

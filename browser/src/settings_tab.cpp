@@ -1209,35 +1209,6 @@ void FoyerCheatsTab::populate_content() {
 }
 brls::View* FoyerCheatsTab::create() { return new FoyerCheatsTab(); }
 
-// ============ FoyerDownloadsTab ==========================================
-
-FoyerDownloadsTab::FoyerDownloadsTab() {
-    // Hint panel only — the actual swap is fired by an A press on
-    // the Downloads sidebar entry, intercepted in
-    // SettingsActivity::onContentAvailable. The body just tells
-    // the user what'll happen.
-    this->setAxis(brls::Axis::COLUMN);
-    this->setAlignItems(brls::AlignItems::STRETCH);
-
-    auto* host = tab_root_box();
-
-    auto* header = new brls::Header();
-    header->setTitle("Downloads");
-    host->addView(header);
-
-    auto* desc = new brls::Label();
-    desc->setText(
-        "Press A to open the downloads view — install or update "
-        "cores, bezel packs, shader presets and cheat packs.");
-    desc->setFontSize(20.0f);
-    desc->setMargins(12.0f, 16.0f, 24.0f, 16.0f);
-    host->addView(desc);
-
-    wrap_with_scroll(host, this);
-}
-
-brls::View* FoyerDownloadsTab::create() { return new FoyerDownloadsTab(); }
-
 // ============ FoyerUpdatesTab ============================================
 
 FoyerUpdatesTab::FoyerUpdatesTab() {
