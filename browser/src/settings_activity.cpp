@@ -1,6 +1,7 @@
 #include "activity/settings_activity.hpp"
 
 #include "activity/download_queue_activity.hpp"
+#include "platform/log.hpp"
 
 #include <chrono>
 #include <ctime>
@@ -43,14 +44,25 @@ SettingsActivity::~SettingsActivity() {
 }
 
 void SettingsActivity::enter_downloads_mode() {
+    foyer::log::write(
+        "[settings] enter_downloads_mode: g_live=%p\n", (void*)g_live);
     if (!g_live) return;
     auto* self = g_live;
-    if (self->m_downloads_mode == 1) return;  // already there
-    if (!self->mainFrame || !self->downloadsFrame) return;
+    if (self->m_downloads_mode == 1) {
+        foyer::log::write("[settings]   already in downloads mode\n");
+        return;
+    }
+    if (!self->mainFrame || !self->downloadsFrame) {
+        foyer::log::write(
+            "[settings]   bail: mainFrame=%p downloadsFrame=%p\n",
+            (void*)self->mainFrame, (void*)self->downloadsFrame);
+        return;
+    }
     self->mainFrame->setVisibility(brls::Visibility::GONE);
     self->downloadsFrame->setVisibility(brls::Visibility::VISIBLE);
-    self->downloadsFrame->focusTab(0);   // land on Cores
+    self->downloadsFrame->focusTab(0);
     self->m_downloads_mode = 1;
+    foyer::log::write("[settings]   swap done\n");
 }
 
 void SettingsActivity::exit_downloads_mode() {
@@ -81,28 +93,59 @@ void SettingsActivity::onContentAvailable() {
     // Updates / About must NOT swap — only A on the entry does.
     // The Sidebar lives inside the TabFrame with id
     // "brls/tab_frame/sidebar" (set by brls's internal XML).
+    foyer::log::write(
+        "[settings] onContentAvailable: mainFrame=%p downloadsFrame=%p\n",
+        (void*)mainFrame, (void*)downloadsFrame);
     if (mainFrame) {
-        // brls's TabFrame.sidebar is a Box subclass (Sidebar) — we
-        // need the Box API to iterate its SidebarItem children.
-        if (auto* sidebar = dynamic_cast<brls::Box*>(
-                mainFrame->getView("brls/tab_frame/sidebar"))) {
+        auto* raw_sidebar = mainFrame->getView("brls/tab_frame/sidebar");
+        foyer::log::write(
+            "[settings] sidebar lookup: raw=%p\n", (void*)raw_sidebar);
+        if (auto* sidebar = dynamic_cast<brls::Box*>(raw_sidebar)) {
             const auto& items = sidebar->getChildren();
-            // Indices in foyer_settings.xml main TabFrame:
-            //   0 General  · 1 Online accounts · 2 Library
-            //   3 Downloads · 4 Emulators · 5 Updates
-            //   6 Separator (not a SidebarItem, but counted by
-            //     Box::getChildren) · 7 About
-            // The Separator isn't focusable so it can't be hit;
-            // the index for Downloads is 3.
-            constexpr std::size_t kDownloadsIdx = 3;
-            if (items.size() > kDownloadsIdx && items[kDownloadsIdx]) {
-                items[kDownloadsIdx]->registerAction(
-                    "Open", brls::BUTTON_A,
-                    [](brls::View*) {
-                        SettingsActivity::enter_downloads_mode();
-                        return true;
-                    }, false, false, brls::SOUND_CLICK);
+            foyer::log::write(
+                "[settings] sidebar has %zu children\n", items.size());
+            // Don't trust a fixed index — separators / spacing
+            // boxes shift the count. Walk children and identify
+            // the Downloads SidebarItem by matching its label
+            // text (its first child is the brls Label "Downloads").
+            int hits = 0;
+            for (auto* item : items) {
+                if (!item) continue;
+                // Each SidebarItem is a Box with a label child. Try
+                // to locate the label and compare.
+                if (auto* box = dynamic_cast<brls::Box*>(item)) {
+                    const auto& kids = box->getChildren();
+                    for (auto* k : kids) {
+                        if (auto* lbl = dynamic_cast<brls::Label*>(k)) {
+                            const auto& text = lbl->getFullText();
+                            if (text == "Downloads") {
+                                foyer::log::write(
+                                    "[settings] found Downloads sidebar item — "
+                                    "overriding A action\n");
+                                item->registerAction(
+                                    "Open", brls::BUTTON_A,
+                                    [](brls::View*) {
+                                        foyer::log::write(
+                                            "[settings] A pressed on Downloads — "
+                                            "entering downloads mode\n");
+                                        SettingsActivity::enter_downloads_mode();
+                                        return true;
+                                    }, false, false, brls::SOUND_CLICK);
+                                hits++;
+                                break;
+                            }
+                        }
+                    }
+                }
             }
+            if (hits == 0) {
+                foyer::log::write(
+                    "[settings] WARN: no Downloads sidebar item found — "
+                    "label-walk failed\n");
+            }
+        } else {
+            foyer::log::write(
+                "[settings] WARN: sidebar dynamic_cast to Box failed\n");
         }
     }
 
