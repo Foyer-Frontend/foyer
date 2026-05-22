@@ -242,26 +242,47 @@ std::string strip_jsonc_comments(const std::string& in) {
     return out;
 }
 
-std::string resolve_fragment_source(const std::string& spec) {
+std::string resolve_fragment_source(const std::string& spec,
+                                    const std::string& base_dir = {}) {
     // Caller can give us:
     //   * a built-in name ("scanlines")
     //   * an absolute path
-    //   * a path relative to /foyer/shaders/
+    //   * a path relative to the manifest's own directory (base_dir),
+    //     OR to /foyer/content/shaders/ as a fallback.
     if (auto* b = find_builtin(spec)) return b->body;
 
     // Drop a leading "./" if present.
     std::string p = spec;
     if (p.size() >= 2 && p[0] == '.' && p[1] == '/') p = p.substr(2);
 
-    if (file_exists(p)) return read_file(p);
+    // Absolute path — use as-is.
+    if (!p.empty() && p[0] == '/') {
+        if (file_exists(p)) return read_file(p);
+        return {};
+    }
 
+    // Relative to the manifest's directory (dir-form preset
+    // /foyer/content/shaders/<name>/preset.json referencing
+    // pass-N.glsl as siblings).
+    if (!base_dir.empty()) {
+        const std::string rel = base_dir + "/" + p;
+        if (file_exists(rel)) return read_file(rel);
+        if (file_exists(rel + ".glsl")) return read_file(rel + ".glsl");
+    }
+
+    // Legacy: relative to shaders root.
+    if (file_exists(p)) return read_file(p);
     const std::string base = "/foyer/content/shaders/" + p;
     if (file_exists(base)) return read_file(base);
-
-    // Maybe they passed a name without extension; try .glsl
     if (file_exists(base + ".glsl")) return read_file(base + ".glsl");
 
     return {};
+}
+
+std::string dirname_of(const std::string& path) {
+    const auto slash = path.find_last_of('/');
+    if (slash == std::string::npos) return {};
+    return path.substr(0, slash);
 }
 
 } // namespace
@@ -583,6 +604,13 @@ bool ShaderPipeline::load_json_manifest(const std::string& path) {
     if (raw.empty()) return false;
     const auto stripped = strip_jsonc_comments(raw);
 
+    // Manifest's own directory — used as the base for relative
+    // LUT + fragment paths so dir-form presets (preset.json with
+    // sibling pass-N.glsl + LUT pngs) resolve correctly. The
+    // legacy file-form path (manifest in /foyer/content/shaders/)
+    // also works since base_dir lands on that same root.
+    const std::string base_dir = dirname_of(path);
+
     auto* doc = yyjson_read(stripped.data(), stripped.size(), 0);
     if (!doc) {
         foyer::log::write("[shader] manifest parse failed: %s\n", path.c_str());
@@ -612,7 +640,23 @@ bool ShaderPipeline::load_json_manifest(const std::string& path) {
             if (auto* x = yyjson_obj_get(item, "filter"); x && yyjson_is_str(x))
                 linear = std::strcmp(yyjson_get_str(x), "linear") == 0;
             if (lname.empty() || lpath.empty()) continue;
-            if (lpath[0] != '/') lpath = "/foyer/content/shaders/" + lpath;
+            // Drop leading "./" then resolve. Absolute paths pass
+            // through; relative ones try base_dir first, then the
+            // legacy shaders root.
+            if (lpath.size() >= 2 && lpath[0] == '.' && lpath[1] == '/') {
+                lpath = lpath.substr(2);
+            }
+            if (lpath[0] != '/') {
+                std::string candidate;
+                if (!base_dir.empty()) {
+                    candidate = base_dir + "/" + lpath;
+                    if (!file_exists(candidate)) candidate.clear();
+                }
+                if (candidate.empty()) {
+                    candidate = "/foyer/content/shaders/" + lpath;
+                }
+                lpath = std::move(candidate);
+            }
             load_lut(lname, lpath, linear);
         }
     }
@@ -636,10 +680,12 @@ bool ShaderPipeline::load_json_manifest(const std::string& path) {
             linear = std::strcmp(yyjson_get_str(x), "linear") == 0;
         if (frag_spec.empty()) continue;
 
-        const auto src = resolve_fragment_source(frag_spec);
+        const auto src = resolve_fragment_source(frag_spec, base_dir);
         if (src.empty()) {
-            foyer::log::write("[shader] pass '%s' source not found\n",
-                frag_spec.c_str());
+            foyer::log::write(
+                "[shader] pass '%s' source not found (base_dir=%s)\n",
+                frag_spec.c_str(),
+                base_dir.empty() ? "(none)" : base_dir.c_str());
             continue;
         }
 
@@ -757,7 +803,9 @@ bool ShaderPipeline::apply_preset_named(std::string_view name) {
     if (!m_egl_context && !init()) return false;
     if (!make_current()) return false;
 
-    // 2. JSON multi-pass manifest.
+    // 2. JSON multi-pass manifest at the shaders/ root
+    //    (/foyer/content/shaders/<name>.json — legacy file-form
+    //    layout from before install_shaders moved to dir-form).
     char buf[512];
     std::snprintf(buf, sizeof(buf), "/foyer/content/shaders/%.*s.json",
         (int)name.size(), name.data());
@@ -765,6 +813,27 @@ bool ShaderPipeline::apply_preset_named(std::string_view name) {
         if (load_json_manifest(buf)) {
             m_active_name = std::string{name};
             foyer::log::write("[shader] active=%s (manifest, %zu pass%s, %zu lut%s)\n",
+                m_active_name.c_str(),
+                m_chain.size(), m_chain.size() == 1 ? "" : "es",
+                m_luts.size(),  m_luts.size()  == 1 ? "" : "s");
+            return true;
+        }
+    }
+
+    // 2b. Directory-form preset that install_shaders lays down:
+    //    /foyer/content/shaders/<name>/preset.json with pass-N.glsl
+    //    + LUT PNGs siblings. available_presets() enumerates these,
+    //    so without this branch picking one was a silent no-op
+    //    (fell through to "none" — exact symptom the user hit on
+    //    every shader from the installed catalogue).
+    std::snprintf(buf, sizeof(buf),
+        "/foyer/content/shaders/%.*s/preset.json",
+        (int)name.size(), name.data());
+    if (file_exists(buf)) {
+        if (load_json_manifest(buf)) {
+            m_active_name = std::string{name};
+            foyer::log::write(
+                "[shader] active=%s (dir-form, %zu pass%s, %zu lut%s)\n",
                 m_active_name.c_str(),
                 m_chain.size(), m_chain.size() == 1 ? "" : "es",
                 m_luts.size(),  m_luts.size()  == 1 ? "" : "s");
