@@ -66,6 +66,41 @@ brls::View* PerSystemActivity::createContentView() {
         host->addView(cell);
     }
 
+    // Default shader selector — lists "(none)" + every shader preset
+    // directory at /foyer/content/shaders/, with pretty labels (CRT
+    // Easymode instead of crt-easymode etc.).
+    {
+        auto names = ::foyer::library::installed_shader_names();
+        std::vector<std::string> labels;
+        labels.reserve(names.size() + 1);
+        labels.emplace_back("(none)");
+        for (const auto& n : names) {
+            labels.emplace_back(::foyer::library::pretty_shader_name(n));
+        }
+
+        const char* current =
+            ::foyer::library::config().default_shader_for(m_folder);
+        int initial = 0;
+        if (current && *current) {
+            for (std::size_t i = 0; i < names.size(); i++) {
+                if (names[i] == current) { initial = (int)(i + 1); break; }
+            }
+        }
+        const std::string folder = m_folder;
+        auto* cell = new brls::SelectorCell();
+        cell->init("Default shader", labels, initial,
+                   [](int) {},
+                   [folder, names](int selected) {
+                       if (selected <= 0 || selected > (int)names.size()) {
+                           ::foyer::library::set_default_shader_for(folder, {});
+                       } else {
+                           ::foyer::library::set_default_shader_for(
+                               folder, names[selected - 1]);
+                       }
+                   });
+        host->addView(cell);
+    }
+
     // Default bezel — DetailCell that opens BezelPickerActivity.
     // The earlier inline SelectorCell + below-preview shape was
     // flagged as awkward in testing: the wheel-picker dialog has
@@ -93,14 +128,19 @@ brls::View* PerSystemActivity::createContentView() {
             // bezels into every system's picker — limit to the
             // current folder and its `<folder>-<source>` variants.
             auto all_names = ::foyer::library::installed_bezel_names();
+            const auto fam = std::string{
+                ::foyer::library::family_for_folder(folder)};
+            auto matches = [&](const std::string& n, const std::string& key) {
+                if (n == key) return true;
+                if (n.size() > key.size() + 1
+                    && n.compare(0, key.size(), key) == 0
+                    && n[key.size()] == '-') return true;
+                return false;
+            };
             std::vector<std::string> names;
             for (auto& n : all_names) {
-                const bool is_exact = (n == folder);
-                const bool is_variant =
-                    (n.size() > folder.size() + 1)
-                    && (n.compare(0, folder.size(), folder) == 0)
-                    && (n[folder.size()] == '-');
-                if (is_exact || is_variant) {
+                if (matches(n, folder)
+                    || (fam != folder && matches(n, fam))) {
                     names.emplace_back(std::move(n));
                 }
             }
@@ -143,41 +183,6 @@ brls::View* PerSystemActivity::createContentView() {
                    ::foyer::library::config().is_force_default_bezel_for(folder),
                    [folder](bool value) {
                        ::foyer::library::set_force_default_bezel_for(folder, value);
-                   });
-        host->addView(cell);
-    }
-
-    // Default shader selector — same shape, lists "(none)" + every
-    // shader preset directory at /foyer/content/shaders/, with
-    // pretty labels (CRT Easymode instead of crt-easymode etc.).
-    {
-        auto names = ::foyer::library::installed_shader_names();
-        std::vector<std::string> labels;
-        labels.reserve(names.size() + 1);
-        labels.emplace_back("(none)");
-        for (const auto& n : names) {
-            labels.emplace_back(::foyer::library::pretty_shader_name(n));
-        }
-
-        const char* current =
-            ::foyer::library::config().default_shader_for(m_folder);
-        int initial = 0;
-        if (current && *current) {
-            for (std::size_t i = 0; i < names.size(); i++) {
-                if (names[i] == current) { initial = (int)(i + 1); break; }
-            }
-        }
-        const std::string folder = m_folder;
-        auto* cell = new brls::SelectorCell();
-        cell->init("Default shader", labels, initial,
-                   [](int) {},
-                   [folder, names](int selected) {
-                       if (selected <= 0 || selected > (int)names.size()) {
-                           ::foyer::library::set_default_shader_for(folder, {});
-                       } else {
-                           ::foyer::library::set_default_shader_for(
-                               folder, names[selected - 1]);
-                       }
                    });
         host->addView(cell);
     }

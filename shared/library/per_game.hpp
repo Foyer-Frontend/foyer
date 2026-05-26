@@ -56,6 +56,17 @@ void          clear_per_game_playtime(std::string_view rom_path);
 std::string per_game_shader(std::string_view rom_path);
 void        set_per_game_shader(std::string_view rom_path, std::string_view shader_name);
 
+// Per-game bezel pick. Empty = "(auto)" — resolver walks the normal
+// per-rom → per-system → legacy fallback chain. Non-empty = absolute
+// file path of the bezel PNG to render (either a game-specific file
+// under /foyer/assets/system/<sys>/<stem>/ or an installed
+// per-system pack at /foyer/content/bezels/<name>.png). Lets the
+// user fix a specific bezel choice for one rom without touching
+// the per-system default.
+std::string per_game_bezel_choice(std::string_view rom_path);
+void        set_per_game_bezel_choice(std::string_view rom_path,
+                                      std::string_view abs_path);
+
 // Per-game run-ahead override. -1 means "fall back to
 // Config::runahead_frames". 0..4 sets the explicit lookahead count
 // for this rom (some games tolerate higher values without artifacts;

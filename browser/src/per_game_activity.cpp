@@ -1,6 +1,7 @@
 #include "activity/per_game_activity.hpp"
 
 #include "activity/bezel_source_browser_activity.hpp"
+#include "activity/per_game_bezel_picker_activity.hpp"
 #include "library/config.hpp"
 #include "library/per_game.hpp"
 #include "library/per_game_bezel.hpp"
@@ -84,7 +85,7 @@ brls::View* PerGameActivity::createContentView() {
             if (codes[i] == resolved) { initial = (int)i; break; }
         }
         auto* cell = new brls::SelectorCell();
-        cell->init("Core", labels, initial,
+        cell->init("Default core", labels, initial,
                    [](int) {},
                    [rom, codes](int selected) {
                        if (selected < 0 || selected >= (int)codes.size()) return;
@@ -148,12 +149,53 @@ brls::View* PerGameActivity::createContentView() {
             if (codes[i] == resolved) { initial = (int)i; break; }
         }
         auto* cell = new brls::SelectorCell();
-        cell->init("Shader", labels, initial,
+        cell->init("Default shader", labels, initial,
                    [](int) {},
                    [rom, codes](int selected) {
                        if (selected < 0 || selected >= (int)codes.size()) return;
                        ::foyer::library::set_per_game_shader(rom, codes[selected]);
                    });
+        host->addView(cell);
+    }
+
+    // Default bezel — DetailCell that opens PerGameBezelPickerActivity.
+    // The picker lists every PNG already in the rom's bundle dir
+    // (SS scrapes + BezelProject / estefan downloads) plus the
+    // installed per-system bezel packs filtered to the rom's
+    // hardware family. Picking writes an absolute path into
+    // per_game_bezel_choice — bezel_sdl::resolve_path checks that
+    // first, so the per-game pick beats the per-rom and per-system
+    // resolver fallbacks.
+    {
+        const std::string stem = std::filesystem::path(rom).stem().string();
+        auto resolved_label = [rom]() -> std::string {
+            const auto choice = ::foyer::library::per_game_bezel_choice(rom);
+            if (choice.empty()) return "(auto)";
+            const auto slash = choice.find_last_of('/');
+            std::string base = slash == std::string::npos
+                ? choice
+                : choice.substr(slash + 1);
+            if (base.size() > 4
+                && base.compare(base.size() - 4, 4, ".png") == 0) {
+                base.resize(base.size() - 4);
+            }
+            return base;
+        };
+        auto* cell = new brls::DetailCell();
+        cell->title->setText("Default bezel");
+        cell->detail->setText(resolved_label());
+
+        cell->registerClickAction([rom, sys, stem, cell, resolved_label](brls::View*) {
+            const auto current = ::foyer::library::per_game_bezel_choice(rom);
+            auto* picker = new ::foyer::browser::PerGameBezelPickerActivity(
+                rom, sys, stem, current,
+                [rom, cell, resolved_label](const std::string& abs_path) {
+                    ::foyer::library::set_per_game_bezel_choice(rom, abs_path);
+                    cell->detail->setText(resolved_label());
+                });
+            brls::Application::pushActivity(picker);
+            return true;
+        });
         host->addView(cell);
     }
 

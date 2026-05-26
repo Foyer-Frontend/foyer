@@ -37,6 +37,11 @@ struct Entry {
     // libretro/aspect.hpp. Persisted from the pause menu's
     // Display→Aspect picker.
     int           aspect      = -1;
+    // Empty = "(auto)" — bezel_sdl walks the normal fallback chain.
+    // Non-empty = absolute file path the resolver renders directly,
+    // skipping the chain. Written by the per-game default-bezel
+    // picker on the rom's PerGameActivity page.
+    std::string   bezel_choice;
 };
 
 std::mutex                                 g_mutex;
@@ -46,7 +51,7 @@ std::atomic<bool>                          g_loaded{false};
 bool entry_is_default(const Entry& e) {
     return e.core.empty() && e.shader.empty() && !e.favorite
         && e.last_played == 0 && e.playtime == 0 && e.runahead < 0
-        && e.show_bezel < 0 && e.aspect < 0;
+        && e.show_bezel < 0 && e.aspect < 0 && e.bezel_choice.empty();
 }
 
 std::string strip_comments(const std::string& in) {
@@ -130,6 +135,10 @@ void load_locked() {
                 if (n > 6)  n = 6;
                 e.aspect = n;
             }
+            if (auto* x = yyjson_obj_get(v, "bezel_choice");
+                x && yyjson_is_str(x)) {
+                e.bezel_choice = yyjson_get_str(x);
+            }
             if (!entry_is_default(e)) {
                 g_entries.emplace(yyjson_get_str(k), std::move(e));
             }
@@ -190,6 +199,11 @@ void save_locked() {
         if (e.aspect >= 0) {
             if (need_comma) out << ",";
             out << " \"aspect\": " << e.aspect;
+            need_comma = true;
+        }
+        if (!e.bezel_choice.empty()) {
+            if (need_comma) out << ",";
+            out << " \"bezel_choice\": \"" << e.bezel_choice << "\"";
             need_comma = true;
         }
         out << " }";
@@ -316,6 +330,20 @@ void set_per_game_show_bezel(std::string_view rom_path, int tri_state) {
     if (tri_state < -1) tri_state = -1;
     if (tri_state > 1)  tri_state = 1;
     mutate(rom_path, [&](Entry& e) { e.show_bezel = tri_state; });
+}
+
+std::string per_game_bezel_choice(std::string_view rom_path) {
+    ensure_loaded();
+    std::scoped_lock lk{g_mutex};
+    auto* e = find_entry_locked(rom_path);
+    return e ? e->bezel_choice : std::string{};
+}
+
+void set_per_game_bezel_choice(std::string_view rom_path,
+                               std::string_view abs_path) {
+    mutate(rom_path, [&](Entry& e) {
+        e.bezel_choice = std::string{abs_path};
+    });
 }
 
 int per_game_aspect(std::string_view rom_path) {
