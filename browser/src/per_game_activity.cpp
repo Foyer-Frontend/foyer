@@ -1,7 +1,9 @@
 #include "activity/per_game_activity.hpp"
 
+#include "activity/bezel_source_browser_activity.hpp"
 #include "library/config.hpp"
 #include "library/per_game.hpp"
+#include "library/per_game_bezel.hpp"
 #include "library/shader_installer.hpp"
 #include "library/system_db.hpp"
 
@@ -178,6 +180,36 @@ brls::View* PerGameActivity::createContentView() {
                        ::foyer::library::set_per_game_favorite(rom, value);
                    });
         host->addView(cell);
+    }
+
+    // Browse online bezels — full-screen preview activity that
+    // probes The Bezel Project + estefan3112 (where applicable),
+    // writes each hit to /foyer/data/cache/bezel-preview/<sys>/<stem>/
+    // and lets the user cycle through with ←/→ before committing
+    // one with A. Only surfaced when at least one source might hit:
+    // BP requires a mapped per-system repo; estefan is arcade-only.
+    {
+        const std::string stem = std::filesystem::path(rom).stem().string();
+        const bool bp_ok = ::foyer::library::bezelproject_has_system(sys);
+        const bool arcade =
+            sys == "arcade" || sys == "mame" || sys == "fbneo"
+            || sys == "fbalpha" || sys == "neogeo";
+        if (bp_ok || arcade) {
+            auto* cell = new brls::DetailCell();
+            cell->title->setText("Browse online bezels");
+            cell->detail->setText(
+                bp_ok && arcade ? "The Bezel Project + Realistic" :
+                bp_ok           ? "The Bezel Project" :
+                                  "Realistic (arcade)");
+            cell->registerClickAction([sys, stem](brls::View*) {
+                auto* activity =
+                    new ::foyer::browser::BezelSourceBrowserActivity(
+                        sys, stem, [](const std::string&) {});
+                brls::Application::pushActivity(activity);
+                return true;
+            });
+            host->addView(cell);
+        }
     }
 
     auto* scroll = new brls::ScrollingFrame();

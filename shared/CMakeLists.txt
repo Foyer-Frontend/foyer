@@ -25,6 +25,7 @@ add_library(foyer_shared STATIC
     library/asset_pack.cpp
     library/cheat_installer.cpp
     library/bezel_installer.cpp
+    library/per_game_bezel.cpp
     library/foyer_updater.cpp
     library/foyer_update_job.cpp
     library/ra_progress.cpp
