@@ -1,4 +1,5 @@
 #include "cheats.hpp"
+#include "library/system_db.hpp"
 #include "platform/log.hpp"
 #include "libretro.h"
 
@@ -47,9 +48,18 @@ bool to_bool(const std::string& s) {
 
 std::vector<Cheat> load_cheats_for(std::string_view system_folder,
                                    std::string_view rom_stem) {
-    const auto path = cht_path(system_folder, rom_stem);
+    auto path = cht_path(system_folder, rom_stem);
     std::ifstream in{path};
-    if (!in) return {};
+    if (!in) {
+        // Family fallback — genesis rom whose cheats were installed
+        // under megadrive/ (or vice versa) finds them here.
+        const auto fam = foyer::library::family_for_folder(system_folder);
+        if (fam != system_folder) {
+            path = cht_path(fam, rom_stem);
+            in.open(path);
+        }
+        if (!in) return {};
+    }
 
     // Two passes: collect every "cheatN_<key> = value" into a flat map,
     // then materialise into the struct list. Lets us tolerate fields

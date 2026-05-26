@@ -1,6 +1,7 @@
 #include "bezel_sdl.hpp"
 #include "library/config.hpp"
 #include "library/per_game.hpp"
+#include "library/system_db.hpp"
 #include "platform/log.hpp"
 
 #include <SDL2/SDL_image.h>
@@ -44,6 +45,20 @@ std::string resolve_path() {
         g_folder.c_str(), g_stem.c_str(), (int)enabled, per_game,
         (int)force_default);
     if (!enabled) return {};
+
+    // Per-game explicit pick beats every other resolver path. Set by
+    // the per-game default-bezel picker on PerGameActivity. Caller
+    // wrote an absolute file path; we just stat-check and return it.
+    if (!g_rom_path.empty()) {
+        const auto choice =
+            foyer::library::per_game_bezel_choice(g_rom_path);
+        if (!choice.empty() && exists(choice)) {
+            foyer::log::write("[bezel_sdl] per-game pick %s\n",
+                choice.c_str());
+            return choice;
+        }
+    }
+
     char buf[512];
 
     // Per-system "force default bezel" opt-in skips the per-rom
@@ -53,8 +68,6 @@ std::string resolve_path() {
     // ignore whichever per-rom art might be sitting on disk".
     if (!force_default) {
         if (!g_folder.empty() && !g_stem.empty()) {
-            const std::string bundle_dir =
-                "/foyer/assets/system/" + g_folder + "/" + g_stem + "/";
             // Order = priority. Region-tagged SS scrapes win first
             // (`bezel-16-9(<region>).png`), then bare SS bezel.png,
             // then per-game downloads from external sources
@@ -71,12 +84,26 @@ std::string resolve_path() {
                 "bezel-bezelproject.png",
                 "bezel-estefan.png",
             };
-            for (const char* name : bundle_candidates) {
-                const std::string path = bundle_dir + name;
-                if (exists(path)) {
-                    foyer::log::write("[bezel_sdl] using bundle %s\n",
-                        path.c_str());
-                    return path;
+            // Try the folder-specific dir first, then the
+            // hardware-family dir — so a genesis rom finds its
+            // bezel even when the scrape lives under megadrive/.
+            const auto fam = foyer::library::family_for_folder(g_folder);
+            const std::string bundle_dirs[] = {
+                "/foyer/assets/system/" + g_folder + "/" + g_stem + "/",
+                (fam != g_folder
+                    ? "/foyer/assets/system/" + std::string{fam} + "/"
+                          + g_stem + "/"
+                    : std::string{}),
+            };
+            for (const auto& bundle_dir : bundle_dirs) {
+                if (bundle_dir.empty()) continue;
+                for (const char* name : bundle_candidates) {
+                    const std::string path = bundle_dir + name;
+                    if (exists(path)) {
+                        foyer::log::write("[bezel_sdl] using bundle %s\n",
+                            path.c_str());
+                        return path;
+                    }
                 }
             }
         }
@@ -85,25 +112,48 @@ std::string resolve_path() {
                 "/foyer/content/bezels/%s/%s.png",
                 g_folder.c_str(), g_stem.c_str());
             if (exists(buf)) return std::string{buf};
+            // Family fallback for the per-rom installed path —
+            // covers genesis roms when only megadrive/<stem>.png
+            // exists (and vice versa).
+            const auto fam = foyer::library::family_for_folder(g_folder);
+            if (fam != g_folder) {
+                std::snprintf(buf, sizeof(buf),
+                    "/foyer/content/bezels/%.*s/%s.png",
+                    (int)fam.size(), fam.data(), g_stem.c_str());
+                if (exists(buf)) return std::string{buf};
+            }
         }
     }
     // Per-system default-bezel override from config — lets the user
     // pick any installed bezel PNG for this system from
     // PerSystemActivity, decoupling the asset filename from the
     // system folder key the bezel pack was installed under.
-    if (!g_folder.empty()) {
+    //
+    // Each lookup falls back to the hardware-family slug
+    // (foyer::library::family_for_folder) when the folder-specific
+    // path doesn't exist, so a `megadrive-bezelproject` install also
+    // covers genesis roms (and vice versa).
+    auto try_per_system = [&](std::string_view key) -> std::string {
+        if (key.empty()) return {};
         if (const char* name =
-                foyer::library::config().default_bezel_for(g_folder);
+                foyer::library::config().default_bezel_for(key);
             name && *name) {
             std::snprintf(buf, sizeof(buf),
                 "/foyer/content/bezels/%s.png", name);
             if (exists(buf)) return std::string{buf};
         }
-    }
-    if (!g_folder.empty()) {
         std::snprintf(buf, sizeof(buf),
-            "/foyer/content/bezels/%s.png", g_folder.c_str());
+            "/foyer/content/bezels/%.*s.png",
+            (int)key.size(), key.data());
         if (exists(buf)) return std::string{buf};
+        return {};
+    };
+    if (!g_folder.empty()) {
+        if (auto p = try_per_system(g_folder); !p.empty()) return p;
+        const auto fam = foyer::library::family_for_folder(g_folder);
+        if (fam != g_folder) {
+            if (auto p = try_per_system(fam); !p.empty()) return p;
+        }
     }
     return {};
 }

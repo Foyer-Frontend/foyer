@@ -424,4 +424,82 @@ bool is_virtual_system(const SystemDef& sys) {
     return !sys.folder_name.empty() && sys.folder_name.starts_with("__");
 }
 
+// Hardware-family aliases. Folders not listed here have their own
+// family (folder == family). Resolvers fall back to the family slug
+// when the folder-specific asset is missing — so a user who installs
+// `megadrive-bezelproject` sees it on a genesis rom too, scrapes
+// done under `genesis/` populate cheats lookups for `megadrive/`,
+// etc.
+//
+// Covers every retro-system regional-naming pair that shows up
+// either as a foyer kSystems folder slug, as a foyer-bezels pack
+// name, or as a common-overlays / libretro slug an external user
+// might rom-organise by. The family slug is the one foyer's
+// kSystems uses; the alternates are the ones users (or upstream
+// bezel/thumbnail packs) might call them. Resolvers walk both
+// directions of the table so a rom under genesis/ finds
+// megadrive-* assets and vice versa.
+namespace {
+struct SystemAlias { std::string_view folder; std::string_view family; };
+constexpr SystemAlias kAliases[] = {
+    // Nintendo Entertainment System / Famicom (Japan, "headered" variant).
+    { "nes",            "nes" },
+    { "famicom",        "nes" },
+    { "nesh",           "nes" },
+    // Super Nintendo / Super Famicom (Japan + assorted region tags).
+    { "snes",           "snes" },
+    { "sfc",            "snes" },
+    { "snesh",          "snes" },
+    { "snesna",         "snes" },
+    { "sgb",            "snes" },
+    { "sufami",         "snes" },
+    // Game Boy (Japan-region "h" tags from common-overlays).
+    { "gb",             "gb" },
+    { "gbh",            "gb" },
+    // Game Boy Color.
+    { "gbc",            "gbc" },
+    { "gbch",           "gbc" },
+    // Game Boy Advance.
+    { "gba",            "gba" },
+    { "gbah",           "gba" },
+    // Sega Mega Drive / Genesis (Japan / Europe / Australia vs.
+    // North America). foyer kSystems carries both folders; family
+    // slug = "megadrive" so the JP/EU canonical name wins.
+    { "megadrive",      "megadrive" },
+    { "genesis",        "megadrive" },
+    // Sega Master System / Mark III (Japan).
+    { "mastersystem",   "mastersystem" },
+    { "markiii",        "mastersystem" },
+    // Sega CD / Mega-CD (Japan / Europe).
+    { "segacd",         "segacd" },
+    { "megacd",         "segacd" },
+    // NEC PC Engine / TurboGrafx-16 (NA).
+    { "pcengine",       "pcengine" },
+    { "turbografx",     "pcengine" },
+    { "tg16",           "pcengine" },
+    // NEC PC Engine CD / TurboGrafx-CD (NA).
+    { "pcenginecd",     "pcenginecd" },
+    { "turbografxcd",   "pcenginecd" },
+    { "tg16cd",         "pcenginecd" },
+    { "pcecd",          "pcenginecd" },
+    // 3DO Interactive Multiplayer (foyer slug "opera" matches the
+    // libretro core; Panasonic 3DO / Goldstar 3DO etc. are the
+    // user-facing names).
+    { "opera",          "opera" },
+    { "3do",            "opera" },
+    { "panasonic3do",   "opera" },
+    // Sony PlayStation — slug "psx" everywhere in foyer.
+    { "psx",            "psx" },
+    { "playstation",    "psx" },
+    { "ps1",            "psx" },
+};
+}  // namespace
+
+std::string_view family_for_folder(std::string_view folder) {
+    for (const auto& a : kAliases) {
+        if (folder == a.folder) return a.family;
+    }
+    return folder;
+}
+
 } // namespace foyer::library

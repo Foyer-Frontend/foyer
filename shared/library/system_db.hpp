@@ -61,4 +61,10 @@ extern const SystemDef kVirtualUnknownDef;    // "__unknown"
 
 bool is_virtual_system(const SystemDef& sys);
 
+// Returns the hardware-family slug for `folder` (e.g. "megadrive"
+// for both "genesis" and "megadrive"). Falls back to `folder`
+// itself when no SystemDef matches, so callers can blindly use
+// the return value as a fallback key.
+std::string_view family_for_folder(std::string_view folder);
+
 } // namespace foyer::library

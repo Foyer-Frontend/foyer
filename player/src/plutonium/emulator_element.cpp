@@ -9,6 +9,7 @@
 #include "libretro/video_sdl.hpp"
 #include "library/config.hpp"
 #include "library/per_game.hpp"
+#include "library/system_db.hpp"
 #include "net/http.hpp"
 #include "platform/log.hpp"
 #include "plutonium/session_tracker.hpp"
@@ -158,6 +159,18 @@ bool EmulatorElement::BootGame(const std::string& rom_path,
                 foyer::library::config().default_shader_for(m_system_folder);
             sys_default && *sys_default) {
             s = sys_default;
+        }
+    }
+    if (s.empty()) {
+        // Hardware-family fallback — covers per-system defaults set
+        // on megadrive that should also apply to genesis.
+        const auto fam = foyer::library::family_for_folder(m_system_folder);
+        if (fam != m_system_folder) {
+            if (const char* sys_default =
+                    foyer::library::config().default_shader_for(fam);
+                sys_default && *sys_default) {
+                s = sys_default;
+            }
         }
     }
     if (s.empty()) {

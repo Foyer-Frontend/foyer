@@ -1,5 +1,6 @@
 #include "per_game_bezel.hpp"
 
+#include "library/system_db.hpp"
 #include "net/http.hpp"
 #include "platform/log.hpp"
 #include "scrapers/cache.hpp"
@@ -62,6 +63,13 @@ constexpr BPMap kBezelProject[] = {
 const BPMap* find_bp(std::string_view folder) {
     for (const auto& e : kBezelProject) {
         if (folder == e.slug) return &e;
+    }
+    // Family fallback — covers e.g. genesis -> bezelproject-MegaDrive.
+    const auto fam = foyer::library::family_for_folder(folder);
+    if (fam != folder) {
+        for (const auto& e : kBezelProject) {
+            if (fam == e.slug) return &e;
+        }
     }
     return nullptr;
 }
