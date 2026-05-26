@@ -14,12 +14,16 @@ namespace foyer::library {
 // manifest also records which libretro/common-overlays commit each
 // pack was sliced from.
 struct BezelManifestEntry {
-    std::string name;        // foyer system folder, e.g. "nes"
+    std::string name;        // pack basename, e.g. "nes" or "nes-bezelproject"
     std::string version;     // first 7 chars of the zip's sha256
     std::string zip;         // filename, e.g. "nes.zip"
     std::string sha256;      // hex digest of the zip
     std::string url;         // direct download URL on the release
     std::size_t size = 0;    // bytes
+    std::string source;      // upstream slug (common-overlays / covarr /
+                             // overlay-borders / bezelproject / estefan3112).
+                             // Optional — empty for legacy single-source
+                             // manifests.
 };
 
 struct BezelManifest {

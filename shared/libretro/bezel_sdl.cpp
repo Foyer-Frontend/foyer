@@ -37,37 +37,55 @@ std::string resolve_path() {
     } else {
         enabled = foyer::library::config().show_bezels;
     }
+    const bool force_default = !g_folder.empty()
+        && foyer::library::config().is_force_default_bezel_for(g_folder);
     foyer::log::write(
-        "[bezel_sdl] resolve folder=%s stem=%s show_bezels=%d (per_game=%d)\n",
-        g_folder.c_str(), g_stem.c_str(), (int)enabled, per_game);
+        "[bezel_sdl] resolve folder=%s stem=%s show_bezels=%d (per_game=%d force_default=%d)\n",
+        g_folder.c_str(), g_stem.c_str(), (int)enabled, per_game,
+        (int)force_default);
     if (!enabled) return {};
     char buf[512];
 
-    if (!g_folder.empty() && !g_stem.empty()) {
-        const std::string bundle_dir =
-            "/foyer/assets/system/" + g_folder + "/" + g_stem + "/";
-        const char* bundle_candidates[] = {
-            "bezel-16-9(wor).png", "bezel-16-9(us).png",
-            "bezel-16-9(eu).png",  "bezel-16-9(jp).png",
-            "bezel-16-9.png",
-            "bezel(wor).png",      "bezel(us).png",
-            "bezel(eu).png",       "bezel(jp).png",
-            "bezel.png",
-        };
-        for (const char* name : bundle_candidates) {
-            const std::string path = bundle_dir + name;
-            if (exists(path)) {
-                foyer::log::write("[bezel_sdl] using bundle %s\n",
-                    path.c_str());
-                return path;
+    // Per-system "force default bezel" opt-in skips the per-rom
+    // candidate paths (#1 bundled + #2 installed) and jumps straight
+    // to the per-system selector (#3) / legacy <folder>.png (#4).
+    // Lets a user say "always use my picked bezel for this system,
+    // ignore whichever per-rom art might be sitting on disk".
+    if (!force_default) {
+        if (!g_folder.empty() && !g_stem.empty()) {
+            const std::string bundle_dir =
+                "/foyer/assets/system/" + g_folder + "/" + g_stem + "/";
+            // Order = priority. Region-tagged SS scrapes win first
+            // (`bezel-16-9(<region>).png`), then bare SS bezel.png,
+            // then per-game downloads from external sources
+            // (bezel-bezelproject.png, bezel-estefan.png). Lets users
+            // keep multiple bezels on disk for the same rom and pick
+            // between them by deleting the higher-priority files.
+            const char* bundle_candidates[] = {
+                "bezel-16-9(wor).png", "bezel-16-9(us).png",
+                "bezel-16-9(eu).png",  "bezel-16-9(jp).png",
+                "bezel-16-9.png",
+                "bezel(wor).png",      "bezel(us).png",
+                "bezel(eu).png",       "bezel(jp).png",
+                "bezel.png",
+                "bezel-bezelproject.png",
+                "bezel-estefan.png",
+            };
+            for (const char* name : bundle_candidates) {
+                const std::string path = bundle_dir + name;
+                if (exists(path)) {
+                    foyer::log::write("[bezel_sdl] using bundle %s\n",
+                        path.c_str());
+                    return path;
+                }
             }
         }
-    }
-    if (!g_folder.empty() && !g_stem.empty()) {
-        std::snprintf(buf, sizeof(buf),
-            "/foyer/content/bezels/%s/%s.png",
-            g_folder.c_str(), g_stem.c_str());
-        if (exists(buf)) return std::string{buf};
+        if (!g_folder.empty() && !g_stem.empty()) {
+            std::snprintf(buf, sizeof(buf),
+                "/foyer/content/bezels/%s/%s.png",
+                g_folder.c_str(), g_stem.c_str());
+            if (exists(buf)) return std::string{buf};
+        }
     }
     // Per-system default-bezel override from config — lets the user
     // pick any installed bezel PNG for this system from

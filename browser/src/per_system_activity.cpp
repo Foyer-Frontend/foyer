@@ -8,6 +8,7 @@
 #include "library/system_db.hpp"
 
 #include <borealis/views/applet_frame.hpp>
+#include <borealis/views/cells/cell_bool.hpp>
 #include <borealis/views/cells/cell_detail.hpp>
 #include <borealis/views/cells/cell_selector.hpp>
 #include <borealis/views/image.hpp>
@@ -86,8 +87,23 @@ brls::View* PerSystemActivity::createContentView() {
         const std::string folder = m_folder;
         cell->registerClickAction([this, cell, folder, resolved_label](brls::View*) {
             // Build the picker's name list: "(none)" sentinel +
-            // every installed bezel basename.
-            auto names = ::foyer::library::installed_bezel_names();
+            // every installed bezel basename that belongs to this
+            // system. With the multi-source catalogue (96+ packs)
+            // an unfiltered list would mix NES / GBA / Saturn
+            // bezels into every system's picker — limit to the
+            // current folder and its `<folder>-<source>` variants.
+            auto all_names = ::foyer::library::installed_bezel_names();
+            std::vector<std::string> names;
+            for (auto& n : all_names) {
+                const bool is_exact = (n == folder);
+                const bool is_variant =
+                    (n.size() > folder.size() + 1)
+                    && (n.compare(0, folder.size(), folder) == 0)
+                    && (n[folder.size()] == '-');
+                if (is_exact || is_variant) {
+                    names.emplace_back(std::move(n));
+                }
+            }
             std::vector<std::string> with_none;
             with_none.reserve(names.size() + 1);
             with_none.emplace_back("");  // sentinel
@@ -112,6 +128,22 @@ brls::View* PerSystemActivity::createContentView() {
             brls::Application::pushActivity(picker);
             return true;
         });
+        host->addView(cell);
+    }
+
+    // Force-default bezel toggle. Off by default — per-rom bundled /
+    // installed art (resolver paths #1 / #2) wins. Flipping it ON
+    // makes bezel_sdl skip the per-rom search and always render the
+    // pack picked above, regardless of whether the rom has its own
+    // bezel file lying around.
+    {
+        const std::string folder = m_folder;
+        auto* cell = new brls::BooleanCell();
+        cell->init("Always use system bezel",
+                   ::foyer::library::config().is_force_default_bezel_for(folder),
+                   [folder](bool value) {
+                       ::foyer::library::set_force_default_bezel_for(folder, value);
+                   });
         host->addView(cell);
     }
 

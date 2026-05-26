@@ -17,6 +17,7 @@
 #include "manifest_cache.hpp"
 #include "platform/log.hpp"
 #include "scrapers/accounts.hpp"
+#include "activity/download_queue_activity.hpp"
 #include "update_check.hpp"
 #include "widgets/masked_input_cell.hpp"
 
@@ -895,86 +896,85 @@ void FoyerBezelsTab::populate_content() {
         });
         host->addView(install_all);
 
-        // Group manifest entries by SystemDef. Bezel packs are
-        // keyed by foyer folder name (e.g. "nes", "snes"), so we
-        // can look up the matching SystemDef directly.
-        std::vector<bool> placed(mf.packs.size(), false);
-        for (const auto& sys : ::foyer::library::all_systems()) {
-            if (::foyer::library::is_virtual_system(sys)) continue;
-            std::vector<std::size_t> picks;
-            for (std::size_t i = 0; i < mf.packs.size(); i++) {
-                if (placed[i]) continue;
-                if (mf.packs[i].name == sys.folder_name) picks.push_back(i);
+        // Group manifest entries by upstream source slug — much
+        // friendlier with the multi-source catalogue (Common
+        // Overlays / Bezel Project / NyNy77 Borders / Covarr /
+        // Realistic). Within each source group, packs are listed in
+        // manifest order (sorted alphabetically by the CI step).
+        auto pretty_source = [](const std::string& src) -> std::string {
+            if (src == "common-overlays") return "Common Overlays (libretro)";
+            if (src == "overlay-borders") return "NyNy77 1080 Borders (libretro)";
+            if (src == "covarr")          return "Covarr handhelds";
+            if (src == "bezelproject")    return "The Bezel Project";
+            if (src == "estefan3112")     return "Realistic (estefan3112)";
+            if (src.empty())              return "Common Overlays (libretro)";
+            return src;
+        };
+        // Stable display order — most-commonly-wanted sources first.
+        const std::vector<std::string> order = {
+            "common-overlays", "covarr", "overlay-borders",
+            "bezelproject", "estefan3112",
+        };
+        std::vector<std::size_t> idx_by_source[5];
+        std::vector<std::size_t> other_idx;
+        auto bucket_for = [&order](const std::string& src) -> int {
+            for (std::size_t i = 0; i < order.size(); i++) {
+                if (order[i] == src) return (int)i;
             }
-            if (picks.empty()) continue;
-            host->addView([&sys]() {
+            // Treat unspecified source (legacy / future entries) as
+            // common-overlays so the bare <sys>.zip packs land in
+            // the expected bucket.
+            if (src.empty()) return 0;
+            return -1;
+        };
+        for (std::size_t i = 0; i < mf.packs.size(); i++) {
+            int b = bucket_for(mf.packs[i].source);
+            if (b >= 0) idx_by_source[b].push_back(i);
+            else        other_idx.push_back(i);
+        }
+
+        auto emit_pack_cell = [&](const ::foyer::library::BezelManifestEntry& entry) {
+            auto* cell = new brls::DetailCell();
+            cell->title->setText(entry.name);
+            auto bezel_label = [](const ::foyer::library::BezelManifestEntry& e) {
+                const auto have =
+                    ::foyer::library::installed_bezel_version(e.name);
+                return std::string(
+                    have.empty()       ? "Tap to install" :
+                    have == e.version  ? "Tap to re-install"
+                                       : "Tap to update");
+            };
+            cell->detail->setText(bezel_label(entry));
+            add_refresher([cell, entry, bezel_label]() {
+                cell->detail->setText(bezel_label(entry));
+            });
+            cell->registerClickAction([entry, &mf, kick](brls::View*) {
+                ::foyer::library::BezelManifest filt{};
+                filt.version  = mf.version;
+                filt.upstream = mf.upstream;
+                filt.packs.push_back(entry);
+                kick(filt, entry.name);
+                return true;
+            });
+            host->addView(cell);
+        };
+
+        for (std::size_t b = 0; b < order.size(); b++) {
+            if (idx_by_source[b].empty()) continue;
+            host->addView([&]() {
                 auto* h = new brls::Header();
-                h->setTitle(std::string(sys.display_name));
+                h->setTitle(pretty_source(order[b]));
                 return h;
             }());
-            for (std::size_t i : picks) {
-                placed[i] = true;
-                const auto& entry = mf.packs[i];
-                auto* cell = new brls::DetailCell();
-                cell->title->setText(entry.name);
-                auto bezel_label = [](const ::foyer::library::BezelManifestEntry& e) {
-                    const auto have =
-                        ::foyer::library::installed_bezel_version(e.name);
-                    return std::string(
-                        have.empty()       ? "Tap to install" :
-                        have == e.version  ? "Tap to re-install"
-                                           : "Tap to update");
-                };
-                cell->detail->setText(bezel_label(entry));
-                add_refresher([cell, entry, bezel_label]() {
-                    cell->detail->setText(bezel_label(entry));
-                });
-                cell->registerClickAction([entry, &mf, kick](brls::View*) {
-                    ::foyer::library::BezelManifest filt{};
-                    filt.version  = mf.version;
-                    filt.upstream = mf.upstream;
-                    filt.packs.push_back(entry);
-                    kick(filt, entry.name);
-                    return true;
-                });
-                host->addView(cell);
-            }
+            for (std::size_t i : idx_by_source[b]) emit_pack_cell(mf.packs[i]);
         }
-        std::vector<std::size_t> rest;
-        for (std::size_t i = 0; i < mf.packs.size(); i++)
-            if (!placed[i]) rest.push_back(i);
-        if (!rest.empty()) {
+        if (!other_idx.empty()) {
             host->addView([]() {
                 auto* h = new brls::Header();
                 h->setTitle("Other");
                 return h;
             }());
-            for (std::size_t i : rest) {
-                const auto& entry = mf.packs[i];
-                auto* cell = new brls::DetailCell();
-                cell->title->setText(entry.name);
-                auto bezel_label = [](const ::foyer::library::BezelManifestEntry& e) {
-                    const auto have =
-                        ::foyer::library::installed_bezel_version(e.name);
-                    return std::string(
-                        have.empty()       ? "Tap to install" :
-                        have == e.version  ? "Tap to re-install"
-                                           : "Tap to update");
-                };
-                cell->detail->setText(bezel_label(entry));
-                add_refresher([cell, entry, bezel_label]() {
-                    cell->detail->setText(bezel_label(entry));
-                });
-                cell->registerClickAction([entry, &mf, kick](brls::View*) {
-                    ::foyer::library::BezelManifest filt{};
-                    filt.version  = mf.version;
-                    filt.upstream = mf.upstream;
-                    filt.packs.push_back(entry);
-                    kick(filt, entry.name);
-                    return true;
-                });
-                host->addView(cell);
-            }
+            for (std::size_t i : other_idx) emit_pack_cell(mf.packs[i]);
         }
     }
 }
@@ -1218,6 +1218,23 @@ FoyerUpdatesTab::FoyerUpdatesTab() {
     auto* host = tab_root_box();
 
     host->addView([]() { auto* h = new brls::Header(); h->setTitle("Updates"); return h; }());
+
+    // Download queue — pushes the full-screen activity that shows
+    // in-flight + recently-finished install_queue jobs. Lives at
+    // the top of the Updates tab because the other rows kick jobs
+    // that show up there; users were stuck without a way to see
+    // current progress after the 0.7.28 sidebar flatten.
+    {
+        auto* c = new brls::DetailCell();
+        c->title->setText("Download queue");
+        c->detail->setText("In-flight + recent install jobs");
+        c->registerClickAction([](brls::View*) {
+            brls::Application::pushActivity(
+                new ::foyer::browser::DownloadQueueActivity());
+            return true;
+        });
+        host->addView(c);
+    }
 
     // 4 separate buttons so users can poll just the bucket they care
     // about. Foyer check pops the download prompt; content checks just

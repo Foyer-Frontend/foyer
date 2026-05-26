@@ -162,6 +162,7 @@ BezelManifest fetch_bezel_manifest(const std::string& url) {
             set_field(e.zip,     item, "zip");
             set_field(e.sha256,  item, "sha256");
             set_field(e.url,     item, "url");
+            set_field(e.source,  item, "source");
             if (auto* sv = yyjson_obj_get(item, "size");
                 sv && yyjson_is_int(sv))
                 e.size = (std::size_t)yyjson_get_int(sv);

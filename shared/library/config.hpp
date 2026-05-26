@@ -204,6 +204,14 @@ struct Config {
     std::vector<PerSystemAsset> default_bezel_per_system;
     std::vector<PerSystemAsset> default_shader_per_system;
 
+    // Per-system "force default bezel" opt-in. Folders listed here
+    // ignore per-rom bundled + installed bezel art (resolver paths
+    // #1 / #2) and always render whichever pack is set in
+    // default_bezel_per_system. Empty list = nothing forced; the
+    // resolver keeps its per-rom-first fallback chain. Off-by-default
+    // matches user expectation that custom per-rom art "just works".
+    std::vector<std::string> force_default_bezel_systems;
+
     // External standalone-emulator launchers. Keyed by system folder
     // name; value is an SD path to the standalone nro that ships its
     // own UI (no libretro wrapper). When set AND the nro exists, foyer
@@ -234,6 +242,8 @@ struct Config {
     // "not configured at all".
     const char* default_bezel_for(std::string_view folder) const;
     const char* default_shader_for(std::string_view folder) const;
+
+    bool is_force_default_bezel_for(std::string_view folder) const;
 
     // Returns the configured external standalone path for a system
     // folder, or "" if none is set. Caller is expected to stat() the
@@ -279,6 +289,7 @@ void          set_default_bezel_for(std::string_view folder,
                                     std::string_view bezel_name);
 void          set_default_shader_for(std::string_view folder,
                                      std::string_view shader_name);
+void          set_force_default_bezel_for(std::string_view folder, bool on);
 void          set_bool(std::string_view key, bool value);  // accepts the field names below
 
 } // namespace foyer::library

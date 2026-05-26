@@ -1,6 +1,8 @@
 #include "config.hpp"
 #include "platform/log.hpp"
 
+#include <algorithm>
+
 #include <atomic>
 #include <cstdio>
 #include <cstring>
@@ -178,6 +180,15 @@ void write_locked() {
         out << "\n        \"" << folder << "\": \"" << name << "\"";
     }
     out << (g_config.default_shader_per_system.empty() ? "},\n" : "\n    },\n");
+
+    out << "    \"force_default_bezel_systems\": [";
+    first = true;
+    for (const auto& folder : g_config.force_default_bezel_systems) {
+        if (!first) out << ",";
+        first = false;
+        out << "\n        \"" << folder << "\"";
+    }
+    out << (g_config.force_default_bezel_systems.empty() ? "],\n" : "\n    ],\n");
 
     out << "    \"external_cores\": {";
     first = true;
@@ -370,6 +381,16 @@ void load_locked() {
             if (yyjson_is_str(k) && yyjson_is_str(v)) {
                 g_config.default_shader_per_system.push_back(
                     { yyjson_get_str(k), yyjson_get_str(v) });
+            }
+        }
+    }
+    if (auto* arr = yyjson_obj_get(root, "force_default_bezel_systems");
+        arr && yyjson_is_arr(arr)) {
+        std::size_t i, max; yyjson_val* item;
+        yyjson_arr_foreach(arr, i, max, item) {
+            if (yyjson_is_str(item)) {
+                g_config.force_default_bezel_systems.emplace_back(
+                    yyjson_get_str(item));
             }
         }
     }
@@ -574,6 +595,13 @@ const char* Config::default_shader_for(std::string_view folder) const {
     return nullptr;
 }
 
+bool Config::is_force_default_bezel_for(std::string_view folder) const {
+    for (const auto& f : force_default_bezel_systems) {
+        if (f == folder) return true;
+    }
+    return false;
+}
+
 namespace {
 // Shared mutator: linear-find by folder, replace or remove based on
 // empty-name. Mirrors set_default_core_for's semantics.
@@ -606,6 +634,21 @@ void set_default_bezel_for(std::string_view folder, std::string_view bezel_name)
 void set_default_shader_for(std::string_view folder, std::string_view shader_name) {
     std::scoped_lock lk{g_mutex};
     set_per_system_asset(g_config.default_shader_per_system, folder, shader_name);
+    write_locked();
+}
+
+void set_force_default_bezel_for(std::string_view folder, bool on) {
+    std::scoped_lock lk{g_mutex};
+    auto& list = g_config.force_default_bezel_systems;
+    auto it = std::find(list.begin(), list.end(), folder);
+    if (on) {
+        if (it == list.end()) list.emplace_back(folder);
+    } else {
+        if (it != list.end()) {
+            *it = list.back();
+            list.pop_back();
+        }
+    }
     write_locked();
 }
 
