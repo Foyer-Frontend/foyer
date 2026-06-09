@@ -1,6 +1,8 @@
 #include "plutonium/pause_menu.hpp"
+#include "library/bezel_installer.hpp"
 #include "library/config.hpp"
 #include "library/per_game.hpp"
+#include "library/system_db.hpp"
 #include "libretro/bezel_sdl.hpp"
 #include "libretro/cheats.hpp"
 #include "libretro/cheevos.hpp"
@@ -16,6 +18,7 @@
 
 #include <ctime>
 #include <cstdio>
+#include <dirent.h>
 #include <utility>
 
 extern "C" void retro_reset(void);
@@ -369,25 +372,76 @@ void PauseMenu::PopulateDisplayAspect(pu::ui::elm::Menu::Ref& menu) {
 }
 
 void PauseMenu::PopulateDisplayBezel(pu::ui::elm::Menu::Ref& menu) {
-    // Phase P4 — list any per-rom bundle bezel that we can find
-    // under /foyer/assets/system/<sys>/<stem>/, plus the per-system
-    // fallback. Future work: also enumerate /foyer/content/bezels/
-    // entries the user dropped in. For now we expose enough to flip
-    // between "bundle" art (which the scraper picks per region) and
-    // the per-system default.
-    auto add = [&](const std::string& label, const std::string& /*path*/) {
-        auto item = pu::ui::elm::MenuItem::New(label);
+    // Lists everything the rom could render, mirroring the browser's
+    // PerGameBezelPickerActivity: an Auto sentinel (normal resolver
+    // chain), every bezel*.png in the rom's bundle dir (SS scrapes +
+    // online-bezel downloads), and the installed per-system packs
+    // filtered to this system + its hardware family. Picking writes
+    // per_game_bezel_choice — bezel_sdl resolves that first — and
+    // invalidates the cached texture so the change shows on resume.
+    const auto current =
+        foyer::library::per_game_bezel_choice(rom_path);
+
+    auto add = [&](const std::string& label, const std::string& path) {
+        const bool active = (path == current);
+        auto item = pu::ui::elm::MenuItem::New(
+            active ? label + "   (active)" : label);
         item->SetColor(theme_item_text());
-        item->AddOnKey([this]() {
-            // Phase P4.5: hook a per-game bezel override config so
-            // the resolve_path() chain can prefer the user's pick.
-            // For now just return to the Display root.
+        item->AddOnKey([this, path]() {
+            foyer::library::set_per_game_bezel_choice(rom_path, path);
+            foyer::libretro::bezel_sdl_invalidate();
             ChangeMode(PauseMode::Display);
+            if (on_mode_changed) on_mode_changed();
         });
         menu->AddItem(item);
     };
+
     add("Auto (per-rom -> per-system)", "");
-    add("(no other bezels found)", "");
+
+    // Per-rom bundle dir — bezel*.png written by the SS scrape or
+    // the browser's online-bezel downloads.
+    int found = 0;
+    {
+        const std::string dir = "/foyer/assets/system/"
+            + system_folder + "/" + rom_stem + "/";
+        if (DIR* d = ::opendir(dir.c_str())) {
+            while (auto* e = ::readdir(d)) {
+                const std::string n = e->d_name;
+                if (n.rfind("bezel", 0) != 0) continue;
+                if (n.size() <= 4
+                    || n.compare(n.size() - 4, 4, ".png") != 0) continue;
+                add("Game — " + n.substr(0, n.size() - 4), dir + n);
+                found++;
+            }
+            ::closedir(d);
+        }
+    }
+
+    // Installed per-system packs at /foyer/content/bezels/, filtered
+    // to this system folder + its hardware family.
+    {
+        const auto fam = std::string{
+            foyer::library::family_for_folder(system_folder)};
+        auto matches = [](const std::string& n, const std::string& key) {
+            if (n == key) return true;
+            return n.size() > key.size() + 1
+                && n.compare(0, key.size(), key) == 0
+                && n[key.size()] == '-';
+        };
+        for (const auto& name : foyer::library::installed_bezel_names()) {
+            if (matches(name, system_folder)
+                || (fam != system_folder && matches(name, fam))) {
+                add(name, "/foyer/content/bezels/" + name + ".png");
+                found++;
+            }
+        }
+    }
+
+    if (found == 0) {
+        auto item = pu::ui::elm::MenuItem::New("(no bezels installed)");
+        item->SetColor({ 0xA0, 0xA0, 0xA8, 0xFF });
+        menu->AddItem(item);
+    }
 }
 
 void PauseMenu::PopulateCoreOptions(pu::ui::elm::Menu::Ref& menu) {

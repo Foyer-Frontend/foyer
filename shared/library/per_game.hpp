@@ -42,8 +42,8 @@ std::uint64_t per_game_last_played(std::string_view rom_path);
 void          mark_per_game_played(std::string_view rom_path);
 
 // Total seconds played per rom. Browser doesn't update this — the
-// player will write it back on a clean exit (TODO). Available now so
-// the sort-by-playtime UI is wired end-to-end already.
+// player's session_tracker writes it back on a clean exit (landed
+// in 0.7.15). Drives the sort-by-playtime UI.
 std::uint64_t per_game_playtime(std::string_view rom_path);
 void          add_per_game_playtime(std::string_view rom_path, std::uint64_t seconds);
 // Reset both playtime AND last_played to zero — used by the System

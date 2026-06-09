@@ -263,6 +263,9 @@ void EmulatorElement::OnRender(pu::ui::render::Renderer::Ref& drawer,
     std::vector<Toast> snapshot;
     {
         std::scoped_lock lk{m_toast_mu};
+        // Common case: no toasts pending — bail before the snapshot
+        // copy so the steady-state frame loop does zero heap work.
+        if (m_toasts.empty()) return;
         // Drop expired entries — and release any SDL_Textures we
         // created for their badges.
         const auto now = std::chrono::steady_clock::now();
