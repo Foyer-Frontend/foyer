@@ -81,25 +81,19 @@
         height="auto"
         grow="2.0" />
 
-    <!-- Game cover-flow carousel — vertically centred, action row
-         directly underneath. -->
-    <brls:HScrollingFrame
-        id="foyer/carousel_scroll"
+    <!-- Game cover-flow strip. One CoverFlowView draws the whole
+         library (windowed, recycled textures) — SystemActivity
+         mounts it into this host box at populate time. The old
+         one-GameTile-per-game HScrollingFrame made yoga walk N
+         views per frame, which crawled on multi-hundred-game
+         libraries. -->
+    <brls:Box
+        id="foyer/carousel"
         width="100%"
         height="320"
-        scrollingBehavior="centered">
-
-        <brls:Box
-            id="foyer/carousel"
-            width="auto"
-            height="auto"
-            axis="row"
-            alignItems="center"
-            justifyContent="center"
-            paddingLeft="48"
-            paddingRight="48" />
-
-    </brls:HScrollingFrame>
+        axis="row"
+        alignItems="center"
+        justifyContent="center" />
 
     <!-- Action row — system-specific buttons (Scrape, Scan,
          Per-system settings). Pinned directly under the carousel. -->

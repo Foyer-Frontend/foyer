@@ -1,5 +1,7 @@
 #pragma once
 
+#include "widgets/cover_flow.hpp"
+
 #include <borealis.hpp>
 #include <string>
 #include <string_view>
@@ -36,7 +38,6 @@ public:
     BRLS_BIND(brls::Box,   logoHolder,    "foyer/logo_holder");
     BRLS_BIND(brls::Box,   actionRow,     "foyer/action_row");
     BRLS_BIND(brls::Box,   carousel,      "foyer/carousel");
-    BRLS_BIND(brls::HScrollingFrame, carouselScroll, "foyer/carousel_scroll");
     BRLS_BIND(brls::Label, scrapeStatus,  "foyer/scrape_status");
     BRLS_BIND(brls::Box,   topBar,        "foyer/top_bar");
     BRLS_BIND(brls::Box,   bottomBar,     "foyer/bottom_bar");
@@ -46,9 +47,8 @@ public:
     // counters. Public so the file-static task class can dispatch.
     void refreshScrapeStatus();
 
-    // Called by a GameTile when it gains focus, with its index
-    // inside the carousel. Drives the sliding-window preload of
-    // game covers.
+    // Focus-follow side effects (backdrop swap, logo / wheel art).
+    // Driven by the CoverFlowView's onFocusChangedCb.
     void onTileFocused(int idx);
 
     // Preselect a game tile so initial focus lands on it instead
@@ -77,14 +77,13 @@ private:
     brls::RepeatingTask* m_clockTask        = nullptr;
     brls::RepeatingTask* m_scrapeStatusTask = nullptr;
 
-    // Sliding-window preload state. Tiles in [0, m_loaded_until)
-    // have had load_cover() called; the next batch fires when
-    // focus crosses (m_loaded_until - kThreshold).
-    int m_loaded_until = 0;
+    // The cover strip — owned by the carousel host box once
+    // mounted. Never torn down across resumes; setEntries swaps
+    // the data in place.
+    CoverFlowView* m_flow = nullptr;
 
-    // Last GameTile index reported via onTileFocused. Stashed so
-    // onResume's rebuild can return focus to the same tile the
-    // user was on before pushing GameActivity / rescraping.
+    // Last focused strip index reported via onTileFocused. Stashed
+    // so resume paths can return focus to the same game.
     int m_last_focus_idx = 0;
 
     // Set via setPreselectGame() before pushActivity on the

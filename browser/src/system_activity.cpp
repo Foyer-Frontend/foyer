@@ -152,237 +152,6 @@ ImgDims box_dims_for_system(std::string_view folder) {
     return ImgDims{484, 680};   // safe portrait fallback
 }
 
-// Cover-flow tile for one game.
-//
-// Loading 200+ scraped PNGs synchronously at activity-push time
-// freezes the UI for seconds. Mitigation: each tile starts as the
-// system splash; covers stream in via a sliding 10-tile window
-// driven by SystemActivity::onTileFocused. The first 10 load on
-// entry; navigating into the right edge of the window triggers
-// the next 10 batch. m_idx + m_host let the tile call back to
-// the activity on focus events.
-class GameTile : public brls::Box {
-public:
-    GameTile(SystemActivity* host, int idx,
-             std::string_view system_folder, std::string_view game_path,
-             std::string_view game_stem, std::string_view box_art_path,
-             float tile_w, float tile_h)
-        : m_host(host), m_idx(idx),
-          m_system(system_folder), m_path(game_path),
-          m_stem(game_stem)
-    {
-        m_tile_w = tile_w;
-        m_tile_h = tile_h;
-        this->setMargins(0.0f, 7.0f, 0.0f, 7.0f);
-        this->setFocusable(true);
-        this->setHighlightCornerRadius(6.0f);
-        this->setBackgroundColor(nvgRGB(40, 50, 70));
-        this->setWidth(m_tile_w);
-        this->setHeight(m_tile_h);
-
-        // Inner Image absolute-positioned at the bottom edge.
-        // brls's FIT scaling always centers vertically (the
-        // setImageAlign field is ignored on FIT) — we size the
-        // Image manually to its native aspect and anchor it bottom
-        // so the cover bottom matches the tile bottom regardless
-        // of the cover's height-vs-tile-height delta.
-        m_img = new brls::Image();
-        m_img->setPositionType(brls::PositionType::ABSOLUTE);
-        m_img->setScalingType(brls::ImageScalingType::STRETCH);
-        m_img->setWidth(m_tile_w);
-        m_img->setHeight(m_tile_h);
-        m_img->setPositionLeft(0.0f);
-        m_img->setPositionBottom(0.0f);
-        this->addView(m_img);
-
-        // Always start with the splash so first-frame paint is
-        // instant. Art now lives on SD (downloaded asset pack);
-        // setImageFromFile silently no-ops when the file isn't
-        // present, which is fine while the first-run pack is
-        // still downloading.
-        m_img->setImageFromFile(
-            ::foyer::library::asset_system_splash(
-                art_dir_for(system_folder)));
-        fit_to_bottom();
-
-        // Resolve the cover candidate path. Probe in this order:
-        //   1) library_state's box_art (set by an old scan).
-        //   2) new per-game asset bundle: any file starting with
-        //      "box-2D" — region tag is appended by the scraper
-        //      based on what SS actually returned.
-        //   3) legacy /foyer/assets/covers/<sys>/<stem>.png.
-        // Don't load yet — onFocusGained() does that lazily on
-        // first focus.
-        std::string cover = std::string(box_art_path);
-        if (cover.empty()
-            || !std::filesystem::exists(std::filesystem::path(cover))) {
-            const auto bundle_dir = scrapers::game_asset_dir(
-                system_folder, game_stem);
-            const auto bundle_box = scrapers::find_in_dir(
-                bundle_dir, "box-2D");
-            if (!bundle_box.empty()) {
-                cover = bundle_box;
-            } else {
-                const auto canon = scrapers::cover_path(
-                    system_folder, game_stem);
-                if (std::filesystem::exists(std::filesystem::path(canon))) {
-                    cover = canon;
-                } else {
-                    cover.clear();
-                }
-            }
-        }
-        m_cover_path = std::move(cover);
-
-        // Hint cleanup (0.6.88): A = Open Details (canonical "OK"
-        // affordance on Switch), Y = Quick Launch (skip the detail
-        // panel). X stays as Favourite. Per-game Settings moved to
-        // GameActivity since the detail panel now sits between the
-        // tile and the game. B / L / R still cycle pages and back
-        // (the L/R hints are hidden — registerAction with the
-        // hidden=true flag — to clean up the bottom-bar).
-        this->registerAction(
-            "Open details", brls::BUTTON_A,
-            [this](brls::View*) {
-                brls::Application::pushActivity(
-                    new GameActivity(m_system, m_path));
-                return true;
-            }, false, false, brls::SOUND_CLICK);
-        this->addGestureRecognizer(new brls::TapGestureRecognizer(this));
-
-        // Y — quick-launch, skipping the detail panel.
-        this->registerAction(
-            "Quick launch", brls::BUTTON_Y,
-            [this](brls::View*) {
-                launch_focused_game();
-                return true;
-            }, false, false, brls::SOUND_CLICK);
-
-        // X — toggle favourite. per_game.jsonc persists across
-        // launches; scanner reapplies on next rescan.
-        this->registerAction(
-            "Favourite", brls::BUTTON_X,
-            [this](brls::View*) {
-                const bool was = ::foyer::library::per_game_favorite(m_path);
-                ::foyer::library::set_per_game_favorite(m_path, !was);
-                brls::Application::notify(was
-                    ? "Removed from favourites"
-                    : "Added to favourites");
-                return true;
-            }, false, false, brls::SOUND_CLICK);
-    }
-
-    // Idempotent — second call is a no-op. Public so the
-    // sliding-window preload in SystemActivity can warm a batch of
-    // tiles ahead of focus.
-    //
-    // Async path: file I/O happens on brls's worker thread pool;
-    // setImageAsync's brls-provided callback trampolines back to
-    // the UI thread via brls::sync to do the JPEG decode +
-    // texture upload. Without this, every preloaded cover blocked
-    // the UI thread for ~25-40 ms (file read + decode in one
-    // synchronous call), stacking into hundreds of ms of stall on
-    // every SystemActivity entry. With async loading the entry
-    // paints immediately and covers stream in.
-    void load_cover() {
-        if (m_cover_loaded || m_cover_path.empty() || !m_img) return;
-        m_cover_loaded = true;  // claim the slot; async path fills it
-        const std::string path = m_cover_path;
-        brls::Image* img_ptr   = m_img;
-        m_img->setImageAsync(
-            [path](std::function<void(const std::string&, size_t)> cb) {
-                // Worker thread: read the bytes.
-                std::ifstream f(path, std::ios::binary | std::ios::ate);
-                if (!f) { cb(std::string{}, 0); return; }
-                const auto size = (std::size_t)f.tellg();
-                f.seekg(0);
-                std::string buf(size, '\0');
-                f.read(buf.data(), (std::streamsize)size);
-                cb(buf, size);
-            });
-        // fit_to_bottom needs the image's natural size, which isn't
-        // known until the worker's bytes get decoded on the UI
-        // thread. brls::Image fires an internal layout pass when
-        // its texture changes; foyer's fit_to_bottom recompute is
-        // currently called from here for the synchronous path. Move
-        // it to a one-shot deferred call so it runs after the
-        // async load lands.
-        auto* self = this;
-        brls::async([self, img_ptr]() {
-            // Re-dispatch to UI thread; the async load might still
-            // be in flight, but fit_to_bottom only reads what the
-            // image currently knows (it's safe with a 0 texture
-            // — falls back to tile dimensions).
-            brls::sync([self, img_ptr]() {
-                if (self && self->m_img == img_ptr) self->fit_to_bottom();
-            });
-        });
-    }
-
-    // Tile size is fixed per system; only the inner Image
-    // changes shape to match the cover's native aspect, then
-    // anchors at the tile's bottom edge. Empty space (when the
-    // image's aspect doesn't fill the tile) sits at the top —
-    // tile bg fills it.
-    void fit_to_bottom() {
-        if (!m_img) return;
-        const float ow = m_img->getOriginalImageWidth();
-        const float oh = m_img->getOriginalImageHeight();
-        if (ow <= 0.0f || oh <= 0.0f) return;
-        // Scale to tile width first; if that overflows the tile
-        // height, scale by tile height instead.
-        float w = m_tile_w;
-        float h = w * (oh / ow);
-        if (h > m_tile_h) {
-            h = m_tile_h;
-            w = h * (ow / oh);
-        }
-        m_img->setWidth(w);
-        m_img->setHeight(h);
-        m_img->setPositionLeft((m_tile_w - w) * 0.5f);
-        m_img->setPositionBottom(0.0f);
-    }
-
-    int                index() const  { return m_idx;   }
-    const std::string& system() const { return m_system; }
-    const std::string& stem() const   { return m_stem;   }
-
-    void onFocusGained() override {
-        brls::Box::onFocusGained();
-        load_cover();
-        if (m_host) m_host->onTileFocused(m_idx);
-    }
-
-    void launch_focused_game() {
-        const auto* sys = library_state::find_system(m_system);
-        if (!sys) {
-            brls::Application::notify("System not in library — rescan?");
-            return;
-        }
-        for (const auto& g : sys->games) {
-            if (g.path != m_path) continue;
-            if (launch_game(*sys, g)) {
-                brls::Application::quit();
-            } else {
-                brls::Application::notify(
-                    "Player nro missing — install the core from Settings");
-            }
-            return;
-        }
-    }
-
-private:
-    SystemActivity* m_host = nullptr;
-    int             m_idx  = 0;
-    std::string     m_system;
-    std::string     m_path;
-    std::string     m_stem;
-    std::string     m_cover_path;
-    brls::Image*    m_img = nullptr;
-    bool            m_cover_loaded = false;
-    float           m_tile_w = 0.0f;
-    float           m_tile_h = 0.0f;
-};
 
 }  // namespace
 
@@ -444,35 +213,16 @@ void SystemActivity::refreshScrapeStatus() {
 
 void SystemActivity::onResume() {
     brls::Activity::onResume();
-    // GameActivity's Y rescrape writes fresh assets into
-    // /foyer/assets/system/<sys>/<stem>/ — but our cover-flow tiles
-    // were built with whatever box_art existed at first
-    // onContentAvailable. Rebuild on every reappear so the new
-    // cover shows up the moment the user pops back.
-    //
-    // Sequence matters: brls's popActivity restores focus to the
-    // GameTile that was focused before the push. If we clearViews()
-    // while that tile is the active focus, the next frame
-    // dereferences a freed View (PC=0x30 vtable miss — same class
-    // of crash that bit the install_queue completion path). Move
-    // focus to actionRow first so the carousel can be torn down
-    // without the focus pointer dangling, defer the rebuild a
-    // frame via brls::sync to let pop's focus-restore drain, then
-    // hand focus back to the freshly-built first tile.
     if (!carousel) return;
 
     // Deferred fast-return: populateCarousel was skipped in
     // onContentAvailable to keep the chain-back blank-screen short.
     // Now that we're actually visible, run it. Resolves
     // m_preselect_game → m_last_focus_idx so the user lands on the
-    // game tile that was active before launching the core.
+    // game that was active before launching the core.
     if (m_defer_population && !m_populated) {
         foyer::log::write("[system] %s onResume: deferred populate kicking in\n",
             m_folder.c_str());
-        // Resolve preselect → m_last_focus_idx BEFORE populate so
-        // populateCarousel's focus-region preload warms covers
-        // around the mid-list target (instead of only [0..4)
-        // when the focus lands on, say, tile 153).
         if (!m_preselect_game.empty()) {
             if (const auto* sys = library_state::find_system(m_folder)) {
                 int i = 0;
@@ -486,68 +236,24 @@ void SystemActivity::onResume() {
             }
         }
         populateCarousel();
-        const auto& kids = carousel->getChildren();
-        if (!kids.empty()) {
-            int target = m_last_focus_idx;
-            if (target < 0 || target >= (int)kids.size()) target = 0;
-            m_last_focus_idx = target;
-            brls::Application::giveFocus(kids[target]);
+        if (m_flow && m_flow->count() > 0) {
+            brls::Application::giveFocus(m_flow);
         }
         return;
     }
 
-    // Fast path: no rescrape happened while we were under
-    // GameActivity, so the tiles already in the carousel are
-    // up-to-date. Skip the clear+populate rebuild and just
-    // restore focus to the previously-focused tile + warm covers
-    // around it so the user sees full artwork the instant they
-    // land. Saves the entire populateCarousel cost on every
-    // routine game-detail-back.
-    if (!GameActivity::consume_rescrape_dirty()) {
-        const auto& kids = carousel->getChildren();
-        if (!kids.empty()) {
-            const int n = (int)kids.size();
-            int idx = m_last_focus_idx;
-            if (idx < 0) idx = 0;
-            if (idx >= n) idx = n - 1;
-            // Cover-warm a window around the restored focus so any
-            // tiles that ended up unloaded (e.g. the user was mid-
-            // list when they entered details) get their covers
-            // before the user navigates.
-            constexpr int kFocusRadius = 4;
-            const int lo = std::max(0, idx - kFocusRadius);
-            const int hi = std::min(n - 1, idx + kFocusRadius);
-            for (int i = lo; i <= hi; i++) {
-                if (auto* t = dynamic_cast<GameTile*>(kids[i])) {
-                    t->load_cover();
-                }
-            }
-            brls::Application::giveFocus(kids[idx]);
-        }
-        return;
+    // The strip itself survives the push/pop — the old per-tile
+    // teardown/giveFocus choreography (and its PC=0x30 focus-vtable
+    // crash class) is gone. Rescrape-back just swaps the data in
+    // place so fresh box art resolves on the next visible-window
+    // pass; routine back restores focus to the same index.
+    if (GameActivity::consume_rescrape_dirty()) {
+        populateCarousel();
     }
-
-    // Slow path: a rescrape from GameActivity wrote fresh assets,
-    // so the tiles need a full rebuild to pick up the new box art.
-    // Tear-down + rebuild deferred a frame via brls::sync — moving
-    // focus to actionRow first so pop's focus-restore can't dangle
-    // a freed View when clearViews fires.
-    if (actionRow) brls::Application::giveFocus(actionRow);
-
-    auto* self = this;
-    brls::sync([self]() {
-        if (!self || !self->carousel) return;
-        self->carousel->clearViews();
-        self->populateCarousel();
-        const auto& kids = self->carousel->getChildren();
-        if (!kids.empty()) {
-            const int n = (int)kids.size();
-            int idx = self->m_last_focus_idx;
-            if (idx < 0) idx = 0;
-            if (idx >= n) idx = n - 1;
-            brls::Application::giveFocus(kids[idx]);
-        }
-    });
+    if (m_flow && m_flow->count() > 0) {
+        m_flow->setIndex(m_last_focus_idx);
+        brls::Application::giveFocus(m_flow);
+    }
 }
 
 void SystemActivity::onContentAvailable() {
@@ -664,7 +370,7 @@ void SystemActivity::onContentAvailable() {
     //   2. session-scoped focus recall (m_last_focus_idx seeded
     //      at the top of onContentAvailable from g_session_focus)
     //   3. tile 0 (fresh entry, never visited before this session)
-    if (carousel && !carousel->getChildren().empty()) {
+    if (m_flow && m_flow->count() > 0) {
         // Seed from the session recall — kicks in when 1 doesn't.
         int target = m_last_focus_idx > 0 ? m_last_focus_idx : 0;
         if (!m_preselect_game.empty()) {
@@ -676,11 +382,10 @@ void SystemActivity::onContentAvailable() {
                 }
             }
         }
-        const auto& kids = carousel->getChildren();
-        if (target < 0 || target >= (int)kids.size()) target = 0;
         m_last_focus_idx = target;
-        brls::Application::giveFocus(kids[target]);
-        foyer::log::write("[system] gave focus to tile %d (preselect=%s)\n",
+        m_flow->setIndex(target);
+        brls::Application::giveFocus(m_flow);
+        foyer::log::write("[system] strip focus at %d (preselect=%s)\n",
             target, m_preselect_game.c_str());
     } else if (actionRow && !actionRow->getChildren().empty()) {
         brls::Application::giveFocus(actionRow->getChildren()[0]);
@@ -714,10 +419,11 @@ void SystemActivity::onContentAvailable() {
             }
             ::foyer::library::set_sort_mode(nxt);
             library_state::rescan();
-            if (carousel) {
-                carousel->clearViews();
-                populateCarousel();
-            }
+            // setEntries swaps data in place — never tear the strip
+            // down (clearViews here would delete m_flow under the
+            // active focus).
+            m_last_focus_idx = 0;
+            populateCarousel();
             brls::Application::notify(std::string("Sort: ") + label);
             return true;
         }, false, false, brls::SOUND_FOCUS_CHANGE);
@@ -727,47 +433,19 @@ void SystemActivity::onContentAvailable() {
     // d-pad / left stick; the shoulder buttons skim faster
     // through long systems (250+ NES/SNES games).
     auto jump_focus = [this](int delta) {
-        if (!carousel) return false;
-        const auto& kids = carousel->getChildren();
-        if (kids.empty()) return false;
-        // Find the currently focused tile by walking the children
-        // and matching against brls::Application::getCurrentFocus.
-        auto* focus = brls::Application::getCurrentFocus();
-        int cur = -1;
-        for (int i = 0; i < (int)kids.size(); i++) {
-            if (kids[i] == focus) { cur = i; break; }
-        }
-        if (cur < 0) cur = 0;
-        const int n = (int)kids.size();
-        // Wrap-around: pressing L on tile 0 jumps to the last tile;
-        // pressing R on the last tile jumps to 0. Modulo handles
-        // both directions cleanly.
-        int next = ((cur + delta) % n + n) % n;
-
-        // Preload covers along the path between cur and next so the
-        // tile at the new focus already has its texture decoded by
-        // the time the carousel scrolls there. Without this the
-        // first-focus load_cover call inside onFocusGained stalls
-        // a frame.
-        const int lo = std::min(cur, next);
-        const int hi = std::max(cur, next);
-        for (int i = lo; i <= hi; i++) {
-            if (auto* t = dynamic_cast<GameTile*>(kids[i])) {
-                t->load_cover();
-            }
-        }
-        if (next > m_loaded_until) m_loaded_until = next + 1;
-
-        brls::Application::giveFocus(kids[next]);
+        if (!m_flow || m_flow->count() == 0) return false;
+        const int n = m_flow->count();
+        const int next = ((m_flow->index() + delta) % n + n) % n;
+        m_flow->setIndex(next, /*animate=*/true);
+        if (!m_flow->isFocused()) brls::Application::giveFocus(m_flow);
         return true;
     };
     // Page jump = number of tiles the viewport currently fits.
-    // tile pitch = 250px tile + 14px margins (7 each side). We
-    // measure the live HScrollingFrame width so the jump scales
-    // with dock vs handheld display modes.
+    // We measure the live strip width so the jump scales with
+    // dock vs handheld display modes.
     auto page_size = [this]() {
         constexpr float kTilePitch = 264.0f;
-        const float vp = carouselScroll ? carouselScroll->getWidth() : 1280.0f;
+        const float vp = carousel ? carousel->getWidth() : 1280.0f;
         int n = (int)(vp / kTilePitch);
         if (n < 1) n = 1;
         return n;
@@ -892,6 +570,39 @@ void SystemActivity::buildActionRow() {
 void SystemActivity::populateCarousel() {
     if (!carousel) return;
 
+    // Mount the strip once; subsequent populates just swap data.
+    if (!m_flow) {
+        m_flow = new CoverFlowView(280.0f);
+        m_flow->setGrow(1.0f);
+        m_flow->onFocusChangedCb = [this](int idx) { onTileFocused(idx); };
+        m_flow->onOpenCb = [this](int idx) {
+            if (const auto* e = m_flow->entryAt(idx)) {
+                brls::Application::pushActivity(
+                    new GameActivity(e->system, e->path));
+            }
+        };
+        m_flow->onLaunchCb = [this](int idx) {
+            const auto* e = m_flow->entryAt(idx);
+            if (!e) return;
+            const auto* origin = library_state::find_system(e->system);
+            if (!origin) {
+                brls::Application::notify("System not in library — rescan?");
+                return;
+            }
+            for (const auto& g : origin->games) {
+                if (g.path != e->path) continue;
+                if (launch_game(*origin, g)) {
+                    brls::Application::quit();
+                } else {
+                    brls::Application::notify(
+                        "Player nro missing — install the core from Settings");
+                }
+                return;
+            }
+        };
+        carousel->addView(m_flow);
+    }
+
     const auto* sys = library_state::find_system(m_folder);
     if (!sys) {
         foyer::log::write("[system] %s — system not found in scan\n",
@@ -928,18 +639,27 @@ void SystemActivity::populateCarousel() {
             ? upper : upper.substr(up_sl + 1);
     };
 
-    int idx = 0;
+    std::vector<CoverFlowView::Entry> entries;
+    entries.reserve(sys->games.size());
     if (!is_virtual) {
         const auto dims = box_dims_for_system(m_folder);
         const float scale = std::min(kMaxSide / dims.w, kMaxSide / dims.h);
         const float tile_w = dims.w * scale;
         const float tile_h = dims.h * scale;
+        const auto splash =
+            ::foyer::library::asset_system_splash(art_dir_for(m_folder));
         foyer::log::write("[system] %s tile size = %.0fx%.0f\n",
             m_folder.c_str(), tile_w, tile_h);
         for (const auto& g : sys->games) {
-            carousel->addView(
-                new GameTile(this, idx++, m_folder, g.path, g.stem,
-                             g.box_art, tile_w, tile_h));
+            CoverFlowView::Entry e;
+            e.system  = m_folder;
+            e.path    = g.path;
+            e.stem    = g.stem;
+            e.cover   = g.box_art;
+            e.splash  = splash;
+            e.tile_w  = tile_w;
+            e.tile_h  = tile_h;
+            entries.push_back(std::move(e));
         }
     } else {
         for (const auto& g : sys->games) {
@@ -947,114 +667,44 @@ void SystemActivity::populateCarousel() {
             const auto dims = box_dims_for_system(game_sys);
             const float scale =
                 std::min(kMaxSide / dims.w, kMaxSide / dims.h);
-            const float tile_w = dims.w * scale;
-            const float tile_h = dims.h * scale;
-            carousel->addView(
-                new GameTile(this, idx++, game_sys, g.path, g.stem,
-                             g.box_art, tile_w, tile_h));
+            CoverFlowView::Entry e;
+            e.system  = game_sys;
+            e.path    = g.path;
+            e.stem    = g.stem;
+            e.cover   = g.box_art;
+            e.splash  = ::foyer::library::asset_system_splash(
+                art_dir_for(game_sys));
+            e.tile_w  = dims.w * scale;
+            e.tile_h  = dims.h * scale;
+            entries.push_back(std::move(e));
         }
     }
 
-    // Warm the first batch so the user sees real covers as soon
-    // as the activity paints. Subsequent batches stream in via
-    // onTileFocused as focus approaches the loaded edge.
-    //
-    // Tail batch: also preload the LAST kInitialBatch tiles up
-    // front so wrap-around nav (L-shoulder from tile 0, or →
-    // pressed past the end) lands on a tile whose cover is already
-    // decoded instead of a blank frame. The middle range (between
-    // the head batch and the tail batch) still streams in lazily
-    // as focus crosses the loaded edge.
-    //
-    // Batch size tuned for entry-stall vs visual completeness.
-    // brls::Image::setImageFromFile decodes the JPEG synchronously
-    // on the UI thread; each cover is ~25-40 ms on Switch hardware.
-    // 4 tiles fit in the carousel viewport at standard 1280-wide
-    // resolution, so warming 4 head + 4 tail is enough to hide
-    // every visible tile and the wrap-around target. Larger
-    // up-front batches (10/10 from db5ddd0) added noticeable entry
-    // stall on small libraries with no perceptual win — the
-    // sliding-window preload in onTileFocused already covers the
-    // rest as the user moves focus.
-    constexpr int kInitialBatch = 4;
-    const int n = (int)carousel->getChildren().size();
-    for (int i = 0; i < std::min(n, kInitialBatch); i++) {
-        if (auto* t = dynamic_cast<GameTile*>(carousel->getChildren()[i])) {
-            t->load_cover();
-        }
-    }
-    m_loaded_until = std::min(n, kInitialBatch);
-    // Tail-batch only kicks in when the library has more than
-    // 2*kInitialBatch tiles; smaller libraries are already fully
-    // covered by the head batch.
-    if (n > 2 * kInitialBatch) {
-        const int tail_start = n - kInitialBatch;
-        for (int i = tail_start; i < n; i++) {
-            if (auto* t = dynamic_cast<GameTile*>(carousel->getChildren()[i])) {
-                t->load_cover();
-            }
-        }
-    }
-    // Focus-region preload: if m_last_focus_idx sits outside the
-    // head batch, also warm the surrounding tiles so a rebuild
-    // triggered by rescrape-back (or chain-back-from-core with a
-    // mid-list preselect) lands the user on a viewport where
-    // every visible tile already has its cover decoded. Without
-    // this, only the focused tile's cover loaded via
-    // onFocusGained — neighbours stayed empty until the user
-    // moved focus.
-    if (m_last_focus_idx > 0 && m_last_focus_idx < n) {
-        constexpr int kFocusRadius = 4;
-        const int lo = std::max(0, m_last_focus_idx - kFocusRadius);
-        const int hi = std::min(n - 1, m_last_focus_idx + kFocusRadius);
-        for (int i = lo; i <= hi; i++) {
-            if (auto* t = dynamic_cast<GameTile*>(carousel->getChildren()[i])) {
-                t->load_cover();
-            }
-        }
-        // Bump m_loaded_until so the sliding-window preload picks
-        // up from past the focus region instead of redoing it.
-        m_loaded_until = std::max(m_loaded_until, hi + 1);
-    }
+    // Hand the data to the strip. No warm batches needed any more
+    // — the view streams visible-window covers in by itself, one
+    // decode per frame, from whatever index focus lands on.
+    m_flow->setEntries(std::move(entries), m_last_focus_idx);
     m_populated = true;
 }
 
 void SystemActivity::onTileFocused(int idx) {
-    if (!carousel) return;
+    if (!m_flow) return;
     m_last_focus_idx = idx;
     // Persist for the rest of the process lifetime so re-entering
     // the same system restores focus to where the user left it.
     // Cold boot wipes the map (process-global), matching the
     // user's mental model.
     g_session_focus[m_folder] = idx;
-    constexpr int kThreshold = 5;   // start preloading 5 tiles ahead of edge
-    constexpr int kBatch     = 10;
-    const int n = (int)carousel->getChildren().size();
-    if (idx + kThreshold >= m_loaded_until && m_loaded_until < n) {
-        const int next_until = std::min(n, m_loaded_until + kBatch);
-        for (int i = m_loaded_until; i < next_until; i++) {
-            if (auto* t = dynamic_cast<GameTile*>(carousel->getChildren()[i])) {
-                t->load_cover();
-            }
-        }
-        foyer::log::write("[system] preloaded tiles %d..%d (%s)\n",
-            m_loaded_until, next_until - 1, m_folder.c_str());
-        m_loaded_until = next_until;
-    }
 
-    // Backdrop swap. If the focused tile's per-game ScreenScraper
+    // Backdrop swap. If the focused game's per-game ScreenScraper
     // bundle has a fanart.jpg, paint that; otherwise fall back to
-    // the system's bundled default backdrop. Reads disk on every
-    // focus change but the file (a single 1280-wide jpeg) decodes
-    // in < 30 ms even on Switch — well under the carousel scroll
-    // animation duration. brls::Image dedupes by path so revisiting
-    // the same tile is free.
-    if (idx < 0 || idx >= n) return;
-    auto* tile = dynamic_cast<GameTile*>(carousel->getChildren()[idx]);
-    if (!tile) return;
+    // the system's bundled default backdrop. brls::Image dedupes by
+    // path so revisiting the same game is free.
+    const auto* entry = m_flow->entryAt(idx);
+    if (!entry) return;
 
     const auto bundle = ::foyer::scrapers::game_asset_dir(
-        tile->system(), tile->stem());
+        entry->system, entry->stem);
 
     // Top-bar logo follows the focused game. Wheel art when SS
     // dropped one; text fallback when not.
@@ -1072,7 +722,7 @@ void SystemActivity::onTileFocused(int idx) {
         } else {
             if (logo) logo->setVisibility(brls::Visibility::GONE);
             if (lbl) {
-                lbl->setText(tile->stem());
+                lbl->setText(entry->stem);
                 lbl->setVisibility(brls::Visibility::VISIBLE);
             }
         }
