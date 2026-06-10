@@ -225,6 +225,9 @@ struct Config {
     // third-party install paths.
     struct ExternalCore { std::string folder; std::string nro_path; };
     std::vector<ExternalCore> external_cores = {
+        // foyer PPSSPP installs with the other cores; the stock
+        // PPSSPP path keeps a third-party install working.
+        { "psp", "/foyer/content/cores/foyer-ppsspp-standalone.nro" },
         { "psp", "/switch/PPSSPP/PPSSPP.nro" },
         // foyer Dolphin installs with the other cores at
         // /foyer/content/cores/; the /switch/dolphin-emu path keeps
