@@ -219,15 +219,17 @@ struct Config {
     // bypassing the libretro player loop entirely.
     //
     // Used for systems where a libretro Switch port doesn't exist
-    // upstream but a working standalone Switch nro does. PPSSPP and
-    // Dolphin are the canonical entries; the defaults match the
-    // install paths their official Switch releases use.
+    // upstream but a working standalone Switch nro does. Multiple
+    // entries per folder are allowed — external_core_for returns the
+    // first whose file exists, so foyer-managed installs win over
+    // third-party install paths.
     struct ExternalCore { std::string folder; std::string nro_path; };
     std::vector<ExternalCore> external_cores = {
-        // Defaults match the install paths PPSSPP and Dolphin's
-        // official Switch nightlies write to. Users who installed to
-        // a different path can edit /foyer/config/general.jsonc.
         { "psp", "/switch/PPSSPP/PPSSPP.nro" },
+        // foyer Dolphin installs with the other cores at
+        // /foyer/content/cores/; the /switch/dolphin-emu path keeps
+        // a stock dolphin install working as fallback.
+        { "gc",  "/foyer/content/cores/foyer-dolphin.nro" },
         { "gc",  "/switch/dolphin-emu/dolphin-emu.nro" },
     };
 

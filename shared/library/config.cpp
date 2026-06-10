@@ -2,6 +2,7 @@
 #include "platform/log.hpp"
 
 #include <algorithm>
+#include <sys/stat.h>
 
 #include <atomic>
 #include <cstdio>
@@ -653,10 +654,18 @@ void set_force_default_bezel_for(std::string_view folder, bool on) {
 }
 
 std::string Config::external_core_for(std::string_view folder) const {
+    // First entry whose nro actually exists wins — lets the
+    // foyer-managed /foyer/content/cores/ install shadow a stock
+    // third-party install path. Falls back to the first folder
+    // match (caller stat()s anyway and reports missing-core UI).
+    const ExternalCore* first = nullptr;
     for (const auto& e : external_cores) {
-        if (e.folder == folder) return e.nro_path;
+        if (e.folder != folder) continue;
+        if (!first) first = &e;
+        struct stat st{};
+        if (::stat(e.nro_path.c_str(), &st) == 0) return e.nro_path;
     }
-    return {};
+    return first ? first->nro_path : std::string{};
 }
 
 } // namespace foyer::library

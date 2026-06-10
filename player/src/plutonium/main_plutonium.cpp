@@ -85,6 +85,31 @@ int main(int argc, char** argv) {
         const std::string back = (argc >= 3)
             ? normalise_argv_path(argv[2]) : std::string{};
         main_app->SetBootArgs(rom, back, derive_system_folder(rom));
+    } else {
+        // Emulator-test autoboot: hbloader passes argv on hardware,
+        // but PC Switch emulators can't hand args to an NRO. When
+        // launched bare, fall back to a rom path read from
+        // /foyer/data/test_autoboot.txt (single line). Lets CI / a
+        // desktop emulator exercise every player without the foyer
+        // chain-launch. Absent file = unchanged behaviour.
+        if (auto* f = std::fopen("/foyer/data/test_autoboot.txt", "rb")) {
+            char buf[512] = {0};
+            const auto n = std::fread(buf, 1, sizeof(buf) - 1, f);
+            std::fclose(f);
+            std::string rom(buf, n);
+            while (!rom.empty()
+                   && (rom.back() == '\n' || rom.back() == '\r'
+                       || rom.back() == ' ')) {
+                rom.pop_back();
+            }
+            if (!rom.empty()) {
+                foyer::log::write(
+                    "[player-plutonium] autoboot (test) rom=%s\n",
+                    rom.c_str());
+                main_app->SetBootArgs(normalise_argv_path(rom), {},
+                    derive_system_folder(rom));
+            }
+        }
     }
 
     if (R_FAILED(main_app->Load())) {
