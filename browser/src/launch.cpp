@@ -90,6 +90,18 @@ bool launch_game(const library::System& sys, const library::Game& game,
             if (!ext_nro.empty()) {
                 struct stat est{};
                 if (::stat(ext_nro.c_str(), &est) == 0) {
+                    // Same haze teardown the libretro path does below
+                    // — this branch returns early and used to skip
+                    // it, leaving USB resources pinned in our
+                    // .data/.bss. hbloader then failed to unmap the
+                    // segment when loading the external nro and
+                    // died with MAKERESULT(Module_HomebrewLoader, 26)
+                    // (hbl+0x3814 User Break on hardware).
+                    if (::foyer::browser::mtp_running()) {
+                        foyer::log::write(
+                            "[launch] stopping MTP before external launch\n");
+                        ::foyer::browser::mtp_stop();
+                    }
                     const std::string sd_ext = std::string{"sdmc:"} + ext_nro;
                     const std::string sd_rom = std::string{"sdmc:"} + game.path;
                     char ext_argv[768];
