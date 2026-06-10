@@ -53,11 +53,22 @@ struct FsRomRoot final : haze::FileSystemProxyImpl {
     FsRomRoot(std::string root, std::string display, std::string name)
         : m_root(std::move(root)), m_display(std::move(display)),
           m_name(std::move(name)) {
-        if (auto* sdmc = fsdevGetDeviceFileSystem("sdmc")) {
-            m_fs = *sdmc;
-        } else {
+        // Open a PRIVATE sdmc session for this mount. The previous
+        // code copied fsdev's session (fsdevGetDeviceFileSystem) —
+        // haze's IO thread then issued fs IPC on the same session
+        // the UI thread uses for every stdio call, and concurrent
+        // commands on one session garble responses. Host-side
+        // symptom: libmtp "could not get object handles" the moment
+        // the browser touched the SD while the host enumerated.
+        if (R_FAILED(fsOpenSdCardFileSystem(&m_fs))) {
             std::memset(&m_fs, 0, sizeof(m_fs));
+            foyer::log::write("[mtp] fsOpenSdCardFileSystem failed for %s\n",
+                m_name.c_str());
         }
+    }
+
+    ~FsRomRoot() {
+        if (m_fs.s.session) fsFsClose(&m_fs);
     }
 
     // libhaze uses GetName as the internal id per storage. Two
